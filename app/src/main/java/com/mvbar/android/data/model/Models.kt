@@ -8,13 +8,14 @@ data class LoginRequest(val email: String, val password: String)
 
 @Serializable
 data class LoginResponse(
+    val ok: Boolean = false,
     val token: String = "",
     val user: User? = null
 )
 
 @Serializable
 data class User(
-    val id: Int = 0,
+    val id: String = "",
     val email: String = "",
     val role: String = "user",
     @SerialName("avatar_path") val avatarPath: String? = null
@@ -108,18 +109,20 @@ data class HistoryEntry(
 )
 
 @Serializable
-data class BrowseArtistsResponse(val artists: List<Artist> = emptyList())
+data class TracksResponse(val ok: Boolean = false, val tracks: List<Track> = emptyList())
 @Serializable
-data class BrowseAlbumsResponse(val albums: List<Album> = emptyList())
+data class PlaylistsResponse(val ok: Boolean = false, val playlists: List<Playlist> = emptyList())
 @Serializable
-data class BrowseGenresResponse(val genres: List<Genre> = emptyList())
+data class FavoritesResponse(val ok: Boolean = false, val tracks: List<Track> = emptyList())
 @Serializable
-data class TracksResponse(val tracks: List<Track> = emptyList())
+data class HistoryResponse(val ok: Boolean = false, val tracks: List<Track> = emptyList())
 @Serializable
-data class PlaylistsResponse(val playlists: List<Playlist> = emptyList())
+data class RecommendationsResponse(val ok: Boolean = false, val buckets: List<RecBucket> = emptyList())
 @Serializable
-data class FavoritesResponse(val favorites: List<Track> = emptyList())
+data class RecBucket(val name: String = "", val tracks: List<Track> = emptyList())
 @Serializable
-data class HistoryResponse(val history: List<HistoryEntry> = emptyList())
+data class TracksListWrapper(val ok: Boolean = false, val artists: List<Artist> = emptyList())
 @Serializable
-data class RecommendationsResponse(val tracks: List<Track> = emptyList())
+data class AlbumsListWrapper(val ok: Boolean = false, val albums: List<Album> = emptyList())
+@Serializable
+data class GenresListWrapper(val ok: Boolean = false, val genres: List<Genre> = emptyList())

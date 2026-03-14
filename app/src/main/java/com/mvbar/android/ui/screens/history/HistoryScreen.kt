@@ -8,14 +8,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.mvbar.android.data.model.HistoryEntry
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.ui.components.TrackListItem
 import com.mvbar.android.ui.theme.*
 
 @Composable
 fun HistoryScreen(
-    history: List<HistoryEntry>,
+    history: List<Track>,
     currentTrackId: Int?,
     onPlayTrack: (Track) -> Unit,
     onRefresh: () -> Unit
@@ -36,15 +35,13 @@ fun HistoryScreen(
             }
         } else {
             LazyColumn(contentPadding = PaddingValues(bottom = 140.dp)) {
-                items(history) { entry ->
-                    entry.track?.let { track ->
-                        TrackListItem(
-                            track = track,
-                            isPlaying = track.id == currentTrackId,
-                            onPlay = { onPlayTrack(track) },
-                            modifier = Modifier.padding(horizontal = 12.dp)
-                        )
-                    }
+                items(history) { track ->
+                    TrackListItem(
+                        track = track,
+                        isPlaying = track.id == currentTrackId,
+                        onPlay = { onPlayTrack(track) },
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
                 }
             }
         }

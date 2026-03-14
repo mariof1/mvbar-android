@@ -27,8 +27,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _favorites = MutableStateFlow<List<Track>>(emptyList())
     val favorites: StateFlow<List<Track>> = _favorites.asStateFlow()
 
-    private val _history = MutableStateFlow<List<HistoryEntry>>(emptyList())
-    val history: StateFlow<List<HistoryEntry>> = _history.asStateFlow()
+    private val _history = MutableStateFlow<List<Track>>(emptyList())
+    val history: StateFlow<List<Track>> = _history.asStateFlow()
 
     private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
     val playlists: StateFlow<List<Playlist>> = _playlists.asStateFlow()
@@ -44,7 +44,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _homeState.value = _homeState.value.copy(isLoading = true)
             try {
-                val recs = try { repo.getRecommendations().tracks } catch (_: Exception) { emptyList() }
+                val recs = try {
+                    repo.getRecommendations().buckets.flatMap { it.tracks }
+                } catch (_: Exception) { emptyList() }
                 val recent = try { repo.getRecentlyAdded(20).tracks } catch (_: Exception) { emptyList() }
                 _homeState.value = HomeState(recommendations = recs, recentlyAdded = recent)
             } catch (_: Exception) {
@@ -55,13 +57,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadFavorites() {
         viewModelScope.launch {
-            try { _favorites.value = repo.getFavorites().favorites } catch (_: Exception) {}
+            try { _favorites.value = repo.getFavorites().tracks } catch (_: Exception) {}
         }
     }
 
     fun loadHistory() {
         viewModelScope.launch {
-            try { _history.value = repo.getHistory().history } catch (_: Exception) {}
+            try { _history.value = repo.getHistory().tracks } catch (_: Exception) {}
         }
     }
 

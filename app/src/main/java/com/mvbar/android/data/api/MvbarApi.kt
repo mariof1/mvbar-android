@@ -23,7 +23,7 @@ interface MvbarApi {
 
     // Browse
     @GET("api/browse/artists")
-    suspend fun getArtists(): BrowseArtistsResponse
+    suspend fun getArtists(): TracksListWrapper
 
     @GET("api/browse/artists/{id}")
     suspend fun getArtist(@Path("id") id: Int): Artist
@@ -32,13 +32,13 @@ interface MvbarApi {
     suspend fun getArtistTracks(@Path("id") id: Int): TracksResponse
 
     @GET("api/browse/albums")
-    suspend fun getAlbums(): BrowseAlbumsResponse
+    suspend fun getAlbums(): AlbumsListWrapper
 
     @GET("api/browse/albums/{name}/tracks")
     suspend fun getAlbumTracks(@Path("name") name: String): TracksResponse
 
     @GET("api/browse/genres")
-    suspend fun getGenres(): BrowseGenresResponse
+    suspend fun getGenres(): GenresListWrapper
 
     @GET("api/browse/genres/{name}/tracks")
     suspend fun getGenreTracks(@Path("name") name: String): TracksResponse
