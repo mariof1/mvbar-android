@@ -1,0 +1,4 @@
+-keepattributes *Annotation*
+-keep class com.mvbar.android.data.model.** { *; }
+-keep class retrofit2.** { *; }
+-keepclassmembers class * { @retrofit2.http.* <methods>; }

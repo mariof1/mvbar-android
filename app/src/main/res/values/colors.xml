@@ -1,0 +1,6 @@
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="cyan_500">#FF06B6D4</color>
+    <color name="background">#FF0A0A0A</color>
+</resources>

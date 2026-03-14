@@ -1,0 +1,115 @@
+package com.mvbar.android.ui.screens.detail
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.model.Artist
+import com.mvbar.android.data.model.Track
+import com.mvbar.android.ui.components.TrackListItem
+import com.mvbar.android.ui.theme.*
+
+@Composable
+fun ArtistDetailScreen(
+    artist: Artist?,
+    tracks: List<Track>,
+    currentTrackId: Int?,
+    onBack: () -> Unit,
+    onPlayTrack: (Track, List<Track>) -> Unit,
+    onPlayAll: () -> Unit
+) {
+    if (artist == null) return
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 140.dp)
+    ) {
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(280.dp)
+            ) {
+                artist.id?.let { id ->
+                    AsyncImage(
+                        model = ApiClient.artUrl(id),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, BackgroundDark),
+                                startY = 100f
+                            )
+                        )
+                )
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .padding(8.dp)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
+                }
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(20.dp)
+                ) {
+                    Text(
+                        artist.name,
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = OnSurface
+                    )
+                    Text(
+                        "${artist.trackCount} tracks • ${artist.albumCount} albums",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = OnSurfaceDim
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = onPlayAll,
+                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, null, tint = Color.Black)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Play All", color = Color.Black, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+
+        itemsIndexed(tracks) { index, track ->
+            TrackListItem(
+                track = track,
+                index = index,
+                isPlaying = track.id == currentTrackId,
+                onPlay = { onPlayTrack(track, tracks) },
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+        }
+    }
+}
