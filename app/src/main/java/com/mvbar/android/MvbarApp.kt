@@ -22,8 +22,10 @@ class MvbarApp : Application(), ImageLoaderFactory {
                 OkHttpClient.Builder()
                     .addInterceptor { chain ->
                         val builder = chain.request().newBuilder()
-                        ApiClient.getToken()?.let {
-                            builder.addHeader("Authorization", "Bearer $it")
+                        ApiClient.getToken()?.let { token ->
+                            builder.addHeader("Authorization", "Bearer $token")
+                            // /api/art/* is routed through Next.js which only reads cookies
+                            builder.addHeader("Cookie", "mvbar_token=$token")
                         }
                         chain.proceed(builder.build())
                     }
