@@ -100,38 +100,6 @@ fun MainScreen(
 
     val currentTrackId = playerState.currentTrack?.id
 
-    // Full-screen Now Playing (slide up/down)
-    AnimatedVisibility(
-        visible = showNowPlaying && playerState.currentTrack != null,
-        enter = slideInVertically(
-            initialOffsetY = { it },
-            animationSpec = tween(350)
-        ) + fadeIn(animationSpec = tween(250)),
-        exit = slideOutVertically(
-            targetOffsetY = { it },
-            animationSpec = tween(300)
-        ) + fadeOut(animationSpec = tween(200))
-    ) {
-        NowPlayingScreen(
-            state = playerState,
-            lyrics = lyrics,
-            lyricsLoading = lyricsLoading,
-            onBack = { showNowPlaying = false },
-            onTogglePlay = { mainVm.playerManager.togglePlay() },
-            onNext = { mainVm.playerManager.next() },
-            onPrevious = { mainVm.playerManager.previous() },
-            onSeek = { mainVm.playerManager.seekTo(it) },
-            onCyclePlayMode = { mainVm.playerManager.cyclePlayMode() },
-            onToggleFavorite = {
-                playerState.currentTrack?.let { mainVm.toggleFavorite(it.id) }
-            },
-            onPlayQueueItem = { mainVm.playerManager.playQueueIndex(it) },
-            onRemoveFromQueue = { mainVm.playerManager.removeFromQueue(it) },
-            onClearQueue = { mainVm.playerManager.clearQueue() },
-            onLoadLyrics = { mainVm.loadLyrics(it) }
-        )
-    }
-
 
     // Search overlay
     if (showSearch) {
@@ -485,6 +453,38 @@ fun MainScreen(
                     SettingsScreen(onLogout = onLogout)
                 }
             }
+        }
+
+        // Full-screen Now Playing overlay (slide up/down)
+        AnimatedVisibility(
+            visible = showNowPlaying && playerState.currentTrack != null,
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = tween(350)
+            ) + fadeIn(animationSpec = tween(250)),
+            exit = slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = tween(300)
+            ) + fadeOut(animationSpec = tween(200))
+        ) {
+            NowPlayingScreen(
+                state = playerState,
+                lyrics = lyrics,
+                lyricsLoading = lyricsLoading,
+                onBack = { showNowPlaying = false },
+                onTogglePlay = { mainVm.playerManager.togglePlay() },
+                onNext = { mainVm.playerManager.next() },
+                onPrevious = { mainVm.playerManager.previous() },
+                onSeek = { mainVm.playerManager.seekTo(it) },
+                onCyclePlayMode = { mainVm.playerManager.cyclePlayMode() },
+                onToggleFavorite = {
+                    playerState.currentTrack?.let { mainVm.toggleFavorite(it.id) }
+                },
+                onPlayQueueItem = { mainVm.playerManager.playQueueIndex(it) },
+                onRemoveFromQueue = { mainVm.playerManager.removeFromQueue(it) },
+                onClearQueue = { mainVm.playerManager.clearQueue() },
+                onLoadLyrics = { mainVm.loadLyrics(it) }
+            )
         }
 
         // Toast overlay — above everything
