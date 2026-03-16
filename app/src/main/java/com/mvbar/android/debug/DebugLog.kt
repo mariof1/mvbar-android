@@ -15,6 +15,9 @@ import java.util.concurrent.ConcurrentLinkedDeque
 
 object DebugLog {
     private const val MAX_ENTRIES = 500
+    private const val PREFS_NAME = "mvbar_debug"
+    private const val KEY_ENABLED = "debug_enabled"
+    private const val KEY_UPLOAD_URL = "upload_server_url"
     private val entries = ConcurrentLinkedDeque<LogEntry>()
 
     @Volatile
@@ -23,6 +26,21 @@ object DebugLog {
     /** Server URL for log uploads (e.g. "http://10.10.100.5:9999") */
     @Volatile
     var uploadServerUrl: String = ""
+
+    /** Call from Application.onCreate() to restore persisted settings */
+    fun init(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        enabled = prefs.getBoolean(KEY_ENABLED, false)
+        uploadServerUrl = prefs.getString(KEY_UPLOAD_URL, "") ?: ""
+    }
+
+    /** Persist current settings */
+    fun save(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_ENABLED, enabled)
+            .putString(KEY_UPLOAD_URL, uploadServerUrl)
+            .apply()
+    }
 
     data class LogEntry(
         val timestamp: Long = System.currentTimeMillis(),

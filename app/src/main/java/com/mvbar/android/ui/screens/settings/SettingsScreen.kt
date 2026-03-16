@@ -123,6 +123,7 @@ fun SettingsScreen(onLogout: () -> Unit) {
                             onCheckedChange = {
                                 debugEnabled = it
                                 DebugLog.enabled = it
+                                DebugLog.save(context)
                                 ApiClient.rebuild()
                                 if (it) DebugLog.i("Settings", "Debug logging enabled")
                             },
@@ -224,6 +225,7 @@ fun SettingsScreen(onLogout: () -> Unit) {
                         onValueChange = {
                             uploadUrl = it
                             DebugLog.uploadServerUrl = it
+                            DebugLog.save(context)
                         },
                         label = { Text("Server URL") },
                         placeholder = { Text("http://10.10.100.5:9999") },

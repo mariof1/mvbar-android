@@ -12,6 +12,7 @@ import okhttp3.OkHttpClient
 class MvbarApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+        DebugLog.init(this)
         DebugLog.installCrashHandler()
     }
 
