@@ -40,7 +40,7 @@ fun ArtistCard(
         ) {
             artist.id?.let { id ->
                 AsyncImage(
-                    model = ApiClient.artUrl(id),
+                    model = ApiClient.artistArtUrl(id),
                     contentDescription = artist.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()

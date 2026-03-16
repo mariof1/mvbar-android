@@ -46,7 +46,7 @@ fun AlbumDetailScreen(
             ) {
                 coverTrackId?.let {
                     AsyncImage(
-                        model = ApiClient.artUrl(it),
+                        model = ApiClient.trackArtUrl(it),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()

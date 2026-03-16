@@ -61,7 +61,7 @@ fun TrackListItem(
         }
 
         AsyncImage(
-            model = ApiClient.artUrl(track.id),
+            model = ApiClient.trackArtUrl(track.id),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier

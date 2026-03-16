@@ -48,7 +48,7 @@ fun ArtistDetailScreen(
             ) {
                 artist.id?.let { id ->
                     AsyncImage(
-                        model = ApiClient.artUrl(id),
+                        model = ApiClient.artistArtUrl(id),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
