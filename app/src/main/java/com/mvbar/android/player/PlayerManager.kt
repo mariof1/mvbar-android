@@ -10,6 +10,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Track
+import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -83,13 +84,19 @@ class PlayerManager private constructor(private val context: Context) {
     }
 
     fun playTracks(tracks: List<Track>, startIndex: Int = 0) {
-        val ctrl = controller ?: return
+        val ctrl = controller ?: run {
+            DebugLog.e("Player", "Controller is null, cannot play")
+            return
+        }
         _queue.clear()
         _queue.addAll(tracks)
+
+        DebugLog.i("Player", "Playing ${tracks.size} tracks from index $startIndex")
 
         val items = tracks.map { track ->
             val streamUrl = ApiClient.streamUrl(track.id)
             val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+            DebugLog.d("Player", "Track ${track.id}: stream=$streamUrl")
             MediaItem.Builder()
                 .setUri(streamUrl)
                 .setMediaId(track.id.toString())

@@ -144,10 +144,10 @@ data class RecBucket(
     @SerialName("art_hashes") val artHashes: List<String> = emptyList()
 )
 @Serializable
-data class TracksListWrapper(val ok: Boolean = false, val artists: List<Artist> = emptyList())
+data class TracksListWrapper(val ok: Boolean = false, val artists: List<Artist> = emptyList(), val total: Int = 0)
 @Serializable
-data class AlbumsListWrapper(val ok: Boolean = false, val albums: List<Album> = emptyList())
+data class AlbumsListWrapper(val ok: Boolean = false, val albums: List<Album> = emptyList(), val total: Int = 0)
 @Serializable
-data class GenresListWrapper(val ok: Boolean = false, val genres: List<Genre> = emptyList())
+data class GenresListWrapper(val ok: Boolean = false, val genres: List<Genre> = emptyList(), val total: Int = 0)
 @Serializable
 data class AlbumDetailResponse(val ok: Boolean = false, val album: Album? = null, val tracks: List<Track> = emptyList())

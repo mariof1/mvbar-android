@@ -15,7 +15,11 @@ data class BrowseState(
     val albums: List<Album> = emptyList(),
     val genres: List<Genre> = emptyList(),
     val isLoading: Boolean = false,
-    val selectedTab: Int = 0
+    val selectedTab: Int = 0,
+    val hasMoreArtists: Boolean = true,
+    val hasMoreAlbums: Boolean = true,
+    val hasMoreGenres: Boolean = true,
+    val isLoadingMore: Boolean = false
 )
 
 class BrowseViewModel : ViewModel() {
@@ -35,24 +39,97 @@ class BrowseViewModel : ViewModel() {
     private val _selectedArtist = MutableStateFlow<Artist?>(null)
     val selectedArtist: StateFlow<Artist?> = _selectedArtist.asStateFlow()
 
+    private companion object {
+        const val PAGE_SIZE = 50
+    }
+
     fun loadAll() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
             try {
                 DebugLog.i("Browse", "Loading artists, albums, genres...")
                 val artists = try {
-                    repo.getArtists().artists.also { DebugLog.i("Browse", "Got ${it.size} artists") }
+                    val r = repo.getArtists(PAGE_SIZE, 0)
+                    DebugLog.i("Browse", "Got ${r.artists.size} artists (total: ${r.total})")
+                    _state.value = _state.value.copy(hasMoreArtists = r.artists.size >= PAGE_SIZE)
+                    r.artists
                 } catch (e: Exception) { DebugLog.e("Browse", "Artists failed", e); emptyList() }
                 val albums = try {
-                    repo.getAlbums().albums.also { DebugLog.i("Browse", "Got ${it.size} albums") }
+                    val r = repo.getAlbums(PAGE_SIZE, 0)
+                    DebugLog.i("Browse", "Got ${r.albums.size} albums (total: ${r.total})")
+                    _state.value = _state.value.copy(hasMoreAlbums = r.albums.size >= PAGE_SIZE)
+                    r.albums
                 } catch (e: Exception) { DebugLog.e("Browse", "Albums failed", e); emptyList() }
                 val genres = try {
-                    repo.getGenres().genres.also { DebugLog.i("Browse", "Got ${it.size} genres") }
+                    val r = repo.getGenres(PAGE_SIZE, 0)
+                    DebugLog.i("Browse", "Got ${r.genres.size} genres (total: ${r.total})")
+                    _state.value = _state.value.copy(hasMoreGenres = r.genres.size >= PAGE_SIZE)
+                    r.genres
                 } catch (e: Exception) { DebugLog.e("Browse", "Genres failed", e); emptyList() }
-                _state.value = BrowseState(artists = artists, albums = albums, genres = genres)
+                _state.value = _state.value.copy(artists = artists, albums = albums, genres = genres, isLoading = false)
             } catch (e: Exception) {
                 DebugLog.e("Browse", "loadAll failed", e)
                 _state.value = _state.value.copy(isLoading = false)
+            }
+        }
+    }
+
+    fun loadMoreArtists() {
+        val s = _state.value
+        if (s.isLoadingMore || !s.hasMoreArtists) return
+        viewModelScope.launch {
+            _state.value = s.copy(isLoadingMore = true)
+            try {
+                val r = repo.getArtists(PAGE_SIZE, s.artists.size)
+                DebugLog.i("Browse", "Loaded ${r.artists.size} more artists (offset ${s.artists.size})")
+                _state.value = _state.value.copy(
+                    artists = s.artists + r.artists,
+                    hasMoreArtists = r.artists.size >= PAGE_SIZE,
+                    isLoadingMore = false
+                )
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Load more artists failed", e)
+                _state.value = _state.value.copy(isLoadingMore = false)
+            }
+        }
+    }
+
+    fun loadMoreAlbums() {
+        val s = _state.value
+        if (s.isLoadingMore || !s.hasMoreAlbums) return
+        viewModelScope.launch {
+            _state.value = s.copy(isLoadingMore = true)
+            try {
+                val r = repo.getAlbums(PAGE_SIZE, s.albums.size)
+                DebugLog.i("Browse", "Loaded ${r.albums.size} more albums (offset ${s.albums.size})")
+                _state.value = _state.value.copy(
+                    albums = s.albums + r.albums,
+                    hasMoreAlbums = r.albums.size >= PAGE_SIZE,
+                    isLoadingMore = false
+                )
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Load more albums failed", e)
+                _state.value = _state.value.copy(isLoadingMore = false)
+            }
+        }
+    }
+
+    fun loadMoreGenres() {
+        val s = _state.value
+        if (s.isLoadingMore || !s.hasMoreGenres) return
+        viewModelScope.launch {
+            _state.value = s.copy(isLoadingMore = true)
+            try {
+                val r = repo.getGenres(PAGE_SIZE, s.genres.size)
+                DebugLog.i("Browse", "Loaded ${r.genres.size} more genres (offset ${s.genres.size})")
+                _state.value = _state.value.copy(
+                    genres = s.genres + r.genres,
+                    hasMoreGenres = r.genres.size >= PAGE_SIZE,
+                    isLoadingMore = false
+                )
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Load more genres failed", e)
+                _state.value = _state.value.copy(isLoadingMore = false)
             }
         }
     }

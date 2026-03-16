@@ -7,17 +7,38 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.mvbar.android.MainActivity
+import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.debug.DebugLog
+import okhttp3.OkHttpClient
 
 class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
 
     override fun onCreate() {
         super.onCreate()
+
+        // OkHttp client with auth header for streaming
+        val okClient = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val builder = chain.request().newBuilder()
+                ApiClient.getToken()?.let {
+                    builder.addHeader("Authorization", "Bearer $it")
+                }
+                chain.proceed(builder.build())
+            }
+            .build()
+
+        val dataSourceFactory = OkHttpDataSource.Factory(okClient)
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+
         val player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(mediaSourceFactory)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -28,6 +49,12 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
+        player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                DebugLog.e("Player", "Playback error: ${error.errorCodeName}", error)
+            }
+        })
+
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent,
@@ -37,6 +64,8 @@ class PlaybackService : MediaSessionService() {
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(pendingIntent)
             .build()
+
+        DebugLog.i("Player", "PlaybackService created with OkHttp auth")
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =

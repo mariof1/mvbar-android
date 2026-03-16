@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,7 +23,10 @@ fun BrowseScreen(
     onTabChange: (Int) -> Unit,
     onArtistClick: (Artist) -> Unit,
     onAlbumClick: (Album) -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onLoadMoreArtists: () -> Unit = {},
+    onLoadMoreAlbums: () -> Unit = {},
+    onLoadMoreGenres: () -> Unit = {}
 ) {
     LaunchedEffect(Unit) { onRefresh() }
 
@@ -61,17 +65,35 @@ fun BrowseScreen(
             }
         } else {
             when (state.selectedTab) {
-                0 -> ArtistsGrid(state.artists, onArtistClick)
-                1 -> AlbumsGrid(state.albums, onAlbumClick)
-                2 -> GenresGrid(state.genres)
+                0 -> ArtistsGrid(state.artists, state.hasMoreArtists, state.isLoadingMore, onArtistClick, onLoadMoreArtists)
+                1 -> AlbumsGrid(state.albums, state.hasMoreAlbums, state.isLoadingMore, onAlbumClick, onLoadMoreAlbums)
+                2 -> GenresGrid(state.genres, state.hasMoreGenres, state.isLoadingMore, onLoadMoreGenres)
             }
         }
     }
 }
 
 @Composable
-private fun ArtistsGrid(artists: List<Artist>, onClick: (Artist) -> Unit) {
+private fun ArtistsGrid(
+    artists: List<Artist>,
+    hasMore: Boolean,
+    isLoadingMore: Boolean,
+    onClick: (Artist) -> Unit,
+    onLoadMore: () -> Unit
+) {
+    val gridState = rememberLazyGridState()
+
+    // Trigger load more when near end
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            hasMore && !isLoadingMore && lastVisible >= artists.size - 6
+        }
+    }
+    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
+
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Fixed(2),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -81,14 +103,38 @@ private fun ArtistsGrid(artists: List<Artist>, onClick: (Artist) -> Unit) {
         items(artists) { artist ->
             ArtistCard(artist = artist, onClick = { onClick(artist) })
         }
+        if (isLoadingMore) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                }
+            }
+        }
         // Bottom spacing for player bar
         items(2) { Spacer(Modifier.height(120.dp)) }
     }
 }
 
 @Composable
-private fun AlbumsGrid(albums: List<Album>, onClick: (Album) -> Unit) {
+private fun AlbumsGrid(
+    albums: List<Album>,
+    hasMore: Boolean,
+    isLoadingMore: Boolean,
+    onClick: (Album) -> Unit,
+    onLoadMore: () -> Unit
+) {
+    val gridState = rememberLazyGridState()
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            hasMore && !isLoadingMore && lastVisible >= albums.size - 6
+        }
+    }
+    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
+
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Fixed(2),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -98,18 +144,41 @@ private fun AlbumsGrid(albums: List<Album>, onClick: (Album) -> Unit) {
         items(albums) { album ->
             AlbumCard(album = album, onClick = { onClick(album) })
         }
+        if (isLoadingMore) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                }
+            }
+        }
         items(2) { Spacer(Modifier.height(120.dp)) }
     }
 }
 
 @Composable
-private fun GenresGrid(genres: List<Genre>) {
+private fun GenresGrid(
+    genres: List<Genre>,
+    hasMore: Boolean,
+    isLoadingMore: Boolean,
+    onLoadMore: () -> Unit
+) {
+    val gridState = rememberLazyGridState()
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            hasMore && !isLoadingMore && lastVisible >= genres.size - 6
+        }
+    }
+    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
+
     val gradients = listOf(
         listOf(Cyan500, Cyan700),
         listOf(Pink500, Pink400),
         listOf(Cyan600, Cyan900),
     )
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Fixed(2),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -119,6 +188,13 @@ private fun GenresGrid(genres: List<Genre>) {
         items(genres) { genre ->
             val colors = gradients[genres.indexOf(genre) % gradients.size]
             GenreChip(genre = genre, colors = colors)
+        }
+        if (isLoadingMore) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                }
+            }
         }
         items(2) { Spacer(Modifier.height(120.dp)) }
     }

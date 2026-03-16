@@ -23,7 +23,10 @@ interface MvbarApi {
 
     // Browse
     @GET("api/browse/artists")
-    suspend fun getArtists(): TracksListWrapper
+    suspend fun getArtists(
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): TracksListWrapper
 
     @GET("api/browse/artists/{id}")
     suspend fun getArtist(@Path("id") id: Int): Artist
@@ -32,13 +35,19 @@ interface MvbarApi {
     suspend fun getArtistTracks(@Path("id") id: Int): TracksResponse
 
     @GET("api/browse/albums")
-    suspend fun getAlbums(): AlbumsListWrapper
+    suspend fun getAlbums(
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): AlbumsListWrapper
 
     @GET("api/browse/album")
     suspend fun getAlbumTracks(@Query("album") name: String): AlbumDetailResponse
 
     @GET("api/browse/genres")
-    suspend fun getGenres(): GenresListWrapper
+    suspend fun getGenres(
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): GenresListWrapper
 
     @GET("api/browse/genres/{name}/tracks")
     suspend fun getGenreTracks(@Path("name") name: String): TracksResponse
@@ -54,8 +63,8 @@ interface MvbarApi {
     @GET("api/history")
     suspend fun getHistory(@Query("limit") limit: Int = 50): HistoryResponse
 
-    @POST("api/history")
-    suspend fun recordPlay(@Body body: Map<String, Int>): Response<Unit>
+    @POST("api/history/{trackId}")
+    suspend fun recordPlay(@Path("trackId") trackId: Int): Response<Unit>
 
     // Playlists
     @GET("api/playlists")
