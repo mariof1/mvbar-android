@@ -33,7 +33,8 @@ fun AlbumDetailScreen(
     currentTrackId: Int?,
     onBack: () -> Unit,
     onPlayTrack: (Track, List<Track>) -> Unit,
-    onPlayAll: () -> Unit
+    onPlayAll: () -> Unit,
+    onTrackLongPress: ((Track) -> Unit)? = null
 ) {
     val artUrl = album?.artPath?.let { ApiClient.artPathUrl(it) }
         ?: tracks.firstOrNull()?.id?.let { ApiClient.trackArtUrl(it) }
@@ -109,6 +110,7 @@ fun AlbumDetailScreen(
                 index = index,
                 isPlaying = track.id == currentTrackId,
                 onPlay = { onPlayTrack(track, tracks) },
+                onMore = onTrackLongPress?.let { { it(track) } },
                 modifier = Modifier.padding(horizontal = 12.dp)
             )
         }

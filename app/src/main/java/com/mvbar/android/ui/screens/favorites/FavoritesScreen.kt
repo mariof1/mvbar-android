@@ -18,7 +18,8 @@ fun FavoritesScreen(
     currentTrackId: Int?,
     onPlayTrack: (Track, List<Track>) -> Unit,
     onToggleFavorite: (Int) -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onTrackLongPress: ((Track) -> Unit)? = null
 ) {
     LaunchedEffect(Unit) { onRefresh() }
 
@@ -42,6 +43,7 @@ fun FavoritesScreen(
                         isPlaying = track.id == currentTrackId,
                         onPlay = { onPlayTrack(track, favorites) },
                         onFavorite = { onToggleFavorite(track.id) },
+                        onMore = onTrackLongPress?.let { { it(track) } },
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
                 }

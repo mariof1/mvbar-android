@@ -114,5 +114,16 @@ fun TrackListItem(
                 )
             }
         }
+
+        onMore?.let {
+            IconButton(onClick = it, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Filled.MoreVert,
+                    contentDescription = "More",
+                    tint = OnSurfaceDim,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
     }
 }

@@ -22,6 +22,8 @@ val OnSurfaceVariant = Color(0xB3FFFFFF) // 70%
 val OnSurfaceDim = Color(0x80FFFFFF) // 50%
 val OnSurfaceSubtle = Color(0x4DFFFFFF) // 30%
 
+val SurfaceElevated = Color(0xFF2A2A2A)
+
 val WhiteOverlay5 = Color(0x0DFFFFFF)
 val WhiteOverlay10 = Color(0x1AFFFFFF)
 val WhiteOverlay15 = Color(0x26FFFFFF)

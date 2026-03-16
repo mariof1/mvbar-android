@@ -23,6 +23,7 @@ fun BrowseScreen(
     onTabChange: (Int) -> Unit,
     onArtistClick: (Artist) -> Unit,
     onAlbumClick: (Album) -> Unit,
+    onGenreClick: (Genre) -> Unit = {},
     onRefresh: () -> Unit,
     onLoadMoreArtists: () -> Unit = {},
     onLoadMoreAlbums: () -> Unit = {},
@@ -67,7 +68,7 @@ fun BrowseScreen(
             when (state.selectedTab) {
                 0 -> ArtistsGrid(state.artists, state.hasMoreArtists, state.isLoadingMore, onArtistClick, onLoadMoreArtists)
                 1 -> AlbumsGrid(state.albums, state.hasMoreAlbums, state.isLoadingMore, onAlbumClick, onLoadMoreAlbums)
-                2 -> GenresGrid(state.genres, state.hasMoreGenres, state.isLoadingMore, onLoadMoreGenres)
+                2 -> GenresGrid(state.genres, state.hasMoreGenres, state.isLoadingMore, onGenreClick, onLoadMoreGenres)
             }
         }
     }
@@ -160,6 +161,7 @@ private fun GenresGrid(
     genres: List<Genre>,
     hasMore: Boolean,
     isLoadingMore: Boolean,
+    onClick: (Genre) -> Unit,
     onLoadMore: () -> Unit
 ) {
     val gridState = rememberLazyGridState()
@@ -187,7 +189,7 @@ private fun GenresGrid(
     ) {
         items(genres) { genre ->
             val colors = gradients[genres.indexOf(genre) % gradients.size]
-            GenreChip(genre = genre, colors = colors)
+            GenreChip(genre = genre, colors = colors, onClick = { onClick(genre) })
         }
         if (isLoadingMore) {
             item {
@@ -201,13 +203,14 @@ private fun GenresGrid(
 }
 
 @Composable
-private fun GenreChip(genre: Genre, colors: List<androidx.compose.ui.graphics.Color>) {
+private fun GenreChip(genre: Genre, colors: List<androidx.compose.ui.graphics.Color>, onClick: () -> Unit = {}) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .height(80.dp),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = colors[0].copy(alpha = 0.3f))
+        colors = CardDefaults.cardColors(containerColor = colors[0].copy(alpha = 0.3f)),
+        onClick = onClick
     ) {
         Box(
             modifier = Modifier.fillMaxSize().padding(16.dp),

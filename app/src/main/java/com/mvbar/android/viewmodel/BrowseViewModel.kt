@@ -39,6 +39,12 @@ class BrowseViewModel : ViewModel() {
     private val _selectedArtist = MutableStateFlow<Artist?>(null)
     val selectedArtist: StateFlow<Artist?> = _selectedArtist.asStateFlow()
 
+    private val _genreTracks = MutableStateFlow<List<Track>>(emptyList())
+    val genreTracks: StateFlow<List<Track>> = _genreTracks.asStateFlow()
+
+    private val _genreLoading = MutableStateFlow(false)
+    val genreLoading: StateFlow<Boolean> = _genreLoading.asStateFlow()
+
     private companion object {
         const val PAGE_SIZE = 50
     }
@@ -160,6 +166,23 @@ class BrowseViewModel : ViewModel() {
                 _selectedAlbum.value = response.album
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Album tracks failed for '$albumName'", e)
+            }
+        }
+    }
+
+    fun loadGenreTracks(genreName: String) {
+        viewModelScope.launch {
+            _genreLoading.value = true
+            _genreTracks.value = emptyList()
+            try {
+                DebugLog.i("Browse", "Loading genre tracks for '$genreName'")
+                val response = repo.getGenreTracks(genreName)
+                DebugLog.i("Browse", "Got ${response.tracks.size} tracks for genre '$genreName'")
+                _genreTracks.value = response.tracks
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Genre tracks failed for '$genreName'", e)
+            } finally {
+                _genreLoading.value = false
             }
         }
     }

@@ -142,6 +142,73 @@ class PlayerManager private constructor(private val context: Context) {
         _state.value = _state.value.copy(queue = _queue.toList())
     }
 
+    fun playNext(track: Track) {
+        val ctrl = controller ?: return
+        val insertAt = (ctrl.currentMediaItemIndex + 1).coerceAtMost(_queue.size)
+        _queue.add(insertAt, track)
+        val streamUrl = ApiClient.streamUrl(track.id)
+        val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+        val item = MediaItem.Builder()
+            .setUri(streamUrl)
+            .setMediaId(track.id.toString())
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.displayTitle)
+                    .setArtist(track.displayArtist)
+                    .setArtworkUri(Uri.parse(artUrl))
+                    .build()
+            )
+            .build()
+        ctrl.addMediaItem(insertAt, item)
+        _state.value = _state.value.copy(queue = _queue.toList())
+    }
+
+    fun removeFromQueue(index: Int) {
+        val ctrl = controller ?: return
+        if (index < 0 || index >= _queue.size) return
+        val currentIndex = ctrl.currentMediaItemIndex
+        _queue.removeAt(index)
+        ctrl.removeMediaItem(index)
+        if (_queue.isEmpty()) {
+            _state.value = PlayerState()
+        } else {
+            val newIndex = ctrl.currentMediaItemIndex
+            val track = if (newIndex in _queue.indices) _queue[newIndex] else null
+            _state.value = _state.value.copy(
+                queue = _queue.toList(),
+                queueIndex = newIndex,
+                currentTrack = track
+            )
+        }
+    }
+
+    fun moveInQueue(from: Int, to: Int) {
+        val ctrl = controller ?: return
+        if (from < 0 || from >= _queue.size || to < 0 || to >= _queue.size || from == to) return
+        val track = _queue.removeAt(from)
+        _queue.add(to, track)
+        ctrl.moveMediaItem(from, to)
+        val newIndex = ctrl.currentMediaItemIndex
+        _state.value = _state.value.copy(
+            queue = _queue.toList(),
+            queueIndex = newIndex
+        )
+    }
+
+    fun playQueueIndex(index: Int) {
+        val ctrl = controller ?: return
+        if (index < 0 || index >= _queue.size) return
+        ctrl.seekTo(index, 0L)
+        ctrl.play()
+    }
+
+    fun clearQueue() {
+        val ctrl = controller ?: return
+        _queue.clear()
+        ctrl.clearMediaItems()
+        _state.value = PlayerState()
+    }
+
     fun togglePlay() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
     fun next() { controller?.seekToNextMediaItem() }
     fun previous() { controller?.seekToPreviousMediaItem() }

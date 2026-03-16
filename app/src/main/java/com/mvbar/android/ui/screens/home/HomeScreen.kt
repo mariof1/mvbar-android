@@ -35,7 +35,8 @@ fun HomeScreen(
     currentTrackId: Int?,
     onPlayTrack: (Track, List<Track>) -> Unit,
     onAlbumClick: (String) -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onTrackLongPress: ((Track) -> Unit)? = null
 ) {
     LaunchedEffect(Unit) { onRefresh() }
 
@@ -62,7 +63,8 @@ fun HomeScreen(
                 currentTrackId = currentTrackId,
                 onPlayTrack = onPlayTrack,
                 onBucketClick = { selectedBucket = it },
-                onAlbumClick = onAlbumClick
+                onAlbumClick = onAlbumClick,
+                onTrackLongPress = onTrackLongPress
             )
         }
     }
@@ -74,7 +76,8 @@ private fun HomeContent(
     currentTrackId: Int?,
     onPlayTrack: (Track, List<Track>) -> Unit,
     onBucketClick: (RecBucket) -> Unit,
-    onAlbumClick: (String) -> Unit
+    onAlbumClick: (String) -> Unit,
+    onTrackLongPress: ((Track) -> Unit)? = null
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -140,6 +143,7 @@ private fun HomeContent(
                     track = track,
                     isPlaying = track.id == currentTrackId,
                     onPlay = { onPlayTrack(track, state.recentlyAdded) },
+                    onMore = onTrackLongPress?.let { { it(track) } },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
             }

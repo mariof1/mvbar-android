@@ -1,11 +1,16 @@
 package com.mvbar.android.ui.screens.nowplaying
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,10 +27,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.model.Track
 import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.ui.theme.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NowPlayingScreen(
     state: PlayerState,
@@ -35,9 +42,13 @@ fun NowPlayingScreen(
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
     onCyclePlayMode: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onPlayQueueItem: (Int) -> Unit = {},
+    onRemoveFromQueue: (Int) -> Unit = {},
+    onClearQueue: () -> Unit = {}
 ) {
     val track = state.currentTrack ?: return
+    var showQueue by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -72,8 +83,8 @@ fun NowPlayingScreen(
                     style = MaterialTheme.typography.titleSmall,
                     color = OnSurfaceDim
                 )
-                IconButton(onClick = { }) {
-                    Icon(Icons.Filled.MoreVert, "More", tint = OnSurfaceDim)
+                IconButton(onClick = { showQueue = true }) {
+                    Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = OnSurfaceDim)
                 }
             }
 
@@ -199,6 +210,154 @@ fun NowPlayingScreen(
             }
 
             Spacer(Modifier.weight(1f))
+        }
+
+        // Queue bottom sheet
+        if (showQueue) {
+            QueueSheet(
+                queue = state.queue,
+                currentIndex = state.queueIndex,
+                onDismiss = { showQueue = false },
+                onPlayItem = onPlayQueueItem,
+                onRemoveItem = onRemoveFromQueue,
+                onClearQueue = { onClearQueue(); showQueue = false }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QueueSheet(
+    queue: List<Track>,
+    currentIndex: Int,
+    onDismiss: () -> Unit,
+    onPlayItem: (Int) -> Unit,
+    onRemoveItem: (Int) -> Unit,
+    onClearQueue: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceContainerDark,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = OnSurfaceDim) }
+    ) {
+        Column(modifier = Modifier.fillMaxHeight(0.65f)) {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Queue",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = OnSurface
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${queue.size} tracks",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceDim
+                    )
+                    if (queue.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = onClearQueue) {
+                            Text("Clear", color = Pink500, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider(color = WhiteOverlay10, modifier = Modifier.padding(horizontal = 20.dp))
+
+            if (queue.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Queue is empty", color = OnSurfaceDim)
+                }
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    itemsIndexed(queue) { index, track ->
+                        val isActive = index == currentIndex
+                        QueueItem(
+                            track = track,
+                            isActive = isActive,
+                            onPlay = { onPlayItem(index) },
+                            onRemove = { onRemoveItem(index) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueItem(
+    track: Track,
+    isActive: Boolean,
+    onPlay: () -> Unit,
+    onRemove: () -> Unit
+) {
+    val bgColor = if (isActive) Cyan500.copy(alpha = 0.12f) else Color.Transparent
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bgColor)
+            .clickable(onClick = onPlay)
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isActive) {
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(Cyan400)
+            )
+            Spacer(Modifier.width(10.dp))
+        }
+
+        AsyncImage(
+            model = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(8.dp))
+        )
+        Spacer(Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                track.displayTitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isActive) Cyan400 else OnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                track.displayArtist,
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceDim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Text(
+            track.durationFormatted,
+            style = MaterialTheme.typography.labelSmall,
+            color = OnSurfaceDim
+        )
+
+        IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Filled.Close, "Remove", tint = OnSurfaceDim, modifier = Modifier.size(18.dp))
         }
     }
 }

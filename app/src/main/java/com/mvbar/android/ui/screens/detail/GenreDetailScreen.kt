@@ -12,31 +12,25 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import com.mvbar.android.data.api.ApiClient
-import com.mvbar.android.data.model.Artist
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.ui.components.TrackListItem
 import com.mvbar.android.ui.theme.*
 
 @Composable
-fun ArtistDetailScreen(
-    artist: Artist?,
+fun GenreDetailScreen(
+    genreName: String,
     tracks: List<Track>,
+    isLoading: Boolean,
     currentTrackId: Int?,
     onBack: () -> Unit,
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: () -> Unit,
     onTrackLongPress: ((Track) -> Unit)? = null
 ) {
-    if (artist == null) return
-
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 140.dp)
@@ -45,26 +39,13 @@ fun ArtistDetailScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
-            ) {
-                artist.id?.let { id ->
-                    AsyncImage(
-                        model = ApiClient.artistArtUrl(id),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, BackgroundDark),
-                                startY = 100f
-                            )
+                    .height(200.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Cyan700.copy(alpha = 0.6f), BackgroundDark)
                         )
-                )
+                    )
+            ) {
                 IconButton(
                     onClick = onBack,
                     modifier = Modifier
@@ -79,13 +60,13 @@ fun ArtistDetailScreen(
                         .padding(20.dp)
                 ) {
                     Text(
-                        artist.name,
+                        genreName,
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
                         color = OnSurface
                     )
                     Text(
-                        "${artist.trackCount} tracks • ${artist.albumCount} albums",
+                        "${tracks.size} tracks",
                         style = MaterialTheme.typography.bodyMedium,
                         color = OnSurfaceDim
                     )
@@ -93,7 +74,8 @@ fun ArtistDetailScreen(
                     Button(
                         onClick = onPlayAll,
                         shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
+                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500),
+                        enabled = tracks.isNotEmpty()
                     ) {
                         Icon(Icons.Filled.PlayArrow, null, tint = Color.Black)
                         Spacer(Modifier.width(4.dp))
@@ -103,15 +85,22 @@ fun ArtistDetailScreen(
             }
         }
 
-        itemsIndexed(tracks) { index, track ->
-            TrackListItem(
-                track = track,
-                index = index,
-                isPlaying = track.id == currentTrackId,
-                onPlay = { onPlayTrack(track, tracks) },
-                onMore = onTrackLongPress?.let { { it(track) } },
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
+        if (isLoading) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Cyan500)
+                }
+            }
+        } else {
+            itemsIndexed(tracks) { index, track ->
+                TrackListItem(
+                    track = track,
+                    index = index,
+                    isPlaying = track.id == currentTrackId,
+                    onPlay = { onPlayTrack(track, tracks) },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
         }
     }
 }
