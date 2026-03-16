@@ -1,5 +1,6 @@
 package com.mvbar.android.data.api
 
+import com.mvbar.android.debug.DebugLog
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -34,6 +35,9 @@ object ApiClient {
     fun getBaseUrl(): String = baseUrl
     fun getToken(): String? = authToken
 
+    /** Force rebuild of the HTTP client (call after toggling debug mode) */
+    fun rebuild() { _api = null }
+
     val api: MvbarApi
         get() {
             if (_api == null) {
@@ -43,16 +47,46 @@ object ApiClient {
                     chain.proceed(builder.build())
                 }
 
+                val debugInterceptor = Interceptor { chain ->
+                    val request = chain.request()
+                    val method = request.method
+                    val url = request.url.toString()
+                    DebugLog.d("HTTP", "→ $method $url")
+
+                    val startMs = System.currentTimeMillis()
+                    try {
+                        val response = chain.proceed(request)
+                        val elapsed = System.currentTimeMillis() - startMs
+                        val code = response.code
+                        val size = response.body?.contentLength() ?: -1
+
+                        // Peek at error response bodies
+                        if (code >= 400) {
+                            val body = response.peekBody(4096).string()
+                            DebugLog.e("HTTP", "← $code $method $url (${elapsed}ms) body=$body")
+                        } else {
+                            DebugLog.d("HTTP", "← $code $method $url (${elapsed}ms, ${size}b)")
+                        }
+                        response
+                    } catch (e: Exception) {
+                        val elapsed = System.currentTimeMillis() - startMs
+                        DebugLog.e("HTTP", "✗ $method $url (${elapsed}ms)", e)
+                        throw e
+                    }
+                }
+
                 val logging = HttpLoggingInterceptor().apply {
                     level = HttpLoggingInterceptor.Level.BASIC
                 }
 
-                val client = OkHttpClient.Builder()
+                val clientBuilder = OkHttpClient.Builder()
                     .addInterceptor(authInterceptor)
+                    .addInterceptor(debugInterceptor)
                     .addInterceptor(logging)
                     .connectTimeout(30, TimeUnit.SECONDS)
                     .readTimeout(60, TimeUnit.SECONDS)
-                    .build()
+
+                val client = clientBuilder.build()
 
                 val contentType = "application/json".toMediaType()
                 _api = Retrofit.Builder()

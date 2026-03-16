@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
+import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,11 +39,19 @@ class BrowseViewModel : ViewModel() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
             try {
-                val artists = try { repo.getArtists().artists } catch (_: Exception) { emptyList() }
-                val albums = try { repo.getAlbums().albums } catch (_: Exception) { emptyList() }
-                val genres = try { repo.getGenres().genres } catch (_: Exception) { emptyList() }
+                DebugLog.i("Browse", "Loading artists, albums, genres...")
+                val artists = try {
+                    repo.getArtists().artists.also { DebugLog.i("Browse", "Got ${it.size} artists") }
+                } catch (e: Exception) { DebugLog.e("Browse", "Artists failed", e); emptyList() }
+                val albums = try {
+                    repo.getAlbums().albums.also { DebugLog.i("Browse", "Got ${it.size} albums") }
+                } catch (e: Exception) { DebugLog.e("Browse", "Albums failed", e); emptyList() }
+                val genres = try {
+                    repo.getGenres().genres.also { DebugLog.i("Browse", "Got ${it.size} genres") }
+                } catch (e: Exception) { DebugLog.e("Browse", "Genres failed", e); emptyList() }
                 _state.value = BrowseState(artists = artists, albums = albums, genres = genres)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "loadAll failed", e)
                 _state.value = _state.value.copy(isLoading = false)
             }
         }
@@ -55,19 +64,26 @@ class BrowseViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 artist.id?.let { id ->
+                    DebugLog.i("Browse", "Loading artist tracks for id=$id")
                     _artistTracks.value = repo.getArtistTracks(id).tracks
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Artist tracks failed", e)
+            }
         }
     }
 
     fun loadAlbumTracks(albumName: String) {
         viewModelScope.launch {
             try {
+                DebugLog.i("Browse", "Loading album tracks for '$albumName'")
                 val response: AlbumDetailResponse = repo.getAlbumTracks(albumName)
+                DebugLog.i("Browse", "Got ${response.tracks.size} tracks for album")
                 _albumTracks.value = response.tracks
                 _selectedAlbum.value = response.album
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Album tracks failed for '$albumName'", e)
+            }
         }
     }
 }

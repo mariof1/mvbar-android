@@ -6,9 +6,15 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.debug.DebugLog
 import okhttp3.OkHttpClient
 
 class MvbarApp : Application(), ImageLoaderFactory {
+    override fun onCreate() {
+        super.onCreate()
+        DebugLog.installCrashHandler()
+    }
+
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this)
             .okHttpClient {

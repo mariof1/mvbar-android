@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
+import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.PlayerManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,12 +45,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _homeState.value = _homeState.value.copy(isLoading = true)
             try {
+                DebugLog.i("Home", "Loading recommendations...")
                 val buckets = try {
-                    repo.getRecommendations().buckets
-                } catch (_: Exception) { emptyList() }
-                val recent = try { repo.getRecentlyAdded(20).tracks } catch (_: Exception) { emptyList() }
+                    val resp = repo.getRecommendations()
+                    DebugLog.i("Home", "Got ${resp.buckets.size} buckets")
+                    resp.buckets
+                } catch (e: Exception) {
+                    DebugLog.e("Home", "Failed to load recommendations", e)
+                    emptyList()
+                }
+                val recent = try {
+                    val resp = repo.getRecentlyAdded(20)
+                    DebugLog.i("Home", "Got ${resp.tracks.size} recent tracks")
+                    resp.tracks
+                } catch (e: Exception) {
+                    DebugLog.e("Home", "Failed to load recent tracks", e)
+                    emptyList()
+                }
                 _homeState.value = HomeState(buckets = buckets, recentlyAdded = recent)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                DebugLog.e("Home", "loadHome failed", e)
                 _homeState.value = _homeState.value.copy(isLoading = false)
             }
         }
