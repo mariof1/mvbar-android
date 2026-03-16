@@ -100,8 +100,18 @@ fun MainScreen(
 
     val currentTrackId = playerState.currentTrack?.id
 
-    // Full-screen Now Playing
-    if (showNowPlaying && playerState.currentTrack != null) {
+    // Full-screen Now Playing (slide up/down)
+    AnimatedVisibility(
+        visible = showNowPlaying && playerState.currentTrack != null,
+        enter = slideInVertically(
+            initialOffsetY = { it },
+            animationSpec = tween(350)
+        ) + fadeIn(animationSpec = tween(250)),
+        exit = slideOutVertically(
+            targetOffsetY = { it },
+            animationSpec = tween(300)
+        ) + fadeOut(animationSpec = tween(200))
+    ) {
         NowPlayingScreen(
             state = playerState,
             lyrics = lyrics,
@@ -120,8 +130,8 @@ fun MainScreen(
             onClearQueue = { mainVm.playerManager.clearQueue() },
             onLoadLyrics = { mainVm.loadLyrics(it) }
         )
-        return
     }
+
 
     // Search overlay
     if (showSearch) {

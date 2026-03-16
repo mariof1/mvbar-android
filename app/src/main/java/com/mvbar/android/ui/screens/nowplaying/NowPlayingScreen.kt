@@ -1,9 +1,11 @@
 package com.mvbar.android.ui.screens.nowplaying
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -21,7 +23,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,14 +61,61 @@ fun NowPlayingScreen(
     var showQueue by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
 
+    // Back gesture minimizes the player
+    BackHandler(onBack = onBack)
+
     // Load lyrics when switching to lyrics view or track changes
     LaunchedEffect(showLyrics, track.id) {
         if (showLyrics) onLoadLyrics?.invoke(track.id)
     }
 
+    // Swipe-down-to-dismiss state
+    val screenHeightPx = with(LocalDensity.current) {
+        LocalConfiguration.current.screenHeightDp.dp.toPx()
+    }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    val dismissThreshold = screenHeightPx * 0.25f
+
+    // Animate back to 0 when released without dismissal
+    val animatedOffset by animateFloatAsState(
+        targetValue = dragOffset,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "drag_offset"
+    )
+
+    // Derived visual values from drag progress
+    val dragProgress = (animatedOffset / screenHeightPx).coerceIn(0f, 1f)
+    val scale = 1f - (dragProgress * 0.15f)
+    val alpha = 1f - (dragProgress * 0.5f)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer {
+                translationY = animatedOffset
+                scaleX = scale
+                scaleY = scale
+                this.alpha = alpha
+            }
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragEnd = {
+                        if (dragOffset > dismissThreshold) {
+                            onBack()
+                        }
+                        dragOffset = 0f
+                    },
+                    onDragCancel = { dragOffset = 0f },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        // Only allow dragging down (positive direction)
+                        dragOffset = (dragOffset + dragAmount).coerceAtLeast(0f)
+                    }
+                )
+            }
             .background(
                 Brush.verticalGradient(
                     listOf(Cyan900.copy(alpha = 0.4f), BackgroundDark, BackgroundDark)
