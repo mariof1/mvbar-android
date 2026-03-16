@@ -68,15 +68,20 @@ data class Artist(
 
 @Serializable
 data class Album(
-    val name: String = "",
+    val album: String? = null,
+    val name: String? = null,
     val artist: String? = null,
     @SerialName("display_artist") val displayArtist: String? = null,
     @SerialName("album_artist") val albumArtist: String? = null,
     @SerialName("track_count") val trackCount: Int = 0,
     val year: Int? = null,
     @SerialName("art_path") val artPath: String? = null,
-    @SerialName("art_hash") val artHash: String? = null
-)
+    @SerialName("art_hash") val artHash: String? = null,
+    @SerialName("total_discs") val totalDiscs: Int? = null
+) {
+    /** Album name - handles both 'album' (list) and 'name' (detail) API fields */
+    val displayName: String get() = album ?: name ?: ""
+}
 
 @Serializable
 data class Genre(

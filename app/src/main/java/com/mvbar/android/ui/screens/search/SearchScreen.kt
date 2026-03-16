@@ -107,7 +107,7 @@ fun SearchScreen(
                     }
                     items(r.albums.take(6)) { album ->
                         ListItem(
-                            headlineContent = { Text(album.name, color = OnSurface) },
+                            headlineContent = { Text(album.displayName, color = OnSurface) },
                             supportingContent = {
                                 Text(
                                     "${album.albumArtist ?: album.artist ?: ""} • ${album.trackCount} tracks",

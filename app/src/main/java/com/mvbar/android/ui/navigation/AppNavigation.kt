@@ -208,10 +208,10 @@ fun MainScreen(
                         navController.navigate("artist/${artist.id}")
                     },
                     onAlbumClick = { album ->
-                        DebugLog.i("Nav", "Browse album click: '${album.name}'")
+                        DebugLog.i("Nav", "Browse album click: '${album.displayName}'")
                         try {
-                            browseVm.loadAlbumTracks(album.name)
-                            navController.navigate("album?name=${Uri.encode(album.name)}")
+                            browseVm.loadAlbumTracks(album.displayName)
+                            navController.navigate("album?name=${Uri.encode(album.displayName)}")
                         } catch (e: Exception) {
                             DebugLog.e("Nav", "Album navigate failed", e)
                         }

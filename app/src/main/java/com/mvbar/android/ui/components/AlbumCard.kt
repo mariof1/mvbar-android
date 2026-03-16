@@ -41,7 +41,7 @@ fun AlbumCard(
         ) {
             AsyncImage(
                 model = album.artPath?.let { ApiClient.artPathUrl(it) },
-                contentDescription = album.name,
+                contentDescription = album.displayName,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
@@ -75,7 +75,7 @@ fun AlbumCard(
         Spacer(Modifier.height(8.dp))
 
         Text(
-            album.name,
+            album.displayName,
             style = MaterialTheme.typography.titleSmall,
             color = OnSurface,
             maxLines = 1,
