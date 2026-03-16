@@ -63,6 +63,7 @@ class PlaybackService : MediaSessionService() {
 
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(pendingIntent)
+            .setBitmapLoader(AuthBitmapLoader())
             .build()
 
         DebugLog.i("Player", "PlaybackService created with OkHttp auth")
