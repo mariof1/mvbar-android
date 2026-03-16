@@ -5,6 +5,10 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedDeque
@@ -15,6 +19,10 @@ object DebugLog {
 
     @Volatile
     var enabled: Boolean = false
+
+    /** Server URL for log uploads (e.g. "http://10.10.100.5:9999") */
+    @Volatile
+    var uploadServerUrl: String = ""
 
     data class LogEntry(
         val timestamp: Long = System.currentTimeMillis(),
@@ -75,6 +83,38 @@ object DebugLog {
         context.startActivity(Intent.createChooser(intent, "Share Debug Log").apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         })
+    }
+
+    /** Upload log to the configured server. Returns success message or throws. */
+    suspend fun uploadLog(): String = withContext(Dispatchers.IO) {
+        val serverUrl = uploadServerUrl.trimEnd('/')
+        if (serverUrl.isBlank()) throw IllegalStateException("Upload server URL not set")
+
+        val logText = getLogText()
+        val device = "${Build.MANUFACTURER} ${Build.MODEL}"
+
+        val url = URL("$serverUrl/upload")
+        val conn = url.openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "text/plain; charset=utf-8")
+            conn.setRequestProperty("X-Device", device)
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 10_000
+            conn.doOutput = true
+
+            conn.outputStream.use { it.write(logText.toByteArray(Charsets.UTF_8)) }
+
+            val code = conn.responseCode
+            val body = conn.inputStream.bufferedReader().readText()
+            if (code == 200) {
+                "Uploaded (${logText.length} bytes)"
+            } else {
+                throw Exception("Server returned $code: $body")
+            }
+        } finally {
+            conn.disconnect()
+        }
     }
 
     /** Install as global uncaught exception handler (wraps existing) */

@@ -24,13 +24,18 @@ import androidx.compose.ui.unit.sp
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(onLogout: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var debugEnabled by remember { mutableStateOf(DebugLog.enabled) }
     var showLogViewer by remember { mutableStateOf(false) }
     var logEntries by remember { mutableStateOf(DebugLog.getEntries()) }
+    var uploadUrl by remember { mutableStateOf(DebugLog.uploadServerUrl.ifBlank { "http://10.10.100.5:9999" }) }
+    var uploadStatus by remember { mutableStateOf<String?>(null) }
+    var isUploading by remember { mutableStateOf(false) }
 
     if (showLogViewer) {
         LogViewerScreen(
@@ -195,6 +200,94 @@ fun SettingsScreen(onLogout: () -> Unit) {
                             Spacer(Modifier.width(6.dp))
                             Text("Clear")
                         }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider(color = SurfaceDark)
+                    Spacer(Modifier.height(12.dp))
+
+                    // Upload to server
+                    Text(
+                        "Upload to Server",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = OnSurface
+                    )
+                    Text(
+                        "Send logs directly to your dev server",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceDim
+                    )
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = uploadUrl,
+                        onValueChange = {
+                            uploadUrl = it
+                            DebugLog.uploadServerUrl = it
+                        },
+                        label = { Text("Server URL") },
+                        placeholder = { Text("http://10.10.100.5:9999") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Cyan500,
+                            unfocusedBorderColor = OnSurfaceSubtle,
+                            focusedLabelColor = Cyan500,
+                            unfocusedLabelColor = OnSurfaceDim,
+                            cursorColor = Cyan500,
+                            focusedTextColor = OnSurface,
+                            unfocusedTextColor = OnSurface
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Button(
+                        onClick = {
+                            DebugLog.uploadServerUrl = uploadUrl
+                            isUploading = true
+                            uploadStatus = null
+                            scope.launch {
+                                try {
+                                    val result = DebugLog.uploadLog()
+                                    uploadStatus = "✓ $result"
+                                } catch (e: Exception) {
+                                    uploadStatus = "✗ ${e.message}"
+                                } finally {
+                                    isUploading = false
+                                }
+                            }
+                        },
+                        enabled = !isUploading && uploadUrl.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
+                    ) {
+                        if (isUploading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color.Black,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Filled.Upload, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (isUploading) "Uploading..." else "Upload Logs to Server",
+                            color = Color.Black,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    if (uploadStatus != null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            uploadStatus!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (uploadStatus!!.startsWith("✓")) Color(0xFF22C55E) else MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }
