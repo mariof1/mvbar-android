@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class HomeState(
-    val recommendations: List<Track> = emptyList(),
+    val buckets: List<RecBucket> = emptyList(),
     val recentlyAdded: List<Track> = emptyList(),
     val isLoading: Boolean = false
 )
@@ -44,11 +44,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _homeState.value = _homeState.value.copy(isLoading = true)
             try {
-                val recs = try {
-                    repo.getRecommendations().buckets.flatMap { it.tracks }
+                val buckets = try {
+                    repo.getRecommendations().buckets
                 } catch (_: Exception) { emptyList() }
                 val recent = try { repo.getRecentlyAdded(20).tracks } catch (_: Exception) { emptyList() }
-                _homeState.value = HomeState(recommendations = recs, recentlyAdded = recent)
+                _homeState.value = HomeState(buckets = buckets, recentlyAdded = recent)
             } catch (_: Exception) {
                 _homeState.value = _homeState.value.copy(isLoading = false)
             }

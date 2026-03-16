@@ -128,7 +128,16 @@ data class HistoryResponse(val ok: Boolean = false, val tracks: List<Track> = em
 @Serializable
 data class RecommendationsResponse(val ok: Boolean = false, val buckets: List<RecBucket> = emptyList())
 @Serializable
-data class RecBucket(val name: String = "", val tracks: List<Track> = emptyList())
+data class RecBucket(
+    val key: String = "",
+    val name: String = "",
+    val subtitle: String? = null,
+    val reason: String? = null,
+    val count: Int = 0,
+    val tracks: List<Track> = emptyList(),
+    @SerialName("art_paths") val artPaths: List<String> = emptyList(),
+    @SerialName("art_hashes") val artHashes: List<String> = emptyList()
+)
 @Serializable
 data class TracksListWrapper(val ok: Boolean = false, val artists: List<Artist> = emptyList())
 @Serializable
