@@ -28,6 +28,9 @@ class BrowseViewModel : ViewModel() {
     private val _albumTracks = MutableStateFlow<List<Track>>(emptyList())
     val albumTracks: StateFlow<List<Track>> = _albumTracks.asStateFlow()
 
+    private val _selectedAlbum = MutableStateFlow<Album?>(null)
+    val selectedAlbum: StateFlow<Album?> = _selectedAlbum.asStateFlow()
+
     private val _selectedArtist = MutableStateFlow<Artist?>(null)
     val selectedArtist: StateFlow<Artist?> = _selectedArtist.asStateFlow()
 
@@ -60,7 +63,11 @@ class BrowseViewModel : ViewModel() {
 
     fun loadAlbumTracks(albumName: String) {
         viewModelScope.launch {
-            try { _albumTracks.value = repo.getAlbumTracks(albumName).tracks } catch (_: Exception) {}
+            try {
+                val response: AlbumDetailResponse = repo.getAlbumTracks(albumName)
+                _albumTracks.value = response.tracks
+                _selectedAlbum.value = response.album
+            } catch (_: Exception) {}
         }
     }
 }

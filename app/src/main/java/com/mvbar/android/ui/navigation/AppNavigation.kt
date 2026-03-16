@@ -1,5 +1,6 @@
 package com.mvbar.android.ui.navigation
 
+import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
@@ -67,6 +68,7 @@ fun MainScreen(
     val artistTracks by browseVm.artistTracks.collectAsState()
     val albumTracks by browseVm.albumTracks.collectAsState()
     val selectedArtist by browseVm.selectedArtist.collectAsState()
+    val selectedAlbum by browseVm.selectedAlbum.collectAsState()
 
     val currentTrackId = playerState.currentTrack?.id
 
@@ -182,7 +184,7 @@ fun MainScreen(
                     state = homeState,
                     currentTrackId = currentTrackId,
                     onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
-                    onAlbumClick = { navController.navigate("album/$it") },
+                    onAlbumClick = { navController.navigate("album/${Uri.encode(it)}") },
                     onRefresh = { mainVm.loadHome() }
                 )
             }
@@ -197,7 +199,7 @@ fun MainScreen(
                     },
                     onAlbumClick = { album ->
                         browseVm.loadAlbumTracks(album.name)
-                        navController.navigate("album/${album.name}")
+                        navController.navigate("album/${Uri.encode(album.name)}")
                     },
                     onRefresh = { browseVm.loadAll() }
                 )
@@ -215,9 +217,10 @@ fun MainScreen(
             }
 
             composable("album/{name}") { entry ->
-                val name = entry.arguments?.getString("name") ?: ""
+                val name = Uri.decode(entry.arguments?.getString("name") ?: "")
                 LaunchedEffect(name) { browseVm.loadAlbumTracks(name) }
                 AlbumDetailScreen(
+                    album = selectedAlbum,
                     albumName = name,
                     tracks = albumTracks,
                     currentTrackId = currentTrackId,

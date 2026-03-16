@@ -34,8 +34,8 @@ interface MvbarApi {
     @GET("api/browse/albums")
     suspend fun getAlbums(): AlbumsListWrapper
 
-    @GET("api/browse/albums/{name}/tracks")
-    suspend fun getAlbumTracks(@Path("name") name: String): TracksResponse
+    @GET("api/browse/album")
+    suspend fun getAlbumTracks(@Query("album") name: String): AlbumDetailResponse
 
     @GET("api/browse/genres")
     suspend fun getGenres(): GenresListWrapper

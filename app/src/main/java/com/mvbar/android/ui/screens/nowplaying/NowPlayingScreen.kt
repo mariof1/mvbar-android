@@ -81,7 +81,7 @@ fun NowPlayingScreen(
 
             // Album art
             AsyncImage(
-                model = ApiClient.trackArtUrl(track.id),
+                model = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

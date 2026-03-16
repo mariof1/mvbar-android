@@ -67,5 +67,6 @@ object ApiClient {
 
     fun trackArtUrl(trackId: Int): String = "${baseUrl}api/library/tracks/$trackId/art"
     fun artistArtUrl(artistId: Int): String = "${baseUrl}api/artists/$artistId/art"
+    fun artPathUrl(artPath: String): String = "${baseUrl}api/art/$artPath"
     fun streamUrl(trackId: Int): String = "${baseUrl}api/library/tracks/$trackId/stream"
 }

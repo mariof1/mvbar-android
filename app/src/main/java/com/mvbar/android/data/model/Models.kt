@@ -28,6 +28,8 @@ data class Track(
     val artist: String? = null,
     val album: String? = null,
     @SerialName("album_artist") val albumArtist: String? = null,
+    @SerialName("display_artist") val displayArtistName: String? = null,
+    @SerialName("duration_ms") val durationMs: Double? = null,
     val duration: Double? = null,
     val genre: String? = null,
     @SerialName("track_number") val trackNumber: Int? = null,
@@ -35,16 +37,22 @@ data class Track(
     val year: Int? = null,
     val bpm: Double? = null,
     val path: String? = null,
+    @SerialName("art_path") val artPath: String? = null,
+    @SerialName("art_hash") val artHash: String? = null,
     @SerialName("library_id") val libraryId: Int? = null,
     @SerialName("is_favorite") val isFavorite: Boolean = false,
     @SerialName("play_count") val playCount: Int = 0,
     @SerialName("created_at") val createdAt: String? = null
 ) {
     val displayTitle: String get() = title ?: "Untitled"
-    val displayArtist: String get() = artist ?: "Unknown Artist"
+    val displayArtist: String get() = displayArtistName ?: artist ?: "Unknown Artist"
     val displayAlbum: String get() = album ?: "Unknown Album"
+    val durationSeconds: Int get() {
+        val ms = durationMs ?: (duration?.let { it * 1000 })
+        return ((ms ?: 0.0) / 1000).toInt()
+    }
     val durationFormatted: String get() {
-        val secs = (duration ?: 0.0).toInt()
+        val secs = durationSeconds
         return "${secs / 60}:%02d".format(secs % 60)
     }
 }
@@ -62,11 +70,12 @@ data class Artist(
 data class Album(
     val name: String = "",
     val artist: String? = null,
+    @SerialName("display_artist") val displayArtist: String? = null,
     @SerialName("album_artist") val albumArtist: String? = null,
     @SerialName("track_count") val trackCount: Int = 0,
     val year: Int? = null,
-    @SerialName("cover_track_id") val coverTrackId: Int? = null,
-    @SerialName("sample_track_id") val sampleTrackId: Int? = null
+    @SerialName("art_path") val artPath: String? = null,
+    @SerialName("art_hash") val artHash: String? = null
 )
 
 @Serializable
@@ -126,3 +135,5 @@ data class TracksListWrapper(val ok: Boolean = false, val artists: List<Artist> 
 data class AlbumsListWrapper(val ok: Boolean = false, val albums: List<Album> = emptyList())
 @Serializable
 data class GenresListWrapper(val ok: Boolean = false, val genres: List<Genre> = emptyList())
+@Serializable
+data class AlbumDetailResponse(val ok: Boolean = false, val album: Album? = null, val tracks: List<Track> = emptyList())

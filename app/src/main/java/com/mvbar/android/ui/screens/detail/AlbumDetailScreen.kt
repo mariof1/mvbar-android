@@ -20,12 +20,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.model.Album
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.ui.components.TrackListItem
 import com.mvbar.android.ui.theme.*
 
 @Composable
 fun AlbumDetailScreen(
+    album: Album?,
     albumName: String,
     tracks: List<Track>,
     currentTrackId: Int?,
@@ -33,8 +35,10 @@ fun AlbumDetailScreen(
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: () -> Unit
 ) {
-    val coverTrackId = tracks.firstOrNull()?.id
-    val albumArtist = tracks.firstOrNull()?.let { it.albumArtist ?: it.artist } ?: ""
+    val artUrl = album?.artPath?.let { ApiClient.artPathUrl(it) }
+        ?: tracks.firstOrNull()?.id?.let { ApiClient.trackArtUrl(it) }
+    val albumArtist = album?.displayArtist ?: album?.artist
+        ?: tracks.firstOrNull()?.let { it.albumArtist ?: it.artist } ?: ""
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -44,9 +48,9 @@ fun AlbumDetailScreen(
             Box(
                 modifier = Modifier.fillMaxWidth().height(300.dp)
             ) {
-                coverTrackId?.let {
+                artUrl?.let {
                     AsyncImage(
-                        model = ApiClient.trackArtUrl(it),
+                        model = it,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()

@@ -89,7 +89,7 @@ class PlayerManager private constructor(private val context: Context) {
 
         val items = tracks.map { track ->
             val streamUrl = ApiClient.streamUrl(track.id)
-            val artUrl = ApiClient.trackArtUrl(track.id)
+            val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
             MediaItem.Builder()
                 .setUri(streamUrl)
                 .setMediaId(track.id.toString())
@@ -119,7 +119,7 @@ class PlayerManager private constructor(private val context: Context) {
         val ctrl = controller ?: return
         _queue.add(track)
         val streamUrl = ApiClient.streamUrl(track.id)
-        val artUrl = ApiClient.trackArtUrl(track.id)
+        val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
         val item = MediaItem.Builder()
             .setUri(streamUrl)
             .setMediaId(track.id.toString())

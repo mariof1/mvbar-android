@@ -40,8 +40,7 @@ fun AlbumCard(
                 .clip(RoundedCornerShape(12.dp))
         ) {
             AsyncImage(
-                model = album.coverTrackId?.let { ApiClient.trackArtUrl(it) }
-                    ?: album.sampleTrackId?.let { ApiClient.trackArtUrl(it) },
+                model = album.artPath?.let { ApiClient.artPathUrl(it) },
                 contentDescription = album.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
