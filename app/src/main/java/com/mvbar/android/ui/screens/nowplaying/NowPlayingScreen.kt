@@ -74,36 +74,26 @@ fun NowPlayingScreen(
         LocalConfiguration.current.screenHeightDp.dp.toPx()
     }
     var dragOffset by remember { mutableFloatStateOf(0f) }
-    val dismissThreshold = screenHeightPx * 0.25f
+    var isDismissing by remember { mutableStateOf(false) }
 
-    // Animate back to 0 when released without dismissal
-    val animatedOffset by animateFloatAsState(
-        targetValue = dragOffset,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "drag_offset"
-    )
+    // Dismiss if any meaningful swipe down detected (low threshold)
+    val dismissThreshold = screenHeightPx * 0.08f
 
-    // Derived visual values from drag progress
-    val dragProgress = (animatedOffset / screenHeightPx).coerceIn(0f, 1f)
-    val scale = 1f - (dragProgress * 0.15f)
-    val alpha = 1f - (dragProgress * 0.5f)
+    // Use dragOffset directly during drag for instant feedback,
+    // only animate when snapping back
+    val displayOffset = if (isDismissing) screenHeightPx else dragOffset
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
-                translationY = animatedOffset
-                scaleX = scale
-                scaleY = scale
-                this.alpha = alpha
+                translationY = displayOffset
             }
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragEnd = {
                         if (dragOffset > dismissThreshold) {
+                            isDismissing = true
                             onBack()
                         }
                         dragOffset = 0f
@@ -111,14 +101,14 @@ fun NowPlayingScreen(
                     onDragCancel = { dragOffset = 0f },
                     onVerticalDrag = { change, dragAmount ->
                         change.consume()
-                        // Only allow dragging down (positive direction)
                         dragOffset = (dragOffset + dragAmount).coerceAtLeast(0f)
                     }
                 )
             }
+            .background(BackgroundDark)
             .background(
                 Brush.verticalGradient(
-                    listOf(Cyan900.copy(alpha = 0.4f), BackgroundDark, BackgroundDark)
+                    listOf(Cyan900.copy(alpha = 0.4f), Color.Transparent)
                 )
             )
     ) {
