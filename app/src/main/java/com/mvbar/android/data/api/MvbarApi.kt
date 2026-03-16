@@ -1,6 +1,7 @@
 package com.mvbar.android.data.api
 
 import com.mvbar.android.data.model.*
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -28,8 +29,8 @@ interface MvbarApi {
         @Query("offset") offset: Int = 0
     ): TracksListWrapper
 
-    @GET("api/browse/artists/{id}")
-    suspend fun getArtist(@Path("id") id: Int): Artist
+    @GET("api/browse/artist/{id}")
+    suspend fun getArtistDetail(@Path("id") id: Int): ArtistDetailResponse
 
     @GET("api/browse/artists/{id}/tracks")
     suspend fun getArtistTracks(@Path("id") id: Int): TracksResponse
@@ -70,17 +71,24 @@ interface MvbarApi {
     @GET("api/playlists")
     suspend fun getPlaylists(): PlaylistsResponse
 
-    @GET("api/playlists/{id}")
-    suspend fun getPlaylist(@Path("id") id: Int): Playlist
+    @GET("api/playlists/{id}/items")
+    suspend fun getPlaylistItems(@Path("id") id: Int): PlaylistItemsResponse
 
     @POST("api/playlists")
-    suspend fun createPlaylist(@Body body: Map<String, String>): Playlist
+    suspend fun createPlaylist(@Body body: Map<String, String>): CreatePlaylistResponse
 
     @POST("api/playlists/{id}/items")
     suspend fun addToPlaylist(@Path("id") id: Int, @Body body: Map<String, Int>): Response<Unit>
 
-    @DELETE("api/playlists/{id}/items/{itemId}")
-    suspend fun removeFromPlaylist(@Path("id") id: Int, @Path("itemId") itemId: Int): Response<Unit>
+    @DELETE("api/playlists/{id}/items/{trackId}")
+    suspend fun removeFromPlaylist(@Path("id") id: Int, @Path("trackId") trackId: Int): Response<Unit>
+
+    // Lyrics
+    @GET("api/library/tracks/{id}/lyrics")
+    suspend fun getLyrics(@Path("id") trackId: Int): Response<ResponseBody>
+
+    @POST("api/library/tracks/{id}/lyrics/prefetch")
+    suspend fun prefetchLyrics(@Path("id") trackId: Int): Response<Unit>
 
     // Search
     @GET("api/search")
@@ -97,4 +105,26 @@ interface MvbarApi {
         @Query("order") order: String = "desc",
         @Query("limit") limit: Int = 50
     ): TracksResponse
+
+    // Smart Playlists
+    @GET("api/smart-playlists")
+    suspend fun getSmartPlaylists(): SmartPlaylistsResponse
+
+    @POST("api/smart-playlists")
+    suspend fun createSmartPlaylist(@Body body: SmartPlaylistCreateRequest): SmartPlaylistResponse
+
+    @GET("api/smart-playlists/{id}")
+    suspend fun getSmartPlaylist(
+        @Path("id") id: Int,
+        @Query("limit") limit: Int = 500
+    ): SmartPlaylistResponse
+
+    @PUT("api/smart-playlists/{id}")
+    suspend fun updateSmartPlaylist(
+        @Path("id") id: Int,
+        @Body body: SmartPlaylistCreateRequest
+    ): SmartPlaylistResponse
+
+    @DELETE("api/smart-playlists/{id}")
+    suspend fun deleteSmartPlaylist(@Path("id") id: Int): Response<Unit>
 }

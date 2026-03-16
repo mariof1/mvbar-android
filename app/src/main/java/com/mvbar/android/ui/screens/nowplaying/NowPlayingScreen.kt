@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,6 +37,8 @@ import com.mvbar.android.ui.theme.*
 @Composable
 fun NowPlayingScreen(
     state: PlayerState,
+    lyrics: List<com.mvbar.android.data.model.LyricLine> = emptyList(),
+    lyricsLoading: Boolean = false,
     onBack: () -> Unit,
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
@@ -45,10 +48,17 @@ fun NowPlayingScreen(
     onToggleFavorite: () -> Unit,
     onPlayQueueItem: (Int) -> Unit = {},
     onRemoveFromQueue: (Int) -> Unit = {},
-    onClearQueue: () -> Unit = {}
+    onClearQueue: () -> Unit = {},
+    onLoadLyrics: ((Int) -> Unit)? = null
 ) {
     val track = state.currentTrack ?: return
     var showQueue by remember { mutableStateOf(false) }
+    var showLyrics by remember { mutableStateOf(false) }
+
+    // Load lyrics when switching to lyrics view or track changes
+    LaunchedEffect(showLyrics, track.id) {
+        if (showLyrics) onLoadLyrics?.invoke(track.id)
+    }
 
     Box(
         modifier = Modifier
@@ -83,24 +93,47 @@ fun NowPlayingScreen(
                     style = MaterialTheme.typography.titleSmall,
                     color = OnSurfaceDim
                 )
-                IconButton(onClick = { showQueue = true }) {
-                    Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = OnSurfaceDim)
+                Row {
+                    IconButton(onClick = { showLyrics = !showLyrics }) {
+                        Icon(
+                            Icons.Filled.MusicNote,
+                            "Lyrics",
+                            tint = if (showLyrics) Cyan500 else OnSurfaceDim
+                        )
+                    }
+                    IconButton(onClick = { showQueue = true }) {
+                        Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = OnSurfaceDim)
+                    }
                 }
             }
 
             Spacer(Modifier.weight(0.5f))
 
-            // Album art
-            AsyncImage(
-                model = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(20.dp))
-                    .shadow(24.dp, RoundedCornerShape(20.dp))
-            )
+            // Album art or lyrics view
+            if (showLyrics) {
+                com.mvbar.android.ui.components.LyricsView(
+                    lyrics = lyrics,
+                    isLoading = lyricsLoading,
+                    positionMs = state.position,
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(SurfaceDark.copy(alpha = 0.5f))
+                )
+            } else {
+                // Album art
+                AsyncImage(
+                    model = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(20.dp))
+                        .shadow(24.dp, RoundedCornerShape(20.dp))
+                )
+            }
 
             Spacer(Modifier.height(32.dp))
 

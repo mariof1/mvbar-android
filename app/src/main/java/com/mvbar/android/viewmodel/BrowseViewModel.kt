@@ -19,7 +19,9 @@ data class BrowseState(
     val hasMoreArtists: Boolean = true,
     val hasMoreAlbums: Boolean = true,
     val hasMoreGenres: Boolean = true,
-    val isLoadingMore: Boolean = false
+    val isLoadingMore: Boolean = false,
+    val isRefreshing: Boolean = false,
+    val error: String? = null
 )
 
 class BrowseViewModel : ViewModel() {
@@ -45,13 +47,22 @@ class BrowseViewModel : ViewModel() {
     private val _genreLoading = MutableStateFlow(false)
     val genreLoading: StateFlow<Boolean> = _genreLoading.asStateFlow()
 
+    // Artist albums from detail endpoint
+    private val _artistAlbums = MutableStateFlow<List<Album>>(emptyList())
+    val artistAlbums: StateFlow<List<Album>> = _artistAlbums.asStateFlow()
+
+    private val _artistAppearsOn = MutableStateFlow<List<Album>>(emptyList())
+    val artistAppearsOn: StateFlow<List<Album>> = _artistAppearsOn.asStateFlow()
+
     private companion object {
         const val PAGE_SIZE = 50
     }
 
-    fun loadAll() {
+    fun loadAll(isRefresh: Boolean = false) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true)
+            _state.value = _state.value.copy(
+                isLoading = !isRefresh, isRefreshing = isRefresh, error = null
+            )
             try {
                 DebugLog.i("Browse", "Loading artists, albums, genres...")
                 val artists = try {
@@ -72,10 +83,16 @@ class BrowseViewModel : ViewModel() {
                     _state.value = _state.value.copy(hasMoreGenres = r.genres.size >= PAGE_SIZE)
                     r.genres
                 } catch (e: Exception) { DebugLog.e("Browse", "Genres failed", e); emptyList() }
-                _state.value = _state.value.copy(artists = artists, albums = albums, genres = genres, isLoading = false)
+                _state.value = _state.value.copy(
+                    artists = artists, albums = albums, genres = genres,
+                    isLoading = false, isRefreshing = false
+                )
             } catch (e: Exception) {
                 DebugLog.e("Browse", "loadAll failed", e)
-                _state.value = _state.value.copy(isLoading = false)
+                _state.value = _state.value.copy(
+                    isLoading = false, isRefreshing = false,
+                    error = "Failed to load: ${e.message}"
+                )
             }
         }
     }
@@ -144,14 +161,39 @@ class BrowseViewModel : ViewModel() {
 
     fun loadArtistDetail(artist: Artist) {
         _selectedArtist.value = artist
+        _artistAlbums.value = emptyList()
+        _artistAppearsOn.value = emptyList()
         viewModelScope.launch {
             try {
                 artist.id?.let { id ->
-                    DebugLog.i("Browse", "Loading artist tracks for id=$id")
-                    _artistTracks.value = repo.getArtistTracks(id).tracks
+                    DebugLog.i("Browse", "Loading artist detail for id=$id")
+                    // Load tracks and albums in parallel
+                    launch {
+                        try {
+                            _artistTracks.value = repo.getArtistTracks(id).tracks
+                        } catch (e: Exception) {
+                            DebugLog.e("Browse", "Artist tracks failed", e)
+                        }
+                    }
+                    launch {
+                        try {
+                            val detail = repo.getArtistDetail(id)
+                            _artistAlbums.value = detail.albums
+                            _artistAppearsOn.value = detail.appearsOn
+                            // Update artist info from detail if available
+                            detail.artist?.let { a ->
+                                _selectedArtist.value = artist.copy(
+                                    name = a.name.ifEmpty { artist.name },
+                                    artPath = a.artPath ?: artist.artPath
+                                )
+                            }
+                        } catch (e: Exception) {
+                            DebugLog.e("Browse", "Artist detail failed", e)
+                        }
+                    }
                 }
             } catch (e: Exception) {
-                DebugLog.e("Browse", "Artist tracks failed", e)
+                DebugLog.e("Browse", "Artist detail failed", e)
             }
         }
     }

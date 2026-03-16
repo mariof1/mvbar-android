@@ -13,7 +13,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,6 +28,7 @@ import com.mvbar.android.data.model.RecBucket
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.ui.components.ArtGrid
 import com.mvbar.android.ui.components.BucketCard
+import com.mvbar.android.ui.components.ErrorMessage
 import com.mvbar.android.ui.components.TrackListItem
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.HomeState
@@ -70,6 +74,7 @@ fun HomeScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeContent(
     state: HomeState,
@@ -79,83 +84,101 @@ private fun HomeContent(
     onAlbumClick: (String) -> Unit,
     onTrackLongPress: ((Track) -> Unit)? = null
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 140.dp)
-    ) {
-        item {
-            Text(
-                "For You",
-                style = MaterialTheme.typography.headlineLarge,
-                color = OnSurface,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
-            )
-        }
+    val pullRefreshState = rememberPullToRefreshState()
 
-        // Recommendation buckets grid
-        if (state.buckets.isNotEmpty()) {
+    PullToRefreshBox(
+        isRefreshing = state.isLoading,
+        onRefresh = { /* already auto-loads via LaunchedEffect in parent */ },
+        state = pullRefreshState,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 140.dp)
+        ) {
             item {
                 Text(
-                    "Recommended",
-                    style = MaterialTheme.typography.titleLarge,
+                    "For You",
+                    style = MaterialTheme.typography.headlineLarge,
                     color = OnSurface,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
                 )
             }
 
-            // Render buckets as a grid (2 columns)
-            val rows = state.buckets.chunked(2)
-            items(rows) { row ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    for (bucket in row) {
-                        BucketCard(
-                            bucket = bucket,
-                            onClick = { onBucketClick(bucket) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    // Fill empty space if odd number of buckets
-                    if (row.size == 1) {
-                        Spacer(Modifier.weight(1f))
+            // Error state
+            if (state.error != null) {
+                item {
+                    ErrorMessage(
+                        message = state.error,
+                        onRetry = null,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+                }
+            }
+
+            // Recommendation buckets grid
+            if (state.buckets.isNotEmpty()) {
+                item {
+                    Text(
+                        "Recommended",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = OnSurface,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                    )
+                }
+
+                val rows = state.buckets.chunked(2)
+                items(rows) { row ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        for (bucket in row) {
+                            BucketCard(
+                                bucket = bucket,
+                                onClick = { onBucketClick(bucket) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (row.size == 1) {
+                            Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
             }
-        }
 
-        // Recently Added
-        if (state.recentlyAdded.isNotEmpty()) {
-            item {
-                Spacer(Modifier.height(24.dp))
-                Text(
-                    "Recently Added",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = OnSurface,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-                )
+            // Recently Added
+            if (state.recentlyAdded.isNotEmpty()) {
+                item {
+                    Spacer(Modifier.height(24.dp))
+                    Text(
+                        "Recently Added",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = OnSurface,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                    )
+                }
+                items(state.recentlyAdded.take(15)) { track ->
+                    TrackListItem(
+                        track = track,
+                        isPlaying = track.id == currentTrackId,
+                        onPlay = { onPlayTrack(track, state.recentlyAdded) },
+                        onMore = onTrackLongPress?.let { { it(track) } },
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
             }
-            items(state.recentlyAdded.take(15)) { track ->
-                TrackListItem(
-                    track = track,
-                    isPlaying = track.id == currentTrackId,
-                    onPlay = { onPlayTrack(track, state.recentlyAdded) },
-                    onMore = onTrackLongPress?.let { { it(track) } },
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-            }
-        }
 
-        if (state.isLoading) {
-            item {
-                Box(
-                    Modifier.fillMaxWidth().padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = Cyan500)
+            if (state.isLoading) {
+                item {
+                    Box(
+                        Modifier.fillMaxWidth().padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Cyan500)
+                    }
                 }
             }
         }

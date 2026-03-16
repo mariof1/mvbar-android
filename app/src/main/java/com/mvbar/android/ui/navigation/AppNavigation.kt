@@ -18,6 +18,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.mvbar.android.data.model.Playlist
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.PlayerState
@@ -26,6 +27,8 @@ import com.mvbar.android.ui.screens.browse.BrowseScreen
 import com.mvbar.android.ui.screens.detail.AlbumDetailScreen
 import com.mvbar.android.ui.screens.detail.ArtistDetailScreen
 import com.mvbar.android.ui.screens.detail.GenreDetailScreen
+import com.mvbar.android.ui.screens.detail.PlaylistDetailScreen
+import com.mvbar.android.ui.screens.detail.SmartPlaylistDetailScreen
 import com.mvbar.android.ui.screens.favorites.FavoritesScreen
 import com.mvbar.android.ui.screens.history.HistoryScreen
 import com.mvbar.android.ui.screens.home.HomeScreen
@@ -33,6 +36,7 @@ import com.mvbar.android.ui.screens.library.LibraryScreen
 import com.mvbar.android.ui.screens.nowplaying.NowPlayingScreen
 import com.mvbar.android.ui.screens.search.SearchScreen
 import com.mvbar.android.ui.screens.settings.SettingsScreen
+import com.mvbar.android.ui.screens.smartplaylist.CreateSmartPlaylistScreen
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.BrowseViewModel
 import com.mvbar.android.viewmodel.MainViewModel
@@ -62,22 +66,37 @@ fun MainScreen(
     var showSearch by remember { mutableStateOf(false) }
     var showNowPlaying by remember { mutableStateOf(false) }
     var contextTrack by remember { mutableStateOf<Track?>(null) }
+    var showAddToPlaylist by remember { mutableStateOf<Track?>(null) }
 
     val currentRoute by navController.currentBackStackEntryAsState()
     val currentTab = currentRoute?.destination?.route
 
     val homeState by mainVm.homeState.collectAsState()
     val favorites by mainVm.favorites.collectAsState()
+    val favoritesLoading by mainVm.favoritesLoading.collectAsState()
+    val favoritesError by mainVm.favoritesError.collectAsState()
     val history by mainVm.history.collectAsState()
+    val historyLoading by mainVm.historyLoading.collectAsState()
+    val historyError by mainVm.historyError.collectAsState()
     val playlists by mainVm.playlists.collectAsState()
+    val smartPlaylists by mainVm.smartPlaylists.collectAsState()
     val searchResults by mainVm.searchResults.collectAsState()
     val browseState by browseVm.state.collectAsState()
     val artistTracks by browseVm.artistTracks.collectAsState()
+    val artistAlbums by browseVm.artistAlbums.collectAsState()
+    val artistAppearsOn by browseVm.artistAppearsOn.collectAsState()
     val albumTracks by browseVm.albumTracks.collectAsState()
     val selectedArtist by browseVm.selectedArtist.collectAsState()
     val selectedAlbum by browseVm.selectedAlbum.collectAsState()
     val genreTracks by browseVm.genreTracks.collectAsState()
     val genreLoading by browseVm.genreLoading.collectAsState()
+    val lyrics by mainVm.lyrics.collectAsState()
+    val lyricsLoading by mainVm.lyricsLoading.collectAsState()
+    val playlistTracks by mainVm.playlistTracks.collectAsState()
+    val playlistLoading by mainVm.playlistLoading.collectAsState()
+    val selectedPlaylist by mainVm.selectedPlaylist.collectAsState()
+    val smartPlaylistDetail by mainVm.smartPlaylistDetail.collectAsState()
+    val smartPlaylistLoading by mainVm.smartPlaylistLoading.collectAsState()
 
     val currentTrackId = playerState.currentTrack?.id
 
@@ -85,6 +104,8 @@ fun MainScreen(
     if (showNowPlaying && playerState.currentTrack != null) {
         NowPlayingScreen(
             state = playerState,
+            lyrics = lyrics,
+            lyricsLoading = lyricsLoading,
             onBack = { showNowPlaying = false },
             onTogglePlay = { mainVm.playerManager.togglePlay() },
             onNext = { mainVm.playerManager.next() },
@@ -96,7 +117,8 @@ fun MainScreen(
             },
             onPlayQueueItem = { mainVm.playerManager.playQueueIndex(it) },
             onRemoveFromQueue = { mainVm.playerManager.removeFromQueue(it) },
-            onClearQueue = { mainVm.playerManager.clearQueue() }
+            onClearQueue = { mainVm.playerManager.clearQueue() },
+            onLoadLyrics = { mainVm.loadLyrics(it) }
         )
         return
     }
@@ -113,6 +135,18 @@ fun MainScreen(
         return
     }
 
+    // Add to playlist dialog
+    showAddToPlaylist?.let { track ->
+        AddToPlaylistDialog(
+            playlists = playlists,
+            onDismiss = { showAddToPlaylist = null },
+            onSelect = { playlistId ->
+                mainVm.addToPlaylist(playlistId, track)
+                ToastManager.show("Added to playlist", ToastIcon.PLAYLIST)
+            }
+        )
+    }
+
     // Track context menu bottom sheet
     contextTrack?.let { track ->
         TrackBottomSheet(
@@ -127,6 +161,10 @@ fun MainScreen(
                 ToastManager.show("Added to queue", ToastIcon.QUEUE)
             },
             onToggleFavorite = { mainVm.toggleFavorite(track.id) },
+            onAddToPlaylist = {
+                contextTrack = null
+                showAddToPlaylist = track
+            },
             onGoToAlbum = track.album?.let { albumName ->
                 {
                     contextTrack = null
@@ -176,7 +214,9 @@ fun MainScreen(
                                 (currentTab?.startsWith("artist/") == true && tab == BottomTab.BROWSE) ||
                                 (currentTab?.startsWith("album") == true && tab == BottomTab.BROWSE) ||
                                 (currentTab?.startsWith("genre/") == true && tab == BottomTab.BROWSE) ||
-                                (currentTab == "history" && tab == BottomTab.LIBRARY)
+                                (currentTab == "history" && tab == BottomTab.LIBRARY) ||
+                                (currentTab?.startsWith("playlist/") == true && tab == BottomTab.LIBRARY) ||
+                                (currentTab?.startsWith("smart-playlist") == true && tab == BottomTab.LIBRARY)
 
                             NavigationBarItem(
                                 selected = selected,
@@ -271,10 +311,16 @@ fun MainScreen(
                     ArtistDetailScreen(
                         artist = selectedArtist,
                         tracks = artistTracks,
+                        albums = artistAlbums,
+                        appearsOn = artistAppearsOn,
                         currentTrackId = currentTrackId,
                         onBack = { navController.popBackStack() },
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onPlayAll = { if (artistTracks.isNotEmpty()) mainVm.playTrack(artistTracks.first(), artistTracks) },
+                        onAlbumClick = { albumName ->
+                            try { navController.navigate("album?name=${Uri.encode(albumName)}") }
+                            catch (_: Exception) {}
+                        },
                         onTrackLongPress = { contextTrack = it }
                     )
                 }
@@ -326,9 +372,76 @@ fun MainScreen(
                 composable("library") {
                     LibraryScreen(
                         playlists = playlists,
-                        onPlaylistClick = { /* TODO: navigate to playlist detail */ },
-                        onRefresh = { mainVm.loadPlaylists() },
+                        smartPlaylists = smartPlaylists,
+                        onPlaylistClick = { playlistId ->
+                            playlists.find { it.id == playlistId }?.let { playlist ->
+                                mainVm.loadPlaylistDetail(playlist)
+                                navController.navigate("playlist/${playlistId}")
+                            }
+                        },
+                        onSmartPlaylistClick = { id ->
+                            mainVm.loadSmartPlaylistDetail(id)
+                            navController.navigate("smart-playlist/${id}")
+                        },
+                        onCreatePlaylist = { mainVm.createPlaylist(it) },
+                        onCreateSmartPlaylist = {
+                            navController.navigate("create-smart-playlist")
+                        },
+                        onRefresh = {
+                            mainVm.loadPlaylists()
+                            mainVm.loadSmartPlaylists()
+                        },
                         onHistoryClick = { navController.navigate("history") }
+                    )
+                }
+
+                composable("playlist/{id}") {
+                    PlaylistDetailScreen(
+                        playlist = selectedPlaylist,
+                        tracks = playlistTracks,
+                        isLoading = playlistLoading,
+                        currentTrackId = currentTrackId,
+                        onBack = { navController.popBackStack() },
+                        onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
+                        onPlayAll = {
+                            if (playlistTracks.isNotEmpty()) mainVm.playTrack(playlistTracks.first(), playlistTracks)
+                        },
+                        onRemoveTrack = { trackId ->
+                            selectedPlaylist?.let { mainVm.removeFromPlaylist(it.id, trackId) }
+                        },
+                        onTrackLongPress = { contextTrack = it }
+                    )
+                }
+
+                composable("smart-playlist/{id}") {
+                    SmartPlaylistDetailScreen(
+                        detail = smartPlaylistDetail,
+                        isLoading = smartPlaylistLoading,
+                        currentTrackId = currentTrackId,
+                        onBack = { navController.popBackStack() },
+                        onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
+                        onPlayAll = {
+                            smartPlaylistDetail?.tracks?.let { tracks ->
+                                if (tracks.isNotEmpty()) mainVm.playTrack(tracks.first(), tracks)
+                            }
+                        },
+                        onDelete = {
+                            smartPlaylistDetail?.let {
+                                mainVm.deleteSmartPlaylist(it.id)
+                                navController.popBackStack()
+                            }
+                        },
+                        onTrackLongPress = { contextTrack = it }
+                    )
+                }
+
+                composable("create-smart-playlist") {
+                    CreateSmartPlaylistScreen(
+                        genres = browseState.genres,
+                        onBack = { navController.popBackStack() },
+                        onCreate = { name, sort, filters ->
+                            mainVm.createSmartPlaylist(name, sort, filters)
+                        }
                     )
                 }
 
@@ -339,6 +452,8 @@ fun MainScreen(
                         onPlayTrack = { mainVm.playTrack(it) },
                         onRefresh = { mainVm.loadHistory() },
                         onBack = { navController.popBackStack() },
+                        isLoading = historyLoading,
+                        error = historyError,
                         onTrackLongPress = { contextTrack = it }
                     )
                 }
@@ -350,6 +465,8 @@ fun MainScreen(
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onToggleFavorite = { mainVm.toggleFavorite(it) },
                         onRefresh = { mainVm.loadFavorites() },
+                        isLoading = favoritesLoading,
+                        error = favoritesError,
                         onTrackLongPress = { contextTrack = it }
                     )
                 }

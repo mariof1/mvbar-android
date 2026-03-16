@@ -151,3 +151,88 @@ data class AlbumsListWrapper(val ok: Boolean = false, val albums: List<Album> = 
 data class GenresListWrapper(val ok: Boolean = false, val genres: List<Genre> = emptyList(), val total: Int = 0)
 @Serializable
 data class AlbumDetailResponse(val ok: Boolean = false, val album: Album? = null, val tracks: List<Track> = emptyList())
+
+@Serializable
+data class ArtistDetailResponse(
+    val ok: Boolean = false,
+    val artist: Artist? = null,
+    val albums: List<Album> = emptyList(),
+    @SerialName("appearsOn") val appearsOn: List<Album> = emptyList()
+)
+
+@Serializable
+data class PlaylistItemsResponse(
+    val ok: Boolean = false,
+    val items: List<PlaylistItem> = emptyList()
+)
+
+@Serializable
+data class CreatePlaylistResponse(
+    val ok: Boolean = false,
+    val playlist: Playlist? = null
+)
+
+@Serializable
+data class SmartPlaylist(
+    val id: Int = 0,
+    val name: String = "",
+    val sort: String = "random",
+    val filters: SmartPlaylistFilters = SmartPlaylistFilters(),
+    val created: String? = null,
+    val updated: String? = null,
+    val type: String = "smart"
+)
+
+@Serializable
+data class SmartPlaylistFilters(
+    val include: SmartFilterSet = SmartFilterSet(),
+    val exclude: SmartFilterSet = SmartFilterSet(),
+    val duration: SmartDuration? = null,
+    val favoriteOnly: Boolean = false,
+    val maxResults: Int = 500
+)
+
+@Serializable
+data class SmartFilterSet(
+    val artists: List<Int> = emptyList(),
+    val artistsMode: String = "any",
+    val albums: List<String> = emptyList(),
+    val genres: List<String> = emptyList(),
+    val genresMode: String = "any",
+    val years: List<Int> = emptyList(),
+    val countries: List<String> = emptyList()
+)
+
+@Serializable
+data class SmartDuration(val min: Int? = null, val max: Int? = null)
+
+@Serializable
+data class SmartPlaylistsResponse(
+    val ok: Boolean = false,
+    val items: List<SmartPlaylist> = emptyList()
+)
+
+@Serializable
+data class SmartPlaylistResponse(
+    val ok: Boolean = false,
+    val id: Int = 0,
+    val name: String = "",
+    val sort: String = "random",
+    val filters: SmartPlaylistFilters = SmartPlaylistFilters(),
+    val created: String? = null,
+    val updated: String? = null,
+    val type: String = "smart",
+    val trackCount: Int = 0,
+    val duration: Int = 0,
+    val truncated: Boolean = false,
+    val tracks: List<Track> = emptyList()
+)
+
+@Serializable
+data class SmartPlaylistCreateRequest(
+    val name: String,
+    val sort: String = "random",
+    val filters: SmartPlaylistFilters = SmartPlaylistFilters()
+)
+
+data class LyricLine(val timeMs: Long, val text: String)

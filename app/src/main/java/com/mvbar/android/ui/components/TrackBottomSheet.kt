@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
@@ -30,6 +31,7 @@ fun TrackBottomSheet(
     onPlayNext: () -> Unit,
     onAddToQueue: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onAddToPlaylist: (() -> Unit)? = null,
     onGoToArtist: (() -> Unit)? = null,
     onGoToAlbum: (() -> Unit)? = null
 ) {
@@ -79,6 +81,9 @@ fun TrackBottomSheet(
             // Actions
             SheetAction(Icons.Filled.SkipNext, "Play Next", onClick = { onPlayNext(); onDismiss() })
             SheetAction(Icons.AutoMirrored.Filled.QueueMusic, "Add to Queue", onClick = { onAddToQueue(); onDismiss() })
+            onAddToPlaylist?.let {
+                SheetAction(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to Playlist", onClick = { it(); onDismiss() })
+            }
             SheetAction(
                 if (track.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                 if (track.isFavorite) "Remove from Favorites" else "Add to Favorites",

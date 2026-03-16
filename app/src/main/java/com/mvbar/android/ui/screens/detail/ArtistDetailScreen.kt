@@ -1,8 +1,12 @@
 package com.mvbar.android.ui.screens.detail
 
+import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,9 +21,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.model.Album
 import com.mvbar.android.data.model.Artist
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.ui.components.TrackListItem
@@ -29,10 +35,13 @@ import com.mvbar.android.ui.theme.*
 fun ArtistDetailScreen(
     artist: Artist?,
     tracks: List<Track>,
+    albums: List<Album> = emptyList(),
+    appearsOn: List<Album> = emptyList(),
     currentTrackId: Int?,
     onBack: () -> Unit,
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: () -> Unit,
+    onAlbumClick: ((String) -> Unit)? = null,
     onTrackLongPress: ((Track) -> Unit)? = null
 ) {
     if (artist == null) return
@@ -103,6 +112,48 @@ fun ArtistDetailScreen(
             }
         }
 
+        // Albums section
+        if (albums.isNotEmpty()) {
+            item {
+                Text(
+                    "Albums",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = OnSurface,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                )
+            }
+            item {
+                AlbumRow(albums = albums, onAlbumClick = onAlbumClick)
+            }
+        }
+
+        // Appears On section
+        if (appearsOn.isNotEmpty()) {
+            item {
+                Text(
+                    "Appears On",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = OnSurface,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                )
+            }
+            item {
+                AlbumRow(albums = appearsOn, onAlbumClick = onAlbumClick)
+            }
+        }
+
+        // Tracks header
+        if (tracks.isNotEmpty()) {
+            item {
+                Text(
+                    "Tracks",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = OnSurface,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                )
+            }
+        }
+
         itemsIndexed(tracks) { index, track ->
             TrackListItem(
                 track = track,
@@ -112,6 +163,54 @@ fun ArtistDetailScreen(
                 onMore = onTrackLongPress?.let { { it(track) } },
                 modifier = Modifier.padding(horizontal = 12.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun AlbumRow(
+    albums: List<Album>,
+    onAlbumClick: ((String) -> Unit)?
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(albums) { album ->
+            Card(
+                modifier = Modifier
+                    .width(140.dp)
+                    .clickable { onAlbumClick?.invoke(album.displayName) },
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = CardDark)
+            ) {
+                Column {
+                    val artUrl = album.artPath?.let { ApiClient.artPathUrl(it) }
+                    AsyncImage(
+                        model = artUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                    )
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Text(
+                            album.displayName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            "${album.trackCount} tracks",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = OnSurfaceDim
+                        )
+                    }
+                }
+            }
         }
     }
 }
