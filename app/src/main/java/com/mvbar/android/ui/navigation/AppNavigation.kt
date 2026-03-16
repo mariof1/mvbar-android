@@ -14,7 +14,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.*
+import androidx.navigation.navArgument
+import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.ui.components.MiniPlayerBar
 import com.mvbar.android.ui.screens.browse.BrowseScreen
@@ -137,7 +140,7 @@ fun MainScreen(
                     BottomTab.entries.forEach { tab ->
                         val selected = currentTab == tab.route ||
                             (currentTab?.startsWith("artist/") == true && tab == BottomTab.BROWSE) ||
-                            (currentTab?.startsWith("album/") == true && tab == BottomTab.BROWSE)
+                            (currentTab?.startsWith("album") == true && tab == BottomTab.BROWSE)
 
                         NavigationBarItem(
                             selected = selected,
@@ -184,7 +187,14 @@ fun MainScreen(
                     state = homeState,
                     currentTrackId = currentTrackId,
                     onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
-                    onAlbumClick = { navController.navigate("album/${Uri.encode(it)}") },
+                    onAlbumClick = { name ->
+                        DebugLog.i("Nav", "Home album click: '$name'")
+                        try {
+                            navController.navigate("album?name=${Uri.encode(name)}")
+                        } catch (e: Exception) {
+                            DebugLog.e("Nav", "Album navigate failed", e)
+                        }
+                    },
                     onRefresh = { mainVm.loadHome() }
                 )
             }
@@ -198,8 +208,13 @@ fun MainScreen(
                         navController.navigate("artist/${artist.id}")
                     },
                     onAlbumClick = { album ->
-                        browseVm.loadAlbumTracks(album.name)
-                        navController.navigate("album/${Uri.encode(album.name)}")
+                        DebugLog.i("Nav", "Browse album click: '${album.name}'")
+                        try {
+                            browseVm.loadAlbumTracks(album.name)
+                            navController.navigate("album?name=${Uri.encode(album.name)}")
+                        } catch (e: Exception) {
+                            DebugLog.e("Nav", "Album navigate failed", e)
+                        }
                     },
                     onRefresh = { browseVm.loadAll() }
                 )
@@ -216,9 +231,18 @@ fun MainScreen(
                 )
             }
 
-            composable("album/{name}") { entry ->
-                val name = Uri.decode(entry.arguments?.getString("name") ?: "")
-                LaunchedEffect(name) { browseVm.loadAlbumTracks(name) }
+            composable(
+                route = "album?name={name}",
+                arguments = listOf(navArgument("name") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                })
+            ) { entry ->
+                val name = entry.arguments?.getString("name") ?: ""
+                DebugLog.i("Nav", "Album screen opened: '$name'")
+                LaunchedEffect(name) {
+                    if (name.isNotEmpty()) browseVm.loadAlbumTracks(name)
+                }
                 AlbumDetailScreen(
                     album = selectedAlbum,
                     albumName = name,

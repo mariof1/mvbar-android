@@ -7,6 +7,8 @@ import android.content.Intent
 import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -15,6 +17,7 @@ import java.util.concurrent.ConcurrentLinkedDeque
 
 object DebugLog {
     private const val MAX_ENTRIES = 500
+    private const val LOG_FILE_NAME = "debug_log.txt"
     private const val PREFS_NAME = "mvbar_debug"
     private const val KEY_ENABLED = "debug_enabled"
     private const val KEY_UPLOAD_URL = "upload_server_url"
@@ -27,11 +30,37 @@ object DebugLog {
     @Volatile
     var uploadServerUrl: String = ""
 
-    /** Call from Application.onCreate() to restore persisted settings */
+    /** File for persisting log entries across crashes */
+    private var logFile: File? = null
+
+    /** Call from Application.onCreate() to restore persisted settings and log entries */
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         enabled = prefs.getBoolean(KEY_ENABLED, false)
         uploadServerUrl = prefs.getString(KEY_UPLOAD_URL, "") ?: ""
+
+        logFile = File(context.filesDir, LOG_FILE_NAME)
+
+        // Restore persisted log entries from previous session / crash
+        try {
+            val file = logFile ?: return
+            if (file.exists() && file.length() > 0) {
+                val lines = file.readLines()
+                for (line in lines) {
+                    if (line.isBlank()) continue
+                    // Parse: timestamp\tlevel\ttag\tmessage
+                    val parts = line.split("\t", limit = 4)
+                    if (parts.size == 4) {
+                        val ts = parts[0].toLongOrNull() ?: continue
+                        val msg = parts[3].replace("\\n", "\n").replace("\\t", "\t")
+                        entries.addLast(LogEntry(timestamp = ts, level = parts[1], tag = parts[2], message = msg))
+                    }
+                }
+                while (entries.size > MAX_ENTRIES) entries.pollFirst()
+            }
+        } catch (_: Exception) {
+            // Don't crash on corrupt log file
+        }
     }
 
     /** Persist current settings */
@@ -52,12 +81,41 @@ object DebugLog {
             val time = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date(timestamp))
             return "[$time] $level/$tag: $message"
         }
+
+        /** Tab-separated line for file persistence (message newlines escaped) */
+        fun serialize(): String {
+            val escaped = message.replace("\n", "\\n").replace("\t", "\\t")
+            return "$timestamp\t$level\t$tag\t$escaped"
+        }
     }
 
     fun log(level: String, tag: String, message: String) {
         if (!enabled) return
-        entries.addLast(LogEntry(level = level, tag = tag, message = message))
+        val entry = LogEntry(level = level, tag = tag, message = message)
+        entries.addLast(entry)
         while (entries.size > MAX_ENTRIES) entries.pollFirst()
+        // Persist to file immediately so it survives crashes
+        appendToFile(entry)
+    }
+
+    /** Append a single entry to the log file */
+    private fun appendToFile(entry: LogEntry) {
+        try {
+            val file = logFile ?: return
+            FileOutputStream(file, true).use { fos ->
+                fos.write((entry.serialize() + "\n").toByteArray(Charsets.UTF_8))
+            }
+        } catch (_: Exception) {
+            // Silently ignore file write failures
+        }
+    }
+
+    /** Rewrite the entire log file from current entries (after trim or clear) */
+    private fun rewriteFile() {
+        try {
+            val file = logFile ?: return
+            file.writeText(entries.joinToString("\n") { it.serialize() } + if (entries.isNotEmpty()) "\n" else "")
+        } catch (_: Exception) {}
     }
 
     fun i(tag: String, message: String) = log("I", tag, message)
@@ -84,7 +142,10 @@ object DebugLog {
         return header + entries.joinToString("\n") { it.format() }
     }
 
-    fun clear() = entries.clear()
+    fun clear() {
+        entries.clear()
+        try { logFile?.delete() } catch (_: Exception) {}
+    }
 
     fun copyToClipboard(context: Context) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -139,8 +200,11 @@ object DebugLog {
     fun installCrashHandler() {
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            // Force-enable logging and capture the crash
             enabled = true
             e("CRASH", "Uncaught exception on ${thread.name}", throwable)
+            // Rewrite file to ensure crash entry is persisted even if file was trimmed
+            rewriteFile()
             prev?.uncaughtException(thread, throwable)
         }
     }
