@@ -1,5 +1,6 @@
 package com.mvbar.android.ui.screens.search
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,6 +31,8 @@ fun SearchScreen(
 ) {
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
+
+    BackHandler(onBack = onClose)
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 

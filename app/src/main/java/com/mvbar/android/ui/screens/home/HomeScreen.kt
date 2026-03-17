@@ -1,5 +1,6 @@
 package com.mvbar.android.ui.screens.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -45,6 +46,11 @@ fun HomeScreen(
     LaunchedEffect(Unit) { onRefresh() }
 
     var selectedBucket by remember { mutableStateOf<RecBucket?>(null) }
+
+    // Swipe back from bucket detail returns to home content
+    BackHandler(enabled = selectedBucket != null) {
+        selectedBucket = null
+    }
 
     AnimatedContent(
         targetState = selectedBucket,
