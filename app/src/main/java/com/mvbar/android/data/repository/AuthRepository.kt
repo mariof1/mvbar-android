@@ -98,8 +98,20 @@ class AuthRepository(private val context: Context) {
 
     suspend fun isGoogleAuthEnabled(serverUrl: String): Boolean {
         return try {
-            ApiClient.configure(serverUrl)
-            ApiClient.api.isGoogleAuthEnabled().enabled
+            // Use a standalone OkHttp call to avoid resetting the main ApiClient
+            val url = if (serverUrl.endsWith("/")) serverUrl else "$serverUrl/"
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val request = okhttp3.Request.Builder()
+                .url("${url}api/auth/google/enabled")
+                .build()
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                val body = response.body?.string() ?: ""
+                body.contains("\"enabled\":true")
+            } else false
         } catch (_: Exception) {
             false
         }

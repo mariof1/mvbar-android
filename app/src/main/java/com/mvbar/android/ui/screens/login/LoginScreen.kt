@@ -58,13 +58,16 @@ fun LoginScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Check Google auth when server URL is entered
+    // Check Google auth when server URL is entered (debounced, only on valid-looking URLs)
     var lastCheckedServer by remember { mutableStateOf("") }
     LaunchedEffect(server) {
         val normalized = server.trim().removeSuffix("/")
-        if (normalized.length > 8 && normalized != lastCheckedServer &&
-            (normalized.startsWith("http://") || normalized.startsWith("https://"))
+        // Must look like a real URL with a TLD (e.g. https://something.com)
+        if (normalized.length > 12 && normalized != lastCheckedServer &&
+            (normalized.startsWith("http://") || normalized.startsWith("https://")) &&
+            normalized.substringAfter("://").contains(".")
         ) {
+            kotlinx.coroutines.delay(800) // debounce — wait for user to stop typing
             lastCheckedServer = normalized
             onCheckGoogleAuth(normalized)
         }
