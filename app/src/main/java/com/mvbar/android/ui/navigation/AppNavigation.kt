@@ -271,11 +271,13 @@ fun MainScreen(
                             }
                         },
                         onGenreClick = { genre ->
-                            browseVm.loadGenreTracks(genre.name)
-                            try {
-                                navController.navigate("genre/${Uri.encode(genre.name)}")
-                            } catch (e: Exception) {
-                                DebugLog.e("Nav", "Genre navigate failed", e)
+                            if (genre.name.isNotBlank()) {
+                                browseVm.loadGenreTracks(genre.name)
+                                try {
+                                    navController.navigate("genre/${Uri.encode(genre.name)}")
+                                } catch (e: Exception) {
+                                    DebugLog.e("Nav", "Genre navigate failed", e)
+                                }
                             }
                         },
                         onRefresh = { browseVm.loadAll() },
@@ -311,9 +313,11 @@ fun MainScreen(
                     })
                 ) { entry ->
                     val name = entry.arguments?.getString("name") ?: ""
-                    DebugLog.i("Nav", "Album screen opened: '$name'")
                     LaunchedEffect(name) {
-                        if (name.isNotEmpty()) browseVm.loadAlbumTracks(name)
+                        if (name.isNotEmpty()) {
+                            DebugLog.i("Nav", "Album screen opened: '$name'")
+                            browseVm.loadAlbumTracks(name)
+                        }
                     }
                     AlbumDetailScreen(
                         album = selectedAlbum,

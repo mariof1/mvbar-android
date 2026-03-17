@@ -29,7 +29,11 @@ fun BrowseScreen(
     onLoadMoreAlbums: () -> Unit = {},
     onLoadMoreGenres: () -> Unit = {}
 ) {
-    LaunchedEffect(Unit) { onRefresh() }
+    LaunchedEffect(Unit) {
+        if (state.artists.isEmpty() && state.albums.isEmpty() && !state.isLoading) {
+            onRefresh()
+        }
+    }
 
     val tabs = listOf("Artists", "Albums", "Genres")
 
