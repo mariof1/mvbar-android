@@ -45,7 +45,9 @@ class MainActivity : ComponentActivity() {
                         !state.isLoggedIn -> {
                             LoginScreen(
                                 authState = state,
-                                onLogin = { server, email, pass -> authVm.login(server, email, pass) }
+                                onLogin = { server, email, pass -> authVm.login(server, email, pass) },
+                                onGoogleSignIn = { server, idToken -> authVm.googleSignIn(server, idToken) },
+                                onCheckGoogleAuth = { server -> authVm.checkGoogleAuth(server) }
                             )
                         }
                         else -> {
