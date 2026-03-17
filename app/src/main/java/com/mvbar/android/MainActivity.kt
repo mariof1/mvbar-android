@@ -28,23 +28,32 @@ class MainActivity : ComponentActivity() {
                 val authVm: AuthViewModel = viewModel()
                 val authState by authVm.state.collectAsState()
 
+                // Derive a stable screen key so AnimatedContent only animates on
+                // major transitions (loading → login → main), not every AuthState change.
+                val screenKey = when {
+                    authState.isLoggedIn -> "main"
+                    authState.isLoading && !authState.isLoggedIn &&
+                        authState.error == null && !authState.googleEnabled -> "loading"
+                    else -> "login"
+                }
+
                 AnimatedContent(
-                    targetState = authState,
+                    targetState = screenKey,
                     transitionSpec = {
                         fadeIn(animationSpec = androidx.compose.animation.core.tween(300)) togetherWith
                             fadeOut(animationSpec = androidx.compose.animation.core.tween(300))
                     },
                     label = "auth"
-                ) { state ->
-                    when {
-                        state.isLoading && !state.isLoggedIn -> {
+                ) { target ->
+                    when (target) {
+                        "loading" -> {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(color = Cyan500)
                             }
                         }
-                        !state.isLoggedIn -> {
+                        "login" -> {
                             LoginScreen(
-                                authState = state,
+                                authState = authState,
                                 onLogin = { server, email, pass -> authVm.login(server, email, pass) },
                                 onGoogleSignIn = { server, idToken -> authVm.googleSignIn(server, idToken) },
                                 onCheckGoogleAuth = { server -> authVm.checkGoogleAuth(server) }
