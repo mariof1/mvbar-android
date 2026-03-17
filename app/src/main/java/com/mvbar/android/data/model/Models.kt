@@ -85,7 +85,7 @@ data class Album(
 
 @Serializable
 data class Genre(
-    val name: String = "",
+    @SerialName("genre") val name: String = "",
     @SerialName("track_count") val trackCount: Int = 0
 )
 
