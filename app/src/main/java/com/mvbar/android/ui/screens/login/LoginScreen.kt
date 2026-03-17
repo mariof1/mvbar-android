@@ -39,7 +39,7 @@ import com.mvbar.android.viewmodel.AuthState
 import kotlinx.coroutines.launch
 
 /** Replace with your Web Application OAuth 2.0 client ID from Google Cloud Console */
-const val GOOGLE_WEB_CLIENT_ID = ""
+const val GOOGLE_WEB_CLIENT_ID = "1014278727460-11tkahnlqgsgohrdt7mqhukgam95ar2d.apps.googleusercontent.com"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
