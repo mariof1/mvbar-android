@@ -92,7 +92,7 @@ private fun ArtistsGrid(
     val shouldLoadMore by remember {
         derivedStateOf {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            hasMore && !isLoadingMore && lastVisible >= artists.size - 6
+            hasMore && !isLoadingMore && artists.isNotEmpty() && lastVisible >= artists.size - 6
         }
     }
     LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
@@ -133,7 +133,7 @@ private fun AlbumsGrid(
     val shouldLoadMore by remember {
         derivedStateOf {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            hasMore && !isLoadingMore && lastVisible >= albums.size - 6
+            hasMore && !isLoadingMore && albums.isNotEmpty() && lastVisible >= albums.size - 6
         }
     }
     LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
@@ -173,7 +173,7 @@ private fun GenresGrid(
     val shouldLoadMore by remember {
         derivedStateOf {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            hasMore && !isLoadingMore && lastVisible >= genres.size - 6
+            hasMore && !isLoadingMore && genres.isNotEmpty() && lastVisible >= genres.size - 6
         }
     }
     LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
