@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
 import com.mvbar.android.debug.DebugLog
+import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.player.PlayerManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -121,7 +122,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (!isRefresh) _favoritesLoading.value = true
             _favoritesError.value = null
             try {
-                _favorites.value = repo.getFavorites().tracks
+                val favTracks = repo.getFavorites().tracks
+                _favorites.value = favTracks
+                // Auto-cache favorites in background if enabled
+                if (AudioCacheManager.autoCacheFavorites && favTracks.isNotEmpty()) {
+                    AudioCacheManager.cacheTracks(favTracks)
+                }
             } catch (e: Exception) {
                 DebugLog.e("Favorites", "Load failed", e)
                 _favoritesError.value = "Failed to load favorites"

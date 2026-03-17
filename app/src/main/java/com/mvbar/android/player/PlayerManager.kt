@@ -71,6 +71,10 @@ class PlayerManager private constructor(private val context: Context) {
                     queueIndex = idx,
                     duration = controller?.duration?.coerceAtLeast(0L) ?: 0L
                 )
+                // Prefetch next tracks in background
+                if (_queue.isNotEmpty() && idx >= 0) {
+                    AudioCacheManager.prefetchNext(_queue, idx)
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -120,6 +124,9 @@ class PlayerManager private constructor(private val context: Context) {
             queueIndex = startIndex,
             currentTrack = tracks.getOrNull(startIndex)
         )
+
+        // Start prefetching next tracks
+        AudioCacheManager.prefetchNext(tracks, startIndex)
     }
 
     fun addToQueue(track: Track) {

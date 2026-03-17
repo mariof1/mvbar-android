@@ -17,11 +17,15 @@ import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.debug.DebugLog
 import okhttp3.OkHttpClient
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
 
     override fun onCreate() {
         super.onCreate()
+
+        // Initialize audio cache
+        AudioCacheManager.init(this)
 
         // OkHttp client with auth header for streaming
         val okClient = OkHttpClient.Builder()
@@ -34,7 +38,10 @@ class PlaybackService : MediaSessionService() {
             }
             .build()
 
-        val dataSourceFactory = OkHttpDataSource.Factory(okClient)
+        val upstreamFactory = OkHttpDataSource.Factory(okClient)
+
+        // Wrap with cache: reads from disk cache first, streams & caches on miss
+        val dataSourceFactory = AudioCacheManager.createCacheDataSourceFactory(upstreamFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
 
         val player = ExoPlayer.Builder(this)
@@ -48,6 +55,9 @@ class PlaybackService : MediaSessionService() {
             )
             .setHandleAudioBecomingNoisy(true)
             .build()
+
+        // Enable gapless playback (crossfade-free seamless transitions)
+        player.pauseAtEndOfMediaItems = false
 
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -66,7 +76,7 @@ class PlaybackService : MediaSessionService() {
             .setBitmapLoader(AuthBitmapLoader())
             .build()
 
-        DebugLog.i("Player", "PlaybackService created with OkHttp auth")
+        DebugLog.i("Player", "PlaybackService created with cache + gapless playback")
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
