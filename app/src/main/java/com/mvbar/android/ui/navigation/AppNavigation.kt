@@ -22,6 +22,8 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.mvbar.android.data.model.Playlist
+import com.mvbar.android.data.model.SmartPlaylistFilters
+import com.mvbar.android.data.model.SuggestResponse
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.PlayerState
@@ -43,6 +45,19 @@ import com.mvbar.android.ui.screens.smartplaylist.CreateSmartPlaylistScreen
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.BrowseViewModel
 import com.mvbar.android.viewmodel.MainViewModel
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+private fun parseSuggestArtists(resp: SuggestResponse): List<Pair<Int, String>> =
+    resp.items.mapNotNull { elem ->
+        try {
+            val obj = elem.jsonObject
+            val id = obj["id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+            val name = obj["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            id to name
+        } catch (_: Exception) { null }
+    }
 
 enum class BottomTab(
     val route: String,
@@ -429,6 +444,11 @@ fun MainScreen(
                                 if (tracks.isNotEmpty()) mainVm.playTrack(tracks.first(), tracks)
                             }
                         },
+                        onEdit = {
+                            smartPlaylistDetail?.let {
+                                navController.navigate("edit-smart-playlist/${it.id}")
+                            }
+                        },
                         onDelete = {
                             smartPlaylistDetail?.let {
                                 mainVm.deleteSmartPlaylist(it.id)
@@ -436,6 +456,40 @@ fun MainScreen(
                             }
                         },
                         onTrackLongPress = { contextTrack = it }
+                    )
+                }
+
+                composable("edit-smart-playlist/{id}") { entry ->
+                    val spId = entry.arguments?.getString("id")?.toIntOrNull() ?: return@composable
+                    val sp = smartPlaylistDetail
+
+                    // Resolve artist IDs to names for pre-population
+                    val artistNames = remember { mutableStateListOf<Pair<Int, String>>() }
+                    LaunchedEffect(sp?.filters) {
+                        val allIds = (sp?.filters?.include?.artists.orEmpty()) +
+                            (sp?.filters?.exclude?.artists.orEmpty())
+                        if (allIds.isNotEmpty()) {
+                            try {
+                                val resp = mainVm.resolveArtistIds(allIds)
+                                artistNames.clear()
+                                artistNames.addAll(parseSuggestArtists(resp))
+                            } catch (_: Exception) {}
+                        }
+                    }
+
+                    CreateSmartPlaylistScreen(
+                        genres = browseState.genres,
+                        onBack = { navController.popBackStack() },
+                        onCreate = { _, _, _ -> },
+                        onSuggest = { kind, query -> mainVm.suggest(kind, query) },
+                        editId = spId,
+                        initialName = sp?.name ?: "",
+                        initialSort = sp?.sort ?: "random",
+                        initialFilters = sp?.filters ?: SmartPlaylistFilters(),
+                        initialArtistNames = artistNames,
+                        onUpdate = { id, name, sort, filters ->
+                            mainVm.updateSmartPlaylist(id, name, sort, filters)
+                        }
                     )
                 }
 

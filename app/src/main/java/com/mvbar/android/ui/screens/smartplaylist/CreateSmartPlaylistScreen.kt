@@ -41,45 +41,81 @@ private val SORT_OPTIONS = listOf(
     "album_asc" to "Album A→Z"
 )
 
+private val SLIDER_STEPS = listOf(25, 50, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CreateSmartPlaylistScreen(
     genres: List<Genre>,
     onBack: () -> Unit,
     onCreate: (name: String, sort: String, filters: SmartPlaylistFilters) -> Unit,
-    onSuggest: (suspend (kind: String, query: String) -> SuggestResponse)? = null
+    onSuggest: (suspend (kind: String, query: String) -> SuggestResponse)? = null,
+    // Edit mode
+    editId: Int? = null,
+    initialName: String = "",
+    initialSort: String = "random",
+    initialFilters: SmartPlaylistFilters = SmartPlaylistFilters(),
+    initialArtistNames: List<Pair<Int, String>> = emptyList(),
+    onUpdate: ((id: Int, name: String, sort: String, filters: SmartPlaylistFilters) -> Unit)? = null
 ) {
-    var name by remember { mutableStateOf("") }
-    var selectedSort by remember { mutableStateOf("random") }
-    var favoriteOnly by remember { mutableStateOf(false) }
-    var maxResults by remember { mutableStateOf(500f) }
+    val isEdit = editId != null
+
+    var name by remember { mutableStateOf(initialName) }
+    var selectedSort by remember { mutableStateOf(initialSort) }
+    var favoriteOnly by remember { mutableStateOf(initialFilters.favoriteOnly) }
+    var maxResultsIndex by remember {
+        mutableStateOf(SLIDER_STEPS.indexOfFirst { it >= initialFilters.maxResults }.takeIf { it >= 0 } ?: 7)
+    }
     var sortExpanded by remember { mutableStateOf(false) }
 
     // Include filters
-    val includeArtists = remember { mutableStateListOf<Pair<Int, String>>() }
-    var includeArtistsMode by remember { mutableStateOf("any") }
-    val includeAlbums = remember { mutableStateListOf<String>() }
-    val includeGenres = remember { mutableStateListOf<String>() }
-    var includeGenresMode by remember { mutableStateOf("any") }
-    val includeYears = remember { mutableStateListOf<Int>() }
-    val includeCountries = remember { mutableStateListOf<String>() }
+    val includeArtists = remember { mutableStateListOf<Pair<Int, String>>().apply { addAll(initialArtistNames.filter { it.first in initialFilters.include.artists.toSet() }) } }
+    var includeArtistsMode by remember { mutableStateOf(initialFilters.include.artistsMode) }
+    val includeAlbums = remember { mutableStateListOf<String>().apply { addAll(initialFilters.include.albums) } }
+    val includeGenres = remember { mutableStateListOf<String>().apply { addAll(initialFilters.include.genres) } }
+    var includeGenresMode by remember { mutableStateOf(initialFilters.include.genresMode) }
+    val includeYears = remember { mutableStateListOf<Int>().apply { addAll(initialFilters.include.years) } }
+    val includeCountries = remember { mutableStateListOf<String>().apply { addAll(initialFilters.include.countries) } }
 
     // Exclude filters
-    val excludeArtists = remember { mutableStateListOf<Pair<Int, String>>() }
-    val excludeAlbums = remember { mutableStateListOf<String>() }
-    val excludeGenres = remember { mutableStateListOf<String>() }
-    val excludeYears = remember { mutableStateListOf<Int>() }
-    val excludeCountries = remember { mutableStateListOf<String>() }
+    val excludeArtists = remember { mutableStateListOf<Pair<Int, String>>().apply { addAll(initialArtistNames.filter { it.first in initialFilters.exclude.artists.toSet() }) } }
+    val excludeAlbums = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.albums) } }
+    val excludeGenres = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.genres) } }
+    val excludeYears = remember { mutableStateListOf<Int>().apply { addAll(initialFilters.exclude.years) } }
+    val excludeCountries = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.countries) } }
 
     // Duration
-    var durationMin by remember { mutableStateOf("") }
-    var durationMax by remember { mutableStateOf("") }
+    var durationMin by remember { mutableStateOf(initialFilters.duration?.min?.toString() ?: "") }
+    var durationMax by remember { mutableStateOf(initialFilters.duration?.max?.toString() ?: "") }
+
+    fun buildFilters() = SmartPlaylistFilters(
+        include = SmartFilterSet(
+            artists = includeArtists.map { it.first },
+            artistsMode = includeArtistsMode,
+            albums = includeAlbums.toList(),
+            genres = includeGenres.toList(),
+            genresMode = includeGenresMode,
+            years = includeYears.toList(),
+            countries = includeCountries.toList()
+        ),
+        exclude = SmartFilterSet(
+            artists = excludeArtists.map { it.first },
+            albums = excludeAlbums.toList(),
+            genres = excludeGenres.toList(),
+            years = excludeYears.toList(),
+            countries = excludeCountries.toList()
+        ),
+        duration = if (durationMin.isNotBlank() || durationMax.isNotBlank())
+            SmartDuration(min = durationMin.toIntOrNull(), max = durationMax.toIntOrNull()) else null,
+        favoriteOnly = favoriteOnly,
+        maxResults = SLIDER_STEPS[maxResultsIndex]
+    )
 
     Scaffold(
         containerColor = BackgroundDark,
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("New Smart Playlist", color = OnSurface) },
+                title = { Text(if (isEdit) "Edit Smart Playlist" else "New Smart Playlist", color = OnSurface) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
@@ -89,32 +125,12 @@ fun CreateSmartPlaylistScreen(
                     IconButton(
                         onClick = {
                             if (name.isNotBlank()) {
-                                val filters = SmartPlaylistFilters(
-                                    include = SmartFilterSet(
-                                        artists = includeArtists.map { it.first },
-                                        artistsMode = includeArtistsMode,
-                                        albums = includeAlbums.toList(),
-                                        genres = includeGenres.toList(),
-                                        genresMode = includeGenresMode,
-                                        years = includeYears.toList(),
-                                        countries = includeCountries.toList()
-                                    ),
-                                    exclude = SmartFilterSet(
-                                        artists = excludeArtists.map { it.first },
-                                        albums = excludeAlbums.toList(),
-                                        genres = excludeGenres.toList(),
-                                        years = excludeYears.toList(),
-                                        countries = excludeCountries.toList()
-                                    ),
-                                    duration = if (durationMin.isNotBlank() || durationMax.isNotBlank())
-                                        SmartDuration(
-                                            min = durationMin.toIntOrNull(),
-                                            max = durationMax.toIntOrNull()
-                                        ) else null,
-                                    favoriteOnly = favoriteOnly,
-                                    maxResults = maxResults.toInt()
-                                )
-                                onCreate(name.trim(), selectedSort, filters)
+                                val filters = buildFilters()
+                                if (isEdit && editId != null) {
+                                    onUpdate?.invoke(editId, name.trim(), selectedSort, filters)
+                                } else {
+                                    onCreate(name.trim(), selectedSort, filters)
+                                }
                                 onBack()
                             }
                         },
@@ -203,15 +219,15 @@ fun CreateSmartPlaylistScreen(
             // Max results
             item {
                 Text(
-                    "Max results: ${maxResults.toInt()}",
+                    "Max results: ${SLIDER_STEPS[maxResultsIndex]}",
                     style = MaterialTheme.typography.titleSmall,
                     color = OnSurfaceDim
                 )
                 Slider(
-                    value = maxResults,
-                    onValueChange = { maxResults = it },
-                    valueRange = 10f..2000f,
-                    steps = 19,
+                    value = maxResultsIndex.toFloat(),
+                    onValueChange = { maxResultsIndex = it.toInt() },
+                    valueRange = 0f..(SLIDER_STEPS.size - 1).toFloat(),
+                    steps = SLIDER_STEPS.size - 2,
                     colors = SliderDefaults.colors(
                         thumbColor = Cyan500,
                         activeTrackColor = Cyan500,

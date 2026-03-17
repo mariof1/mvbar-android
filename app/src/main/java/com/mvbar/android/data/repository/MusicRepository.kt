@@ -51,4 +51,6 @@ class MusicRepository {
         api.updateSmartPlaylist(id, SmartPlaylistCreateRequest(name, sort, filters))
     suspend fun deleteSmartPlaylist(id: Int) = api.deleteSmartPlaylist(id)
     suspend fun suggestSmartPlaylist(kind: String, query: String) = api.suggestSmartPlaylist(kind, query)
+    suspend fun resolveArtistIds(ids: List<Int>) =
+        api.suggestSmartPlaylist(kind = "artist", ids = ids.joinToString(","))
 }

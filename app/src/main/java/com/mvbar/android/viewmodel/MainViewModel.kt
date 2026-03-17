@@ -251,7 +251,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun updateSmartPlaylist(id: Int, name: String, sort: String, filters: SmartPlaylistFilters) {
+        viewModelScope.launch {
+            try {
+                repo.updateSmartPlaylist(id, name, sort, filters)
+                loadSmartPlaylists()
+                loadSmartPlaylistDetail(id)
+            } catch (e: Exception) {
+                DebugLog.e("SmartPlaylist", "Update failed", e)
+            }
+        }
+    }
+
     suspend fun suggest(kind: String, query: String) = repo.suggestSmartPlaylist(kind, query)
+    suspend fun resolveArtistIds(ids: List<Int>) = repo.resolveArtistIds(ids)
 
     // Lyrics
     fun loadLyrics(trackId: Int) {

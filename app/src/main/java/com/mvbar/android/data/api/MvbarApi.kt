@@ -129,7 +129,8 @@ interface MvbarApi {
     suspend fun suggestSmartPlaylist(
         @Query("kind") kind: String,
         @Query("q") query: String = "",
-        @Query("limit") limit: Int = 20
+        @Query("limit") limit: Int = 20,
+        @Query("ids") ids: String? = null
     ): SuggestResponse
 
     @DELETE("api/smart-playlists/{id}")

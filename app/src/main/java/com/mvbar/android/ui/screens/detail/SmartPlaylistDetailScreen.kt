@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,6 +32,7 @@ fun SmartPlaylistDetailScreen(
     onBack: () -> Unit,
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
     onTrackLongPress: ((Track) -> Unit)? = null
 ) {
@@ -100,6 +102,15 @@ fun SmartPlaylistDetailScreen(
                                 Spacer(Modifier.width(4.dp))
                                 Text("Play All", color = Color.Black, fontWeight = FontWeight.SemiBold)
                             }
+                        }
+                        OutlinedButton(
+                            onClick = onEdit,
+                            shape = RoundedCornerShape(24.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan400)
+                        ) {
+                            Icon(Icons.Filled.Edit, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Edit")
                         }
                         OutlinedButton(
                             onClick = onDelete,
