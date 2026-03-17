@@ -251,6 +251,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    suspend fun suggest(kind: String, query: String) = repo.suggestSmartPlaylist(kind, query)
+
     // Lyrics
     fun loadLyrics(trackId: Int) {
         viewModelScope.launch {

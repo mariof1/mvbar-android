@@ -236,3 +236,9 @@ data class SmartPlaylistCreateRequest(
 )
 
 data class LyricLine(val timeMs: Long, val text: String)
+
+@Serializable
+data class SuggestItem(val id: Int? = null, val name: String? = null)
+
+@Serializable
+data class SuggestResponse(val items: List<kotlinx.serialization.json.JsonElement> = emptyList())

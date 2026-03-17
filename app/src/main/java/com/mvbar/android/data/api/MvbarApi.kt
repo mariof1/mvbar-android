@@ -125,6 +125,13 @@ interface MvbarApi {
         @Body body: SmartPlaylistCreateRequest
     ): SmartPlaylistResponse
 
+    @GET("api/smart-playlists/suggest")
+    suspend fun suggestSmartPlaylist(
+        @Query("kind") kind: String,
+        @Query("q") query: String = "",
+        @Query("limit") limit: Int = 20
+    ): SuggestResponse
+
     @DELETE("api/smart-playlists/{id}")
     suspend fun deleteSmartPlaylist(@Path("id") id: Int): Response<Unit>
 }
