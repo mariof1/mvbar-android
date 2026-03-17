@@ -1,6 +1,8 @@
 package com.mvbar.android.ui.navigation
 
+import android.app.Activity
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
@@ -12,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -100,6 +103,25 @@ fun MainScreen(
 
     val currentTrackId = playerState.currentTrack?.id
 
+    val rootTabs = remember { BottomTab.entries.map { it.route }.toSet() }
+    val isAtRootTab = currentTab in rootTabs
+    val activity = LocalContext.current as? Activity
+
+    // Handle system back: navigate back through screens instead of closing app
+    BackHandler(enabled = !showNowPlaying) {
+        val popped = navController.popBackStack()
+        if (!popped) {
+            // At a root tab — if not home, go to home; otherwise minimize app
+            if (currentTab != "home") {
+                navController.navigate("home") {
+                    popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                    launchSingleTop = true
+                }
+            } else {
+                activity?.moveTaskToBack(true)
+            }
+        }
+    }
 
     // Search overlay
     if (showSearch) {
