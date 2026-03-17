@@ -50,7 +50,7 @@ interface MvbarApi {
         @Query("offset") offset: Int = 0
     ): GenresListWrapper
 
-    @GET("api/browse/genres/{name}/tracks")
+    @GET("api/browse/genre/{name}/tracks")
     suspend fun getGenreTracks(@Path("name") name: String): TracksResponse
 
     // Favorites
