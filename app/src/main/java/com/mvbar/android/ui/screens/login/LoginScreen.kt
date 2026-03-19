@@ -125,7 +125,8 @@ fun LoginScreen(
                     leadingIcon = { Icon(Icons.Filled.Dns, null) },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Uri,
-                        imeAction = ImeAction.Next
+                        imeAction = ImeAction.Next,
+                        autoCorrectEnabled = false
                     ),
                     keyboardActions = KeyboardActions(
                         onNext = { focusManager.moveFocus(FocusDirection.Down) }
@@ -151,7 +152,8 @@ fun LoginScreen(
                     leadingIcon = { Icon(Icons.Filled.Email, null) },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Email,
-                        imeAction = ImeAction.Next
+                        imeAction = ImeAction.Next,
+                        autoCorrectEnabled = false
                     ),
                     keyboardActions = KeyboardActions(
                         onNext = { focusManager.moveFocus(FocusDirection.Down) }
@@ -179,7 +181,8 @@ fun LoginScreen(
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Password,
-                        imeAction = ImeAction.Done
+                        imeAction = ImeAction.Done,
+                        autoCorrectEnabled = false
                     ),
                     keyboardActions = KeyboardActions(
                         onDone = {
