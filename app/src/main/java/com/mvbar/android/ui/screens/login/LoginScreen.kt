@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.AuthState
@@ -54,6 +54,7 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var googleLoading by remember { mutableStateOf(false) }
+    var googleError by remember { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -206,6 +207,15 @@ fun LoginScreen(
                     )
                 }
 
+                googleError?.let { error ->
+                    Text(
+                        error,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
+
                 Button(
                     onClick = { onLogin(server, email, password) },
                     modifier = Modifier
@@ -256,14 +266,11 @@ fun LoginScreen(
                                 scope.launch {
                                     try {
                                         val credentialManager = CredentialManager.create(context)
-                                        val googleIdOption = GetGoogleIdOption.Builder()
-                                            .setFilterByAuthorizedAccounts(false)
-                                            .setServerClientId(GOOGLE_WEB_CLIENT_ID)
-                                            .setAutoSelectEnabled(false)
+                                        val signInOption = GetSignInWithGoogleOption.Builder(GOOGLE_WEB_CLIENT_ID)
                                             .build()
 
                                         val request = GetCredentialRequest.Builder()
-                                            .addCredentialOption(googleIdOption)
+                                            .addCredentialOption(signInOption)
                                             .build()
 
                                         val result = credentialManager.getCredential(
@@ -280,8 +287,12 @@ fun LoginScreen(
                                         } else {
                                             googleLoading = false
                                         }
+                                    } catch (e: androidx.credentials.exceptions.GetCredentialCancellationException) {
+                                        // User cancelled — no error needed
+                                        googleLoading = false
                                     } catch (e: Exception) {
                                         googleLoading = false
+                                        googleError = e.message ?: "Google sign-in failed"
                                     }
                                 }
                             },
