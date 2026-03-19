@@ -71,7 +71,7 @@ fun LoginScreen(
         }
     }
 
-    val showGoogleButton = authState.googleEnabled && !authState.googleClientId.isNullOrEmpty()
+    val showGoogleButton = authState.googleEnabled
 
     Box(
         modifier = Modifier
@@ -262,11 +262,17 @@ fun LoginScreen(
                         OutlinedButton(
                             onClick = {
                                 if (server.isBlank()) return@OutlinedButton
+                                val clientId = authState.googleClientId
+                                if (clientId.isNullOrEmpty()) {
+                                    googleError = "Server did not provide a Google client ID. Update the server."
+                                    return@OutlinedButton
+                                }
                                 googleLoading = true
+                                googleError = null
                                 scope.launch {
                                     try {
                                         val credentialManager = CredentialManager.create(context)
-                                        val signInOption = GetSignInWithGoogleOption.Builder(authState.googleClientId!!)
+                                        val signInOption = GetSignInWithGoogleOption.Builder(clientId)
                                             .build()
 
                                         val request = GetCredentialRequest.Builder()
