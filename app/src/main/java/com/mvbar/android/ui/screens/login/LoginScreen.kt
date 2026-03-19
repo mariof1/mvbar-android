@@ -38,9 +38,6 @@ import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.AuthState
 import kotlinx.coroutines.launch
 
-/** Replace with your Web Application OAuth 2.0 client ID from Google Cloud Console */
-const val GOOGLE_WEB_CLIENT_ID = "1014278727460-11tkahnlqgsgohrdt7mqhukgam95ar2d.apps.googleusercontent.com"
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
@@ -74,7 +71,7 @@ fun LoginScreen(
         }
     }
 
-    val showGoogleButton = authState.googleEnabled && GOOGLE_WEB_CLIENT_ID.isNotEmpty()
+    val showGoogleButton = authState.googleEnabled && !authState.googleClientId.isNullOrEmpty()
 
     Box(
         modifier = Modifier
@@ -266,7 +263,7 @@ fun LoginScreen(
                                 scope.launch {
                                     try {
                                         val credentialManager = CredentialManager.create(context)
-                                        val signInOption = GetSignInWithGoogleOption.Builder(GOOGLE_WEB_CLIENT_ID)
+                                        val signInOption = GetSignInWithGoogleOption.Builder(authState.googleClientId!!)
                                             .build()
 
                                         val request = GetCredentialRequest.Builder()

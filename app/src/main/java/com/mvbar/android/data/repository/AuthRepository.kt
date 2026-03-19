@@ -96,7 +96,9 @@ class AuthRepository(private val context: Context) {
         }
     }
 
-    suspend fun isGoogleAuthEnabled(serverUrl: String): Boolean {
+    data class GoogleAuthInfo(val enabled: Boolean, val clientId: String?)
+
+    suspend fun checkGoogleAuth(serverUrl: String): GoogleAuthInfo {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val url = if (serverUrl.endsWith("/")) serverUrl else "$serverUrl/"
@@ -110,10 +112,12 @@ class AuthRepository(private val context: Context) {
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
-                    body.contains("\"enabled\":true")
-                } else false
+                    val enabled = body.contains("\"enabled\":true")
+                    val clientId = Regex("\"clientId\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
+                    GoogleAuthInfo(enabled, clientId)
+                } else GoogleAuthInfo(false, null)
             } catch (_: Exception) {
-                false
+                GoogleAuthInfo(false, null)
             }
         }
     }

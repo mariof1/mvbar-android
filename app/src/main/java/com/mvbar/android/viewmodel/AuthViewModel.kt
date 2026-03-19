@@ -15,6 +15,7 @@ data class AuthState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val googleEnabled: Boolean = false,
+    val googleClientId: String? = null,
     val checkingGoogle: Boolean = false
 )
 
@@ -36,11 +37,15 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.value = _state.value.copy(checkingGoogle = true)
             try {
-                val enabled = repo.isGoogleAuthEnabled(serverUrl)
-                _state.value = _state.value.copy(googleEnabled = enabled, checkingGoogle = false)
-                DebugLog.d("Auth", "Google OAuth enabled on server: $enabled")
+                val info = repo.checkGoogleAuth(serverUrl)
+                _state.value = _state.value.copy(
+                    googleEnabled = info.enabled,
+                    googleClientId = info.clientId,
+                    checkingGoogle = false
+                )
+                DebugLog.d("Auth", "Google OAuth enabled: ${info.enabled}, clientId present: ${info.clientId != null}")
             } catch (e: Exception) {
-                _state.value = _state.value.copy(googleEnabled = false, checkingGoogle = false)
+                _state.value = _state.value.copy(googleEnabled = false, googleClientId = null, checkingGoogle = false)
             }
         }
     }
