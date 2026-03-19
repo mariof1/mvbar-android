@@ -32,6 +32,7 @@ object AudioCacheManager {
     private var appContext: Context? = null
     private var prefetchScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var prefetchJob: Job? = null
+    private var autoCacheJob: Job? = null
 
     val maxCacheMb: Int get() = prefs?.getInt(KEY_MAX_CACHE_MB, 500) ?: 500
     val prefetchCount: Int get() = prefs?.getInt(KEY_PREFETCH_COUNT, 3) ?: 3
@@ -162,7 +163,8 @@ object AudioCacheManager {
      */
     fun cacheTracks(tracks: List<Track>) {
         val c = cache ?: return
-        prefetchScope.launch {
+        autoCacheJob?.cancel()
+        autoCacheJob = prefetchScope.launch {
             var cached = 0
             for (track in tracks) {
                 if (!isActive) break
@@ -213,6 +215,7 @@ object AudioCacheManager {
 
     fun release() {
         prefetchJob?.cancel()
+        autoCacheJob?.cancel()
         cache?.release()
         cache = null
     }

@@ -124,9 +124,7 @@ class PlayerManager private constructor(private val context: Context) {
             queueIndex = startIndex,
             currentTrack = tracks.getOrNull(startIndex)
         )
-
-        // Start prefetching next tracks
-        AudioCacheManager.prefetchNext(tracks, startIndex)
+        // Prefetch is handled by onMediaItemTransition listener — no need to call here
     }
 
     fun addToQueue(track: Track) {
