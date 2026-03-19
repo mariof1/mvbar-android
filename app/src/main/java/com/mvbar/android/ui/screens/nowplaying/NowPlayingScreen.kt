@@ -240,28 +240,45 @@ fun NowPlayingScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onCyclePlayMode) {
-                    Icon(
-                        when (state.playMode) {
-                            PlayMode.SHUFFLE -> Icons.Filled.Shuffle
-                            PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne
-                            else -> Icons.Filled.Repeat
-                        },
-                        "Play Mode",
-                        tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim,
-                        modifier = Modifier.size(24.dp)
-                    )
+                if (state.isPodcastMode) {
+                    // Podcast mode: skip buttons instead of play mode
+                    Spacer(Modifier.size(48.dp))
+                } else {
+                    IconButton(onClick = onCyclePlayMode) {
+                        Icon(
+                            when (state.playMode) {
+                                PlayMode.SHUFFLE -> Icons.Filled.Shuffle
+                                PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne
+                                else -> Icons.Filled.Repeat
+                            },
+                            "Play Mode",
+                            tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
 
-                IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Filled.SkipPrevious, "Previous", tint = OnSurface, modifier = Modifier.size(36.dp))
+                if (state.isPodcastMode) {
+                    // -15s skip back
+                    IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
+                        Text(
+                            "-15",
+                            color = OnSurface,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
+                        Icon(Icons.Filled.SkipPrevious, "Previous", tint = OnSurface, modifier = Modifier.size(36.dp))
+                    }
                 }
 
                 IconButton(
                     onClick = onTogglePlay,
                     modifier = Modifier
                         .size(72.dp)
-                        .background(Cyan500, CircleShape)
+                        .background(if (state.isPodcastMode) Orange500 else Cyan500, CircleShape)
                 ) {
                     Icon(
                         if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -271,17 +288,33 @@ fun NowPlayingScreen(
                     )
                 }
 
-                IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Filled.SkipNext, "Next", tint = OnSurface, modifier = Modifier.size(36.dp))
+                if (state.isPodcastMode) {
+                    // +15s skip forward
+                    IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
+                        Text(
+                            "+15",
+                            color = OnSurface,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
+                        Icon(Icons.Filled.SkipNext, "Next", tint = OnSurface, modifier = Modifier.size(36.dp))
+                    }
                 }
 
-                IconButton(onClick = onToggleFavorite) {
-                    Icon(
-                        if (state.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                        "Favorite",
-                        tint = if (state.isFavorite) Pink500 else OnSurfaceDim,
-                        modifier = Modifier.size(24.dp)
-                    )
+                if (state.isPodcastMode) {
+                    Spacer(Modifier.size(48.dp))
+                } else {
+                    IconButton(onClick = onToggleFavorite) {
+                        Icon(
+                            if (state.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            "Favorite",
+                            tint = if (state.isFavorite) Pink500 else OnSurfaceDim,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
 

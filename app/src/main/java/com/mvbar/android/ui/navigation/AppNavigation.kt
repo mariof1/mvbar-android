@@ -280,6 +280,7 @@ fun MainScreen(
                             state = playerState,
                             onTogglePlay = { mainVm.playerManager.togglePlay() },
                             onNext = { mainVm.playerManager.next() },
+                            onPrevious = { mainVm.playerManager.previous() },
                             onTap = { showNowPlaying = true }
                         )
                     }

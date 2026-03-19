@@ -32,7 +32,9 @@ data class PlayerState(
     val queueIndex: Int = -1,
     val playMode: PlayMode = PlayMode.NORMAL,
     val isFavorite: Boolean = false
-)
+) {
+    val isPodcastMode: Boolean get() = currentTrack != null && currentTrack.id < 0
+}
 
 class PlayerManager private constructor(private val context: Context) {
     companion object {
@@ -220,9 +222,29 @@ class PlayerManager private constructor(private val context: Context) {
     }
 
     fun togglePlay() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
-    fun next() { controller?.seekToNextMediaItem() }
-    fun previous() { controller?.seekToPreviousMediaItem() }
+    fun next() {
+        if (_state.value.isPodcastMode) skipForward() else controller?.seekToNextMediaItem()
+    }
+    fun previous() {
+        if (_state.value.isPodcastMode) skipBackward() else controller?.seekToPreviousMediaItem()
+    }
     fun seekTo(positionMs: Long) { controller?.seekTo(positionMs) }
+
+    /** Skip forward 15 seconds (podcast mode) */
+    fun skipForward(seconds: Int = 15) {
+        controller?.let { ctrl ->
+            val target = (ctrl.currentPosition + seconds * 1000L).coerceAtMost(ctrl.duration.coerceAtLeast(0L))
+            ctrl.seekTo(target)
+        }
+    }
+
+    /** Skip backward 15 seconds (podcast mode) */
+    fun skipBackward(seconds: Int = 15) {
+        controller?.let { ctrl ->
+            val target = (ctrl.currentPosition - seconds * 1000L).coerceAtLeast(0L)
+            ctrl.seekTo(target)
+        }
+    }
 
     fun cyclePlayMode() {
         val next = when (_state.value.playMode) {

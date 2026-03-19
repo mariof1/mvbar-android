@@ -27,11 +27,18 @@ fun MiniPlayerBar(
     state: PlayerState,
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
+    onPrevious: (() -> Unit)? = null,
     onTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val track = state.currentTrack ?: return
     val progress = if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
+    val isPodcast = state.isPodcastMode
+    val artUrl = if (isPodcast) {
+        ApiClient.episodeArtUrl(-track.id)
+    } else {
+        track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+    }
 
     Column(modifier = modifier) {
         // Progress bar
@@ -40,7 +47,7 @@ fun MiniPlayerBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(2.dp),
-            color = Cyan500,
+            color = if (isPodcast) Orange500 else Cyan500,
             trackColor = WhiteOverlay10,
         )
 
@@ -57,7 +64,7 @@ fun MiniPlayerBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
-                model = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id),
+                model = artUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -84,6 +91,13 @@ fun MiniPlayerBar(
                 )
             }
 
+            if (isPodcast && onPrevious != null) {
+                // -15s button for podcasts
+                IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
+                    Text("-15", color = OnSurfaceDim, style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                }
+            }
+
             IconButton(onClick = onTogglePlay) {
                 Icon(
                     if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -93,13 +107,20 @@ fun MiniPlayerBar(
                 )
             }
 
-            IconButton(onClick = onNext) {
-                Icon(
-                    Icons.Filled.SkipNext,
-                    contentDescription = "Next",
-                    tint = OnSurfaceDim,
-                    modifier = Modifier.size(24.dp)
-                )
+            if (isPodcast) {
+                // +15s button for podcasts
+                IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
+                    Text("+15", color = OnSurfaceDim, style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                }
+            } else {
+                IconButton(onClick = onNext) {
+                    Icon(
+                        Icons.Filled.SkipNext,
+                        contentDescription = "Next",
+                        tint = OnSurfaceDim,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
     }
