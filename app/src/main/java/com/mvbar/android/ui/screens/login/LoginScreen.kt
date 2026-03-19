@@ -301,8 +301,14 @@ fun LoginScreen(
                                             googleError = "Unexpected credential type: ${credential.type}"
                                         }
                                     } catch (e: androidx.credentials.exceptions.GetCredentialCancellationException) {
-                                        DebugLog.i("GoogleAuth", "User cancelled")
+                                        DebugLog.i("GoogleAuth", "Cancelled: type=${e.type}, msg=${e.message}, cause=${e.cause}")
                                         googleLoading = false
+                                        // If user selects account but still gets cancelled, it's likely a SHA-1 config issue
+                                        googleError = "Google sign-in cancelled. If you selected an account, ensure the app's SHA-1 is registered in Google Cloud Console."
+                                    } catch (e: androidx.credentials.exceptions.GetCredentialException) {
+                                        DebugLog.e("GoogleAuth", "CredentialException: type=${e.type}, msg=${e.message}, cause=${e.cause}", e)
+                                        googleLoading = false
+                                        googleError = e.message ?: "Google sign-in failed"
                                     } catch (e: Exception) {
                                         DebugLog.e("GoogleAuth", "Failed: ${e::class.simpleName}: ${e.message}", e)
                                         googleLoading = false
