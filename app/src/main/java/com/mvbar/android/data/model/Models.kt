@@ -117,9 +117,39 @@ data class PlaylistItem(
 
 @Serializable
 data class SearchResults(
-    val tracks: List<Track> = emptyList(),
-    val artists: List<Artist> = emptyList(),
-    val albums: List<Album> = emptyList()
+    val ok: Boolean = false,
+    val hits: List<Track> = emptyList(),
+    val artists: List<SearchArtist> = emptyList(),
+    val albums: List<SearchAlbum> = emptyList(),
+    val playlists: List<SearchPlaylist> = emptyList()
+)
+
+@Serializable
+data class SearchArtist(
+    val id: Int = 0,
+    val name: String = "",
+    @SerialName("art_path") val artPath: String? = null,
+    @SerialName("art_hash") val artHash: String? = null,
+    @SerialName("track_count") val trackCount: Int = 0,
+    @SerialName("album_count") val albumCount: Int = 0
+)
+
+@Serializable
+data class SearchAlbum(
+    val album: String = "",
+    @SerialName("display_artist") val displayArtist: String? = null,
+    @SerialName("artist_id") val artistId: Int? = null,
+    @SerialName("art_track_id") val artTrackId: Int? = null,
+    @SerialName("art_path") val artPath: String? = null,
+    @SerialName("art_hash") val artHash: String? = null,
+    @SerialName("track_count") val trackCount: Int = 0
+)
+
+@Serializable
+data class SearchPlaylist(
+    val id: Int = 0,
+    val name: String = "",
+    val kind: String? = null
 )
 
 @Serializable

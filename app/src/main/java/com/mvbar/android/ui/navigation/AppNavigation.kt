@@ -99,6 +99,7 @@ fun MainScreen(
     val playlists by mainVm.playlists.collectAsState()
     val smartPlaylists by mainVm.smartPlaylists.collectAsState()
     val searchResults by mainVm.searchResults.collectAsState()
+    val searchLoading by mainVm.searchLoading.collectAsState()
     val browseState by browseVm.state.collectAsState()
     val artistTracks by browseVm.artistTracks.collectAsState()
     val artistAlbums by browseVm.artistAlbums.collectAsState()
@@ -142,20 +143,35 @@ fun MainScreen(
     if (showSearch) {
         SearchScreen(
             results = searchResults,
+            isLoading = searchLoading,
             currentTrackId = currentTrackId,
             onSearch = { mainVm.search(it) },
             onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
             onArtistClick = { artist ->
                 showSearch = false
                 mainVm.clearSearch()
-                artist.id?.let { navController.navigate("artist/$it") }
+                navController.navigate("artist/${artist.id}")
             },
             onAlbumClick = { album ->
                 showSearch = false
                 mainVm.clearSearch()
-                try { navController.navigate("album?name=${Uri.encode(album.displayName)}") }
+                try { navController.navigate("album?name=${Uri.encode(album.album)}") }
                 catch (_: Exception) {}
             },
+            onPlaylistClick = { playlist ->
+                showSearch = false
+                mainVm.clearSearch()
+                if (playlist.kind == "smart") {
+                    mainVm.loadSmartPlaylistDetail(playlist.id)
+                    navController.navigate("smart-playlist/${playlist.id}")
+                } else {
+                    playlists.find { it.id == playlist.id }?.let { p ->
+                        mainVm.loadPlaylistDetail(p)
+                        navController.navigate("playlist/${playlist.id}")
+                    }
+                }
+            },
+            onTrackLongPress = { contextTrack = it },
             onClose = { showSearch = false; mainVm.clearSearch() }
         )
         return

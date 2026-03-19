@@ -55,6 +55,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _searchResults = MutableStateFlow<SearchResults?>(null)
     val searchResults: StateFlow<SearchResults?> = _searchResults.asStateFlow()
 
+    private val _searchLoading = MutableStateFlow(false)
+    val searchLoading: StateFlow<Boolean> = _searchLoading.asStateFlow()
+
+    private var searchJob: kotlinx.coroutines.Job? = null
+
     // Lyrics
     private val _lyrics = MutableStateFlow<List<LyricLine>>(emptyList())
     val lyrics: StateFlow<List<LyricLine>> = _lyrics.asStateFlow()
@@ -311,12 +316,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun search(query: String) {
-        viewModelScope.launch {
-            try { _searchResults.value = repo.search(query) } catch (_: Exception) {}
+        searchJob?.cancel()
+        if (query.length < 2) {
+            _searchResults.value = null
+            _searchLoading.value = false
+            return
+        }
+        _searchLoading.value = true
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(200)
+            try {
+                _searchResults.value = repo.search(query)
+            } catch (_: Exception) {}
+            _searchLoading.value = false
         }
     }
 
-    fun clearSearch() { _searchResults.value = null }
+    fun clearSearch() {
+        searchJob?.cancel()
+        _searchResults.value = null
+        _searchLoading.value = false
+    }
 
     fun playTrack(track: Track, queue: List<Track>? = null) {
         val tracks = queue ?: listOf(track)

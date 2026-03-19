@@ -98,7 +98,7 @@ interface MvbarApi {
 
     // Search
     @GET("api/search")
-    suspend fun search(@Query("q") query: String): SearchResults
+    suspend fun search(@Query("q") query: String, @Query("limit") limit: Int = 20): SearchResults
 
     // Recommendations
     @GET("api/recommendations")
