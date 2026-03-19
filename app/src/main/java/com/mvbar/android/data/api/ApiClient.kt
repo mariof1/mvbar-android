@@ -103,4 +103,10 @@ object ApiClient {
     fun artistArtUrl(artistId: Int): String = "${baseUrl}api/artists/$artistId/art"
     fun artPathUrl(artPath: String): String = "${baseUrl}api/art/$artPath"
     fun streamUrl(trackId: Int): String = "${baseUrl}api/library/tracks/$trackId/stream"
+
+    // Podcasts
+    fun podcastArtUrl(podcastId: Int): String = "${baseUrl}api/podcasts/$podcastId/art"
+    fun podcastArtPathUrl(artPath: String): String = "${baseUrl}api/podcast-art/$artPath"
+    fun episodeArtUrl(episodeId: Int): String = "${baseUrl}api/podcasts/episodes/$episodeId/art"
+    fun episodeStreamUrl(episodeId: Int): String = "${baseUrl}api/podcasts/episodes/$episodeId/stream"
 }

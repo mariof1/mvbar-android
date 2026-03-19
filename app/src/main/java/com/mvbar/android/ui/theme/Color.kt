@@ -11,6 +11,11 @@ val Cyan900 = Color(0xFF164E63)
 val Pink500 = Color(0xFFEC4899)
 val Pink400 = Color(0xFFF472B6)
 
+val Orange500 = Color(0xFFF97316)
+val Orange400 = Color(0xFFFB923C)
+val Orange600 = Color(0xFFEA580C)
+val Orange900 = Color(0xFF7C2D12)
+
 val BackgroundDark = Color(0xFF0A0A0A)
 val SurfaceDark = Color(0xFF141414)
 val SurfaceVariantDark = Color(0xFF1A1A1A)

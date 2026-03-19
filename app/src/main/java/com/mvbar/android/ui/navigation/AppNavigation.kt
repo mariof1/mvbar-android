@@ -42,9 +42,13 @@ import com.mvbar.android.ui.screens.nowplaying.NowPlayingScreen
 import com.mvbar.android.ui.screens.search.SearchScreen
 import com.mvbar.android.ui.screens.settings.SettingsScreen
 import com.mvbar.android.ui.screens.smartplaylist.CreateSmartPlaylistScreen
+import com.mvbar.android.ui.screens.podcast.PodcastsScreen
+import com.mvbar.android.ui.screens.podcast.PodcastDetailScreen
+import com.mvbar.android.ui.screens.podcast.SubscribePodcastDialog
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.BrowseViewModel
 import com.mvbar.android.viewmodel.MainViewModel
+import com.mvbar.android.viewmodel.PodcastViewModel
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -68,8 +72,8 @@ enum class BottomTab(
     HOME("home", "Home", Icons.Filled.Home, Icons.Outlined.Home),
     BROWSE("browse", "Browse", Icons.Filled.GridView, Icons.Outlined.GridView),
     LIBRARY("library", "Library", Icons.Filled.LibraryMusic, Icons.Outlined.LibraryMusic),
-    FAVORITES("favorites", "Favorites", Icons.Filled.Favorite, Icons.Outlined.FavoriteBorder),
-    SETTINGS("settings", "Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
+    PODCASTS("podcasts", "Podcasts", Icons.Filled.Podcasts, Icons.Outlined.Podcasts),
+    FAVORITES("favorites", "Favorites", Icons.Filled.Favorite, Icons.Outlined.FavoriteBorder)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,10 +85,12 @@ fun MainScreen(
 ) {
     val navController = rememberNavController()
     val browseVm: BrowseViewModel = viewModel()
+    val podcastVm: PodcastViewModel = viewModel()
     var showSearch by remember { mutableStateOf(false) }
     var showNowPlaying by remember { mutableStateOf(false) }
     var contextTrack by remember { mutableStateOf<Track?>(null) }
     var showAddToPlaylist by remember { mutableStateOf<Track?>(null) }
+    var showSubscribeDialog by remember { mutableStateOf(false) }
 
     val currentRoute by navController.currentBackStackEntryAsState()
     val currentTab = currentRoute?.destination?.route
@@ -116,6 +122,15 @@ fun MainScreen(
     val selectedPlaylist by mainVm.selectedPlaylist.collectAsState()
     val smartPlaylistDetail by mainVm.smartPlaylistDetail.collectAsState()
     val smartPlaylistLoading by mainVm.smartPlaylistLoading.collectAsState()
+
+    // Podcast state
+    val podcastsList by podcastVm.podcasts.collectAsState()
+    val podcastContinueListening by podcastVm.continueListening.collectAsState()
+    val podcastIsLoading by podcastVm.isLoading.collectAsState()
+    val podcastSelectedPodcast by podcastVm.selectedPodcast.collectAsState()
+    val podcastEpisodes by podcastVm.episodes.collectAsState()
+    val podcastSearchResults by podcastVm.searchResults.collectAsState()
+    val podcastSearchLoading by podcastVm.searchLoading.collectAsState()
 
     val currentTrackId = playerState.currentTrack?.id
 
@@ -189,6 +204,23 @@ fun MainScreen(
         )
     }
 
+    // Subscribe to podcast dialog
+    if (showSubscribeDialog) {
+        SubscribePodcastDialog(
+            searchResults = podcastSearchResults,
+            searchLoading = podcastSearchLoading,
+            subscribedFeedUrls = podcastsList.map { it.feedUrl }.toSet(),
+            onSearch = { podcastVm.searchPodcasts(it) },
+            onSubscribe = { feedUrl ->
+                podcastVm.subscribe(feedUrl)
+            },
+            onClose = {
+                showSubscribeDialog = false
+                podcastVm.clearSearch()
+            }
+        )
+    }
+
     // Track context menu bottom sheet
     contextTrack?.let { track ->
         TrackBottomSheet(
@@ -227,6 +259,13 @@ fun MainScreen(
                         IconButton(onClick = { showSearch = true }) {
                             Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                         }
+                        IconButton(onClick = {
+                            navController.navigate("settings") {
+                                launchSingleTop = true
+                            }
+                        }) {
+                            Icon(Icons.Filled.Settings, "Settings", tint = OnSurfaceDim)
+                        }
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = BackgroundDark
@@ -258,7 +297,8 @@ fun MainScreen(
                                 (currentTab?.startsWith("genre/") == true && tab == BottomTab.BROWSE) ||
                                 (currentTab == "history" && tab == BottomTab.LIBRARY) ||
                                 (currentTab?.startsWith("playlist/") == true && tab == BottomTab.LIBRARY) ||
-                                (currentTab?.startsWith("smart-playlist") == true && tab == BottomTab.LIBRARY)
+                                (currentTab?.startsWith("smart-playlist") == true && tab == BottomTab.LIBRARY) ||
+                                (currentTab?.startsWith("podcast/") == true && tab == BottomTab.PODCASTS)
 
                             NavigationBarItem(
                                 selected = selected,
@@ -554,6 +594,53 @@ fun MainScreen(
                         isLoading = favoritesLoading,
                         error = favoritesError,
                         onTrackLongPress = { contextTrack = it }
+                    )
+                }
+
+                composable("podcasts") {
+                    PodcastsScreen(
+                        podcasts = podcastsList,
+                        continueListening = podcastContinueListening,
+                        isLoading = podcastIsLoading,
+                        onPodcastClick = { podcast ->
+                            podcastVm.loadPodcastDetail(podcast.id)
+                            navController.navigate("podcast/${podcast.id}")
+                        },
+                        onEpisodePlay = { episode ->
+                            podcastVm.playEpisode(episode)
+                        },
+                        onMarkPlayed = { episodeId, played ->
+                            podcastVm.markEpisodePlayed(episodeId, played)
+                        },
+                        onSubscribeClick = { showSubscribeDialog = true },
+                        onRefresh = {
+                            podcastVm.loadPodcasts()
+                            podcastVm.loadContinueListening()
+                        }
+                    )
+                }
+
+                composable("podcast/{id}") {
+                    PodcastDetailScreen(
+                        podcast = podcastSelectedPodcast,
+                        episodes = podcastEpisodes,
+                        isLoading = podcastIsLoading,
+                        onBack = { navController.popBackStack() },
+                        onPlayEpisode = { episode ->
+                            podcastVm.playEpisode(episode)
+                        },
+                        onMarkPlayed = { episodeId, played ->
+                            podcastVm.markEpisodePlayed(episodeId, played)
+                        },
+                        onRefresh = {
+                            podcastSelectedPodcast?.let { podcastVm.refreshPodcast(it.id) }
+                        },
+                        onUnsubscribe = {
+                            podcastSelectedPodcast?.let {
+                                podcastVm.unsubscribe(it.id)
+                                navController.popBackStack()
+                            }
+                        }
                     )
                 }
 

@@ -280,3 +280,111 @@ data class SuggestItem(val id: Int? = null, val name: String? = null)
 
 @Serializable
 data class SuggestResponse(val items: List<kotlinx.serialization.json.JsonElement> = emptyList())
+
+// ============================================================================
+// PODCAST MODELS
+// ============================================================================
+
+@Serializable
+data class Podcast(
+    val id: Int = 0,
+    @SerialName("feed_url") val feedUrl: String = "",
+    val title: String = "",
+    val author: String? = null,
+    val description: String? = null,
+    @SerialName("image_url") val imageUrl: String? = null,
+    @SerialName("image_path") val imagePath: String? = null,
+    val link: String? = null,
+    val language: String? = null,
+    @SerialName("unplayed_count") val unplayedCount: Int = 0,
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class Episode(
+    val id: Int = 0,
+    @SerialName("podcast_id") val podcastId: Int = 0,
+    val title: String = "",
+    val description: String? = null,
+    @SerialName("audio_url") val audioUrl: String? = null,
+    @SerialName("duration_ms") val durationMs: Long? = null,
+    @SerialName("image_url") val imageUrl: String? = null,
+    @SerialName("image_path") val imagePath: String? = null,
+    @SerialName("published_at") val publishedAt: String? = null,
+    @SerialName("position_ms") val positionMs: Long = 0,
+    val played: Boolean = false,
+    val downloaded: Boolean = false,
+    @SerialName("podcast_title") val podcastTitle: String? = null,
+    @SerialName("podcast_image_url") val podcastImageUrl: String? = null,
+    @SerialName("podcast_image_path") val podcastImagePath: String? = null
+) {
+    val durationFormatted: String get() {
+        val ms = durationMs ?: return ""
+        val totalSeconds = (ms / 1000).toInt()
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        return if (hours > 0) "${hours}h ${minutes}m" else "${minutes} min"
+    }
+
+    val progressPercent: Int get() {
+        val dur = durationMs ?: return 0
+        if (dur <= 0) return 0
+        return ((positionMs.toDouble() / dur) * 100).toInt().coerceIn(0, 100)
+    }
+
+    val publishedFormatted: String get() {
+        val dateStr = publishedAt ?: return ""
+        return try {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            val date = sdf.parse(dateStr) ?: return dateStr.take(10)
+            val now = System.currentTimeMillis()
+            val diffDays = ((now - date.time) / (1000 * 60 * 60 * 24)).toInt()
+            when {
+                diffDays == 0 -> "Today"
+                diffDays == 1 -> "Yesterday"
+                diffDays < 7 -> "$diffDays days ago"
+                diffDays < 30 -> "${diffDays / 7} weeks ago"
+                else -> java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US).format(date)
+            }
+        } catch (_: Exception) { dateStr.take(10) }
+    }
+}
+
+@Serializable
+data class PodcastSearchResult(
+    val id: Int = 0,
+    val title: String = "",
+    val author: String = "",
+    val imageUrl: String? = null,
+    val feedUrl: String? = null,
+    val genre: String? = null,
+    val episodeCount: Int? = null
+)
+
+@Serializable
+data class PodcastsResponse(val ok: Boolean = false, val podcasts: List<Podcast> = emptyList())
+
+@Serializable
+data class PodcastDetailResponse(val ok: Boolean = false, val podcast: Podcast? = null, val episodes: List<Episode> = emptyList())
+
+@Serializable
+data class PodcastSearchResponse(val ok: Boolean = false, val results: List<PodcastSearchResult> = emptyList())
+
+@Serializable
+data class PodcastSubscribeRequest(val feedUrl: String)
+
+@Serializable
+data class PodcastSubscribeResponse(val ok: Boolean = false, val podcast: Podcast? = null)
+
+@Serializable
+data class PodcastNewEpisodesResponse(val ok: Boolean = false, val episodes: List<Episode> = emptyList())
+
+@Serializable
+data class PodcastRefreshResponse(val ok: Boolean = false, val newEpisodes: Int = 0)
+
+@Serializable
+data class EpisodeProgressRequest(val positionMs: Long? = null, val played: Boolean? = null)
+
+@Serializable
+data class EpisodePlayedRequest(val played: Boolean)
+

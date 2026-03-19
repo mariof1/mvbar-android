@@ -141,4 +141,32 @@ interface MvbarApi {
 
     @DELETE("api/smart-playlists/{id}")
     suspend fun deleteSmartPlaylist(@Path("id") id: Int): Response<Unit>
+
+    // Podcasts
+    @GET("api/podcasts")
+    suspend fun getPodcasts(): PodcastsResponse
+
+    @GET("api/podcasts/{id}")
+    suspend fun getPodcastDetail(@Path("id") id: Int): PodcastDetailResponse
+
+    @GET("api/podcasts/search")
+    suspend fun searchPodcasts(@Query("q") query: String, @Query("limit") limit: Int = 25): PodcastSearchResponse
+
+    @POST("api/podcasts/subscribe")
+    suspend fun subscribePodcast(@Body body: PodcastSubscribeRequest): PodcastSubscribeResponse
+
+    @DELETE("api/podcasts/{id}/unsubscribe")
+    suspend fun unsubscribePodcast(@Path("id") id: Int): Response<Unit>
+
+    @GET("api/podcasts/episodes/new")
+    suspend fun getNewEpisodes(@Query("limit") limit: Int = 50): PodcastNewEpisodesResponse
+
+    @POST("api/podcasts/episodes/{id}/progress")
+    suspend fun updateEpisodeProgress(@Path("id") id: Int, @Body body: EpisodeProgressRequest): Response<Unit>
+
+    @POST("api/podcasts/episodes/{id}/played")
+    suspend fun markEpisodePlayed(@Path("id") id: Int, @Body body: EpisodePlayedRequest): Response<Unit>
+
+    @POST("api/podcasts/{id}/refresh")
+    suspend fun refreshPodcast(@Path("id") id: Int): PodcastRefreshResponse
 }

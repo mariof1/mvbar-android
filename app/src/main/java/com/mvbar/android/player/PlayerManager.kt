@@ -98,8 +98,13 @@ class PlayerManager private constructor(private val context: Context) {
         DebugLog.i("Player", "Playing ${tracks.size} tracks from index $startIndex")
 
         val items = tracks.map { track ->
-            val streamUrl = ApiClient.streamUrl(track.id)
-            val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+            val isPodcast = track.id < 0
+            val streamUrl = if (isPodcast) ApiClient.episodeStreamUrl(-track.id) else ApiClient.streamUrl(track.id)
+            val artUrl = if (isPodcast) {
+                ApiClient.episodeArtUrl(-track.id)
+            } else {
+                track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+            }
             DebugLog.d("Player", "Track ${track.id}: stream=$streamUrl")
             MediaItem.Builder()
                 .setUri(streamUrl)
