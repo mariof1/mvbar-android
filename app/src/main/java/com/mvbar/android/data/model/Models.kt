@@ -53,11 +53,13 @@ data class Track(
     val displayTitle: String get() = title ?: "Untitled"
     val displayArtist: String get() = displayArtistName ?: artist ?: "Unknown Artist"
     val displayAlbum: String get() = album ?: "Unknown Album"
+    val hasDuration: Boolean get() = durationMs != null || duration != null
     val durationSeconds: Int get() {
         val ms = durationMs ?: (duration?.let { it * 1000 })
         return ((ms ?: 0.0) / 1000).toInt()
     }
     val durationFormatted: String get() {
+        if (!hasDuration) return ""
         val secs = durationSeconds
         return "${secs / 60}:%02d".format(secs % 60)
     }

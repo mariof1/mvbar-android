@@ -98,11 +98,13 @@ fun TrackListItem(
             Spacer(Modifier.width(8.dp))
         }
 
-        Text(
-            track.durationFormatted,
-            style = MaterialTheme.typography.labelSmall,
-            color = OnSurfaceDim
-        )
+        if (track.durationFormatted.isNotEmpty()) {
+            Text(
+                track.durationFormatted,
+                style = MaterialTheme.typography.labelSmall,
+                color = OnSurfaceDim
+            )
+        }
 
         onFavorite?.let {
             IconButton(onClick = it, modifier = Modifier.size(36.dp)) {
