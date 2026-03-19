@@ -34,6 +34,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.AuthState
 import kotlinx.coroutines.launch
@@ -271,6 +272,7 @@ fun LoginScreen(
                                 googleError = null
                                 scope.launch {
                                     try {
+                                        DebugLog.i("GoogleAuth", "Starting credential request with clientId: ${clientId.take(20)}...")
                                         val credentialManager = CredentialManager.create(context)
                                         val signInOption = GetSignInWithGoogleOption.Builder(clientId)
                                             .build()
@@ -279,24 +281,30 @@ fun LoginScreen(
                                             .addCredentialOption(signInOption)
                                             .build()
 
+                                        DebugLog.i("GoogleAuth", "Calling getCredential...")
                                         val result = credentialManager.getCredential(
                                             context = context as Activity,
                                             request = request
                                         )
 
                                         val credential = result.credential
+                                        DebugLog.i("GoogleAuth", "Got credential type: ${credential::class.simpleName}, rawType: ${credential.type}")
                                         if (credential is CustomCredential &&
                                             credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
                                         ) {
                                             val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                                            DebugLog.i("GoogleAuth", "Got idToken, calling onGoogleSignIn")
                                             onGoogleSignIn(server.trim().removeSuffix("/"), googleIdTokenCredential.idToken)
                                         } else {
+                                            DebugLog.e("GoogleAuth", "Unexpected credential: class=${credential::class.qualifiedName} type=${credential.type}")
                                             googleLoading = false
+                                            googleError = "Unexpected credential type: ${credential.type}"
                                         }
                                     } catch (e: androidx.credentials.exceptions.GetCredentialCancellationException) {
-                                        // User cancelled — no error needed
+                                        DebugLog.i("GoogleAuth", "User cancelled")
                                         googleLoading = false
                                     } catch (e: Exception) {
+                                        DebugLog.e("GoogleAuth", "Failed: ${e::class.simpleName}: ${e.message}", e)
                                         googleLoading = false
                                         googleError = e.message ?: "Google sign-in failed"
                                     }
