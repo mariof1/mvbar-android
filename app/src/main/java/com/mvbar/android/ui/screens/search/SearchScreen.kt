@@ -1,6 +1,7 @@
 package com.mvbar.android.ui.screens.search
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,9 +15,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
+import com.mvbar.android.data.model.Album
+import com.mvbar.android.data.model.Artist
 import com.mvbar.android.data.model.SearchResults
 import com.mvbar.android.data.model.Track
-import com.mvbar.android.ui.components.ArtistCard
 import com.mvbar.android.ui.components.TrackListItem
 import com.mvbar.android.ui.theme.*
 
@@ -27,6 +29,8 @@ fun SearchScreen(
     currentTrackId: Int?,
     onSearch: (String) -> Unit,
     onPlayTrack: (Track, List<Track>) -> Unit,
+    onArtistClick: (Artist) -> Unit,
+    onAlbumClick: (Album) -> Unit,
     onClose: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
@@ -94,7 +98,8 @@ fun SearchScreen(
                         ListItem(
                             headlineContent = { Text(artist.name, color = OnSurface) },
                             supportingContent = { Text("${artist.trackCount} tracks", color = OnSurfaceDim) },
-                            colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                            colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                            modifier = Modifier.clickable { onArtistClick(artist) }
                         )
                     }
                 }
@@ -117,7 +122,8 @@ fun SearchScreen(
                                     color = OnSurfaceDim
                                 )
                             },
-                            colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                            colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                            modifier = Modifier.clickable { onAlbumClick(album) }
                         )
                     }
                 }

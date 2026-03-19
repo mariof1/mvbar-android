@@ -145,6 +145,17 @@ fun MainScreen(
             currentTrackId = currentTrackId,
             onSearch = { mainVm.search(it) },
             onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
+            onArtistClick = { artist ->
+                showSearch = false
+                mainVm.clearSearch()
+                artist.id?.let { navController.navigate("artist/$it") }
+            },
+            onAlbumClick = { album ->
+                showSearch = false
+                mainVm.clearSearch()
+                try { navController.navigate("album?name=${Uri.encode(album.displayName)}") }
+                catch (_: Exception) {}
+            },
             onClose = { showSearch = false; mainVm.clearSearch() }
         )
         return
