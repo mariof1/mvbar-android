@@ -32,6 +32,8 @@ import com.mvbar.android.ui.screens.browse.BrowseScreen
 import com.mvbar.android.ui.screens.detail.AlbumDetailScreen
 import com.mvbar.android.ui.screens.detail.ArtistDetailScreen
 import com.mvbar.android.ui.screens.detail.GenreDetailScreen
+import com.mvbar.android.ui.screens.detail.CountryDetailScreen
+import com.mvbar.android.ui.screens.detail.LanguageDetailScreen
 import com.mvbar.android.ui.screens.detail.PlaylistDetailScreen
 import com.mvbar.android.ui.screens.detail.SmartPlaylistDetailScreen
 import com.mvbar.android.ui.screens.favorites.FavoritesScreen
@@ -115,6 +117,10 @@ fun MainScreen(
     val selectedAlbum by browseVm.selectedAlbum.collectAsState()
     val genreTracks by browseVm.genreTracks.collectAsState()
     val genreLoading by browseVm.genreLoading.collectAsState()
+    val countryTracks by browseVm.countryTracks.collectAsState()
+    val countryLoading by browseVm.countryLoading.collectAsState()
+    val languageTracks by browseVm.languageTracks.collectAsState()
+    val languageLoading by browseVm.languageLoading.collectAsState()
     val lyrics by mainVm.lyrics.collectAsState()
     val lyricsLoading by mainVm.lyricsLoading.collectAsState()
     val playlistTracks by mainVm.playlistTracks.collectAsState()
@@ -296,6 +302,8 @@ fun MainScreen(
                                 (currentTab?.startsWith("artist/") == true && tab == BottomTab.BROWSE) ||
                                 (currentTab?.startsWith("album") == true && tab == BottomTab.BROWSE) ||
                                 (currentTab?.startsWith("genre/") == true && tab == BottomTab.BROWSE) ||
+                                (currentTab?.startsWith("country/") == true && tab == BottomTab.BROWSE) ||
+                                (currentTab?.startsWith("language/") == true && tab == BottomTab.BROWSE) ||
                                 (currentTab == "history" && tab == BottomTab.LIBRARY) ||
                                 (currentTab?.startsWith("playlist/") == true && tab == BottomTab.LIBRARY) ||
                                 (currentTab?.startsWith("smart-playlist") == true && tab == BottomTab.LIBRARY) ||
@@ -389,10 +397,32 @@ fun MainScreen(
                                 }
                             }
                         },
+                        onCountryClick = { country ->
+                            if (country.name.isNotBlank()) {
+                                browseVm.loadCountryTracks(country.name)
+                                try {
+                                    navController.navigate("country/${Uri.encode(country.name)}")
+                                } catch (e: Exception) {
+                                    DebugLog.e("Nav", "Country navigate failed", e)
+                                }
+                            }
+                        },
+                        onLanguageClick = { language ->
+                            if (language.name.isNotBlank()) {
+                                browseVm.loadLanguageTracks(language.name)
+                                try {
+                                    navController.navigate("language/${Uri.encode(language.name)}")
+                                } catch (e: Exception) {
+                                    DebugLog.e("Nav", "Language navigate failed", e)
+                                }
+                            }
+                        },
                         onRefresh = { browseVm.loadAll() },
                         onLoadMoreArtists = { browseVm.loadMoreArtists() },
                         onLoadMoreAlbums = { browseVm.loadMoreAlbums() },
-                        onLoadMoreGenres = { browseVm.loadMoreGenres() }
+                        onLoadMoreGenres = { browseVm.loadMoreGenres() },
+                        onLoadMoreCountries = { browseVm.loadMoreCountries() },
+                        onLoadMoreLanguages = { browseVm.loadMoreLanguages() }
                     )
                 }
 
@@ -456,6 +486,46 @@ fun MainScreen(
                         onBack = { navController.popBackStack() },
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onPlayAll = { if (genreTracks.isNotEmpty()) mainVm.playTrack(genreTracks.first(), genreTracks) },
+                        onTrackLongPress = { contextTrack = it }
+                    )
+                }
+
+                composable(
+                    route = "country/{name}",
+                    arguments = listOf(navArgument("name") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    })
+                ) { entry ->
+                    val name = entry.arguments?.getString("name") ?: ""
+                    CountryDetailScreen(
+                        countryName = name,
+                        tracks = countryTracks,
+                        isLoading = countryLoading,
+                        currentTrackId = currentTrackId,
+                        onBack = { navController.popBackStack() },
+                        onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
+                        onPlayAll = { if (countryTracks.isNotEmpty()) mainVm.playTrack(countryTracks.first(), countryTracks) },
+                        onTrackLongPress = { contextTrack = it }
+                    )
+                }
+
+                composable(
+                    route = "language/{name}",
+                    arguments = listOf(navArgument("name") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    })
+                ) { entry ->
+                    val name = entry.arguments?.getString("name") ?: ""
+                    LanguageDetailScreen(
+                        languageName = name,
+                        tracks = languageTracks,
+                        isLoading = languageLoading,
+                        currentTrackId = currentTrackId,
+                        onBack = { navController.popBackStack() },
+                        onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
+                        onPlayAll = { if (languageTracks.isNotEmpty()) mainVm.playTrack(languageTracks.first(), languageTracks) },
                         onTrackLongPress = { contextTrack = it }
                     )
                 }

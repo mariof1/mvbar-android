@@ -98,6 +98,20 @@ data class Genre(
 )
 
 @Serializable
+data class Country(
+    @SerialName("country") val name: String = "",
+    @SerialName("track_count") val trackCount: Int = 0,
+    @SerialName("artist_count") val artistCount: Int = 0
+)
+
+@Serializable
+data class Language(
+    @SerialName("language") val name: String = "",
+    @SerialName("track_count") val trackCount: Int = 0,
+    @SerialName("artist_count") val artistCount: Int = 0
+)
+
+@Serializable
 data class Playlist(
     val id: Int = 0,
     val name: String = "",
@@ -187,6 +201,10 @@ data class TracksListWrapper(val ok: Boolean = false, val artists: List<Artist> 
 data class AlbumsListWrapper(val ok: Boolean = false, val albums: List<Album> = emptyList(), val total: Int = 0)
 @Serializable
 data class GenresListWrapper(val ok: Boolean = false, val genres: List<Genre> = emptyList(), val total: Int = 0)
+@Serializable
+data class CountriesListWrapper(val ok: Boolean = false, val countries: List<Country> = emptyList(), val total: Int = 0)
+@Serializable
+data class LanguagesListWrapper(val ok: Boolean = false, val languages: List<Language> = emptyList(), val total: Int = 0)
 @Serializable
 data class AlbumDetailResponse(val ok: Boolean = false, val album: Album? = null, val tracks: List<Track> = emptyList())
 

@@ -14,11 +14,15 @@ data class BrowseState(
     val artists: List<Artist> = emptyList(),
     val albums: List<Album> = emptyList(),
     val genres: List<Genre> = emptyList(),
+    val countries: List<Country> = emptyList(),
+    val languages: List<Language> = emptyList(),
     val isLoading: Boolean = false,
     val selectedTab: Int = 0,
     val hasMoreArtists: Boolean = true,
     val hasMoreAlbums: Boolean = true,
     val hasMoreGenres: Boolean = true,
+    val hasMoreCountries: Boolean = true,
+    val hasMoreLanguages: Boolean = true,
     val isLoadingMore: Boolean = false,
     val isRefreshing: Boolean = false,
     val error: String? = null
@@ -46,6 +50,18 @@ class BrowseViewModel : ViewModel() {
 
     private val _genreLoading = MutableStateFlow(false)
     val genreLoading: StateFlow<Boolean> = _genreLoading.asStateFlow()
+
+    private val _countryTracks = MutableStateFlow<List<Track>>(emptyList())
+    val countryTracks: StateFlow<List<Track>> = _countryTracks.asStateFlow()
+
+    private val _countryLoading = MutableStateFlow(false)
+    val countryLoading: StateFlow<Boolean> = _countryLoading.asStateFlow()
+
+    private val _languageTracks = MutableStateFlow<List<Track>>(emptyList())
+    val languageTracks: StateFlow<List<Track>> = _languageTracks.asStateFlow()
+
+    private val _languageLoading = MutableStateFlow(false)
+    val languageLoading: StateFlow<Boolean> = _languageLoading.asStateFlow()
 
     // Artist albums from detail endpoint
     private val _artistAlbums = MutableStateFlow<List<Album>>(emptyList())
@@ -83,8 +99,21 @@ class BrowseViewModel : ViewModel() {
                     _state.value = _state.value.copy(hasMoreGenres = r.genres.size >= PAGE_SIZE)
                     r.genres
                 } catch (e: Exception) { DebugLog.e("Browse", "Genres failed", e); emptyList() }
+                val countries = try {
+                    val r = repo.getCountries(PAGE_SIZE, 0)
+                    DebugLog.i("Browse", "Got ${r.countries.size} countries (total: ${r.total})")
+                    _state.value = _state.value.copy(hasMoreCountries = r.countries.size >= PAGE_SIZE)
+                    r.countries
+                } catch (e: Exception) { DebugLog.e("Browse", "Countries failed", e); emptyList() }
+                val languages = try {
+                    val r = repo.getLanguages(PAGE_SIZE, 0)
+                    DebugLog.i("Browse", "Got ${r.languages.size} languages (total: ${r.total})")
+                    _state.value = _state.value.copy(hasMoreLanguages = r.languages.size >= PAGE_SIZE)
+                    r.languages
+                } catch (e: Exception) { DebugLog.e("Browse", "Languages failed", e); emptyList() }
                 _state.value = _state.value.copy(
                     artists = artists, albums = albums, genres = genres,
+                    countries = countries, languages = languages,
                     isLoading = false, isRefreshing = false
                 )
             } catch (e: Exception) {
@@ -152,6 +181,46 @@ class BrowseViewModel : ViewModel() {
                 )
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more genres failed", e)
+                _state.value = _state.value.copy(isLoadingMore = false)
+            }
+        }
+    }
+
+    fun loadMoreCountries() {
+        val s = _state.value
+        if (s.isLoadingMore || !s.hasMoreCountries) return
+        viewModelScope.launch {
+            _state.value = s.copy(isLoadingMore = true)
+            try {
+                val r = repo.getCountries(PAGE_SIZE, s.countries.size)
+                DebugLog.i("Browse", "Loaded ${r.countries.size} more countries (offset ${s.countries.size})")
+                _state.value = _state.value.copy(
+                    countries = s.countries + r.countries,
+                    hasMoreCountries = r.countries.size >= PAGE_SIZE,
+                    isLoadingMore = false
+                )
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Load more countries failed", e)
+                _state.value = _state.value.copy(isLoadingMore = false)
+            }
+        }
+    }
+
+    fun loadMoreLanguages() {
+        val s = _state.value
+        if (s.isLoadingMore || !s.hasMoreLanguages) return
+        viewModelScope.launch {
+            _state.value = s.copy(isLoadingMore = true)
+            try {
+                val r = repo.getLanguages(PAGE_SIZE, s.languages.size)
+                DebugLog.i("Browse", "Loaded ${r.languages.size} more languages (offset ${s.languages.size})")
+                _state.value = _state.value.copy(
+                    languages = s.languages + r.languages,
+                    hasMoreLanguages = r.languages.size >= PAGE_SIZE,
+                    isLoadingMore = false
+                )
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Load more languages failed", e)
                 _state.value = _state.value.copy(isLoadingMore = false)
             }
         }
@@ -225,6 +294,40 @@ class BrowseViewModel : ViewModel() {
                 DebugLog.e("Browse", "Genre tracks failed for '$genreName'", e)
             } finally {
                 _genreLoading.value = false
+            }
+        }
+    }
+
+    fun loadCountryTracks(name: String) {
+        viewModelScope.launch {
+            _countryLoading.value = true
+            _countryTracks.value = emptyList()
+            try {
+                DebugLog.i("Browse", "Loading country tracks for '$name'")
+                val response = repo.getCountryTracks(name)
+                DebugLog.i("Browse", "Got ${response.tracks.size} tracks for country '$name'")
+                _countryTracks.value = response.tracks
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Country tracks failed for '$name'", e)
+            } finally {
+                _countryLoading.value = false
+            }
+        }
+    }
+
+    fun loadLanguageTracks(name: String) {
+        viewModelScope.launch {
+            _languageLoading.value = true
+            _languageTracks.value = emptyList()
+            try {
+                DebugLog.i("Browse", "Loading language tracks for '$name'")
+                val response = repo.getLanguageTracks(name)
+                DebugLog.i("Browse", "Got ${response.tracks.size} tracks for language '$name'")
+                _languageTracks.value = response.tracks
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Language tracks failed for '$name'", e)
+            } finally {
+                _languageLoading.value = false
             }
         }
     }

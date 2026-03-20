@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.model.*
 import com.mvbar.android.ui.components.AlbumCard
@@ -24,10 +25,14 @@ fun BrowseScreen(
     onArtistClick: (Artist) -> Unit,
     onAlbumClick: (Album) -> Unit,
     onGenreClick: (Genre) -> Unit = {},
+    onCountryClick: (Country) -> Unit = {},
+    onLanguageClick: (Language) -> Unit = {},
     onRefresh: () -> Unit,
     onLoadMoreArtists: () -> Unit = {},
     onLoadMoreAlbums: () -> Unit = {},
-    onLoadMoreGenres: () -> Unit = {}
+    onLoadMoreGenres: () -> Unit = {},
+    onLoadMoreCountries: () -> Unit = {},
+    onLoadMoreLanguages: () -> Unit = {}
 ) {
     LaunchedEffect(Unit) {
         if (state.artists.isEmpty() && state.albums.isEmpty() && !state.isLoading) {
@@ -35,7 +40,7 @@ fun BrowseScreen(
         }
     }
 
-    val tabs = listOf("Artists", "Albums", "Genres")
+    val tabs = listOf("Artists", "Albums", "Genres", "Countries", "Languages")
 
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
@@ -45,10 +50,11 @@ fun BrowseScreen(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
         )
 
-        TabRow(
+        ScrollableTabRow(
             selectedTabIndex = state.selectedTab,
             containerColor = androidx.compose.ui.graphics.Color.Transparent,
             contentColor = Cyan500,
+            edgePadding = 0.dp,
         ) {
             tabs.forEachIndexed { index, title ->
                 Tab(
@@ -73,6 +79,8 @@ fun BrowseScreen(
                 0 -> ArtistsGrid(state.artists, state.hasMoreArtists, state.isLoadingMore, onArtistClick, onLoadMoreArtists)
                 1 -> AlbumsGrid(state.albums, state.hasMoreAlbums, state.isLoadingMore, onAlbumClick, onLoadMoreAlbums)
                 2 -> GenresGrid(state.genres, state.hasMoreGenres, state.isLoadingMore, onGenreClick, onLoadMoreGenres)
+                3 -> CountriesGrid(state.countries, state.hasMoreCountries, state.isLoadingMore, onCountryClick, onLoadMoreCountries)
+                4 -> LanguagesGrid(state.languages, state.hasMoreLanguages, state.isLoadingMore, onLanguageClick, onLoadMoreLanguages)
             }
         }
     }
@@ -228,6 +236,128 @@ private fun GenreChip(genre: Genre, colors: List<androidx.compose.ui.graphics.Co
                 )
                 Text(
                     "${genre.trackCount} tracks",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CountriesGrid(
+    countries: List<Country>,
+    hasMore: Boolean,
+    isLoadingMore: Boolean,
+    onClick: (Country) -> Unit,
+    onLoadMore: () -> Unit
+) {
+    val gridState = rememberLazyGridState()
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            hasMore && !isLoadingMore && countries.isNotEmpty() && lastVisible >= countries.size - 6
+        }
+    }
+    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
+
+    val gradients = listOf(
+        listOf(Color(0xFF2E7D32), Color(0xFF1B5E20)),
+        listOf(Color(0xFF1565C0), Color(0xFF0D47A1)),
+        listOf(Color(0xFFE65100), Color(0xFFBF360C)),
+    )
+    LazyVerticalGrid(
+        state = gridState,
+        columns = GridCells.Fixed(2),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        items(countries) { country ->
+            val colors = gradients[countries.indexOf(country) % gradients.size]
+            CategoryChip(name = country.name, trackCount = country.trackCount, colors = colors, onClick = { onClick(country) })
+        }
+        if (isLoadingMore) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                }
+            }
+        }
+        items(2) { Spacer(Modifier.height(120.dp)) }
+    }
+}
+
+@Composable
+private fun LanguagesGrid(
+    languages: List<Language>,
+    hasMore: Boolean,
+    isLoadingMore: Boolean,
+    onClick: (Language) -> Unit,
+    onLoadMore: () -> Unit
+) {
+    val gridState = rememberLazyGridState()
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            hasMore && !isLoadingMore && languages.isNotEmpty() && lastVisible >= languages.size - 6
+        }
+    }
+    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
+
+    val gradients = listOf(
+        listOf(Color(0xFF6A1B9A), Color(0xFF4A148C)),
+        listOf(Color(0xFF00838F), Color(0xFF006064)),
+        listOf(Color(0xFFC62828), Color(0xFF8E0000)),
+    )
+    LazyVerticalGrid(
+        state = gridState,
+        columns = GridCells.Fixed(2),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        items(languages) { language ->
+            val colors = gradients[languages.indexOf(language) % gradients.size]
+            CategoryChip(name = language.name, trackCount = language.trackCount, colors = colors, onClick = { onClick(language) })
+        }
+        if (isLoadingMore) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                }
+            }
+        }
+        items(2) { Spacer(Modifier.height(120.dp)) }
+    }
+}
+
+@Composable
+private fun CategoryChip(name: String, trackCount: Int, colors: List<Color>, onClick: () -> Unit = {}) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(80.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = colors[0].copy(alpha = 0.3f)),
+        onClick = onClick
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            contentAlignment = Alignment.BottomStart
+        ) {
+            Column {
+                Text(
+                    name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = OnSurface
+                )
+                Text(
+                    "$trackCount tracks",
                     style = MaterialTheme.typography.bodySmall,
                     color = OnSurfaceDim
                 )
