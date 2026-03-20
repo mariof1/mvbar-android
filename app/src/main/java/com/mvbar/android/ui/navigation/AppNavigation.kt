@@ -304,6 +304,10 @@ fun MainScreen(
                             NavigationBarItem(
                                 selected = selected,
                                 onClick = {
+                                    // Pop overlay routes (like settings) before switching tabs
+                                    if (currentTab != null && currentTab !in rootTabs) {
+                                        navController.popBackStack()
+                                    }
                                     if (currentTab != tab.route) {
                                         navController.navigate(tab.route) {
                                             popUpTo(navController.graph.startDestinationId) { saveState = true }
