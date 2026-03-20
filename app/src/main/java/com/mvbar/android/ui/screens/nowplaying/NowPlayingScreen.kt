@@ -38,6 +38,7 @@ import com.mvbar.android.data.model.Track
 import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.ui.theme.*
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,8 +59,8 @@ fun NowPlayingScreen(
     onLoadLyrics: ((Int) -> Unit)? = null
 ) {
     val track = state.currentTrack ?: return
-    var showQueue by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     // Back gesture minimizes the player
     BackHandler(onBack = onBack)
@@ -69,346 +70,372 @@ fun NowPlayingScreen(
         if (showLyrics && !state.isPodcastMode) onLoadLyrics?.invoke(track.id)
     }
 
-    // Swipe-down-to-dismiss and swipe-up-for-queue state
+    // Swipe-down-to-dismiss state
     val screenHeightPx = with(LocalDensity.current) {
         LocalConfiguration.current.screenHeightDp.dp.toPx()
     }
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var isDismissing by remember { mutableStateOf(false) }
-
     val dismissThreshold = screenHeightPx * 0.08f
-    val queueThreshold = screenHeightPx * 0.06f
-
     val displayOffset = if (isDismissing) screenHeightPx else dragOffset
 
-    Box(
+    // Bottom sheet for queue
+    val scaffoldState = rememberBottomSheetScaffoldState(
+        bottomSheetState = rememberStandardBottomSheetState(
+            initialValue = SheetValue.PartiallyExpanded,
+            skipHiddenState = true
+        )
+    )
+
+    BottomSheetScaffold(
+        scaffoldState = scaffoldState,
+        sheetPeekHeight = 52.dp,
+        sheetContainerColor = SurfaceContainerDark,
+        sheetContentColor = OnSurface,
+        sheetTonalElevation = 0.dp,
+        sheetShadowElevation = 16.dp,
+        containerColor = Color.Transparent,
+        sheetDragHandle = null,
+        sheetContent = {
+            // Inline queue content
+            QueueSheetContent(
+                queue = state.queue,
+                currentIndex = state.queueIndex,
+                isExpanded = scaffoldState.bottomSheetState.currentValue == SheetValue.Expanded,
+                onPlayItem = onPlayQueueItem,
+                onRemoveItem = onRemoveFromQueue,
+                onClearQueue = onClearQueue
+            )
+        },
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer {
-                translationY = displayOffset
-            }
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragEnd = {
-                        if (dragOffset > dismissThreshold) {
-                            isDismissing = true
-                            onBack()
-                        } else if (dragOffset < -queueThreshold) {
-                            showQueue = true
-                        }
-                        dragOffset = 0f
-                    },
-                    onDragCancel = { dragOffset = 0f },
-                    onVerticalDrag = { change, dragAmount ->
-                        change.consume()
-                        // Allow downward drag (positive) and track upward drag (negative)
-                        dragOffset = (dragOffset + dragAmount).coerceIn(
-                            -screenHeightPx * 0.15f, screenHeightPx
-                        )
-                    }
-                )
-            }
-            .background(BackgroundDark)
-            .background(
-                Brush.verticalGradient(
-                    listOf(Cyan900.copy(alpha = 0.4f), Color.Transparent)
-                )
-            )
+            .graphicsLayer { translationY = displayOffset }
     ) {
-        Column(
+        // Main player content
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Top bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(32.dp))
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = {
+                            if (dragOffset > dismissThreshold) {
+                                isDismissing = true
+                                onBack()
+                            }
+                            dragOffset = 0f
+                        },
+                        onDragCancel = { dragOffset = 0f },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            dragOffset = (dragOffset + dragAmount).coerceAtLeast(0f)
+                        }
+                    )
                 }
-                Text(
-                    "Now Playing",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = OnSurfaceDim
+                .background(BackgroundDark)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Cyan900.copy(alpha = 0.4f), Color.Transparent)
+                    )
                 )
-                Row {
-                    if (!state.isPodcastMode) {
-                        IconButton(onClick = { showLyrics = !showLyrics }) {
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Top bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(32.dp))
+                    }
+                    Text(
+                        "Now Playing",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = OnSurfaceDim
+                    )
+                    Row {
+                        if (!state.isPodcastMode) {
+                            IconButton(onClick = { showLyrics = !showLyrics }) {
+                                Icon(
+                                    Icons.Filled.MusicNote,
+                                    "Lyrics",
+                                    tint = if (showLyrics) Cyan500 else OnSurfaceDim
+                                )
+                            }
+                        }
+                        IconButton(onClick = {
+                            scope.launch {
+                                if (scaffoldState.bottomSheetState.currentValue == SheetValue.Expanded) {
+                                    scaffoldState.bottomSheetState.partialExpand()
+                                } else {
+                                    scaffoldState.bottomSheetState.expand()
+                                }
+                            }
+                        }) {
                             Icon(
-                                Icons.Filled.MusicNote,
-                                "Lyrics",
-                                tint = if (showLyrics) Cyan500 else OnSurfaceDim
+                                Icons.AutoMirrored.Filled.QueueMusic,
+                                "Queue",
+                                tint = if (scaffoldState.bottomSheetState.currentValue == SheetValue.Expanded) Cyan500 else OnSurfaceDim
                             )
                         }
                     }
-                    IconButton(onClick = { showQueue = true }) {
-                        Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = OnSurfaceDim)
-                    }
                 }
-            }
 
-            Spacer(Modifier.weight(0.5f))
+                Spacer(Modifier.weight(0.5f))
 
-            // Album art or lyrics view
-            if (showLyrics && !state.isPodcastMode) {
-                com.mvbar.android.ui.components.LyricsView(
-                    lyrics = lyrics,
-                    isLoading = lyricsLoading,
-                    positionMs = state.position,
-                    modifier = Modifier
-                        .fillMaxWidth(0.85f)
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(SurfaceDark.copy(alpha = 0.5f))
-                )
-            } else {
-                // Album art — use podcast episode art URL for podcast tracks
-                val artModel = if (state.isPodcastMode) {
-                    ApiClient.episodeArtUrl(-track.id)
+                // Album art or lyrics view
+                if (showLyrics && !state.isPodcastMode) {
+                    com.mvbar.android.ui.components.LyricsView(
+                        lyrics = lyrics,
+                        isLoading = lyricsLoading,
+                        positionMs = state.position,
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(SurfaceDark.copy(alpha = 0.5f))
+                    )
                 } else {
-                    track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
-                }
-                AsyncImage(
-                    model = artModel,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth(0.85f)
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(20.dp))
-                        .shadow(24.dp, RoundedCornerShape(20.dp))
-                )
-            }
-
-            Spacer(Modifier.height(32.dp))
-
-            // Track info
-            Text(
-                track.displayTitle,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = OnSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                track.displayArtist,
-                style = MaterialTheme.typography.bodyLarge,
-                color = OnSurfaceDim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                track.displayAlbum,
-                style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceSubtle,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(Modifier.height(24.dp))
-
-            // Progress bar
-            val progress = if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
-            Slider(
-                value = progress,
-                onValueChange = { onSeek((it * state.duration).toLong()) },
-                colors = SliderDefaults.colors(
-                    thumbColor = Cyan500,
-                    activeTrackColor = Cyan500,
-                    inactiveTrackColor = WhiteOverlay15
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(formatTime(state.position), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
-                Text(formatTime(state.duration), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // Controls
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (state.isPodcastMode) {
-                    // Podcast mode: skip buttons instead of play mode
-                    Spacer(Modifier.size(48.dp))
-                } else {
-                    IconButton(onClick = onCyclePlayMode) {
-                        Icon(
-                            when (state.playMode) {
-                                PlayMode.SHUFFLE -> Icons.Filled.Shuffle
-                                PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne
-                                else -> Icons.Filled.Repeat
-                            },
-                            "Play Mode",
-                            tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim,
-                            modifier = Modifier.size(24.dp)
-                        )
+                    val artModel = if (state.isPodcastMode) {
+                        ApiClient.episodeArtUrl(-track.id)
+                    } else {
+                        track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
                     }
-                }
-
-                if (state.isPodcastMode) {
-                    // -15s skip back
-                    IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
-                        Text(
-                            "-15",
-                            color = OnSurface,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                } else {
-                    IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
-                        Icon(Icons.Filled.SkipPrevious, "Previous", tint = OnSurface, modifier = Modifier.size(36.dp))
-                    }
-                }
-
-                IconButton(
-                    onClick = onTogglePlay,
-                    modifier = Modifier
-                        .size(72.dp)
-                        .background(if (state.isPodcastMode) Orange500 else Cyan500, CircleShape)
-                ) {
-                    Icon(
-                        if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        if (state.isPlaying) "Pause" else "Play",
-                        tint = Color.Black,
-                        modifier = Modifier.size(40.dp)
+                    AsyncImage(
+                        model = artModel,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(20.dp))
+                            .shadow(24.dp, RoundedCornerShape(20.dp))
                     )
                 }
 
-                if (state.isPodcastMode) {
-                    // +15s skip forward
-                    IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
-                        Text(
-                            "+15",
-                            color = OnSurface,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                } else {
-                    IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
-                        Icon(Icons.Filled.SkipNext, "Next", tint = OnSurface, modifier = Modifier.size(36.dp))
-                    }
+                Spacer(Modifier.height(32.dp))
+
+                // Track info
+                Text(
+                    track.displayTitle,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = OnSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    track.displayArtist,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = OnSurfaceDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    track.displayAlbum,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceSubtle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(Modifier.height(24.dp))
+
+                // Progress bar
+                val progress = if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
+                Slider(
+                    value = progress,
+                    onValueChange = { onSeek((it * state.duration).toLong()) },
+                    colors = SliderDefaults.colors(
+                        thumbColor = Cyan500,
+                        activeTrackColor = Cyan500,
+                        inactiveTrackColor = WhiteOverlay15
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(formatTime(state.position), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
+                    Text(formatTime(state.duration), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
                 }
 
-                if (state.isPodcastMode) {
-                    Spacer(Modifier.size(48.dp))
-                } else {
-                    IconButton(onClick = onToggleFavorite) {
+                Spacer(Modifier.height(16.dp))
+
+                // Controls
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (state.isPodcastMode) {
+                        Spacer(Modifier.size(48.dp))
+                    } else {
+                        IconButton(onClick = onCyclePlayMode) {
+                            Icon(
+                                when (state.playMode) {
+                                    PlayMode.SHUFFLE -> Icons.Filled.Shuffle
+                                    PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne
+                                    else -> Icons.Filled.Repeat
+                                },
+                                "Play Mode",
+                                tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    if (state.isPodcastMode) {
+                        IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
+                            Text("-15", color = OnSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
+                            Icon(Icons.Filled.SkipPrevious, "Previous", tint = OnSurface, modifier = Modifier.size(36.dp))
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onTogglePlay,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(if (state.isPodcastMode) Orange500 else Cyan500, CircleShape)
+                    ) {
                         Icon(
-                            if (state.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            "Favorite",
-                            tint = if (state.isFavorite) Pink500 else OnSurfaceDim,
-                            modifier = Modifier.size(24.dp)
+                            if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            if (state.isPlaying) "Pause" else "Play",
+                            tint = Color.Black,
+                            modifier = Modifier.size(40.dp)
                         )
                     }
+
+                    if (state.isPodcastMode) {
+                        IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
+                            Text("+15", color = OnSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
+                            Icon(Icons.Filled.SkipNext, "Next", tint = OnSurface, modifier = Modifier.size(36.dp))
+                        }
+                    }
+
+                    if (state.isPodcastMode) {
+                        Spacer(Modifier.size(48.dp))
+                    } else {
+                        IconButton(onClick = onToggleFavorite) {
+                            Icon(
+                                if (state.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                "Favorite",
+                                tint = if (state.isFavorite) Pink500 else OnSurfaceDim,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
                 }
+
+                Spacer(Modifier.weight(1f))
             }
-
-            Spacer(Modifier.weight(1f))
-        }
-
-        // Queue bottom sheet
-        if (showQueue) {
-            QueueSheet(
-                queue = state.queue,
-                currentIndex = state.queueIndex,
-                onDismiss = { showQueue = false },
-                onPlayItem = onPlayQueueItem,
-                onRemoveItem = onRemoveFromQueue,
-                onClearQueue = { onClearQueue(); showQueue = false }
-            )
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun QueueSheet(
+private fun QueueSheetContent(
     queue: List<Track>,
     currentIndex: Int,
-    onDismiss: () -> Unit,
+    isExpanded: Boolean,
     onPlayItem: (Int) -> Unit,
     onRemoveItem: (Int) -> Unit,
     onClearQueue: () -> Unit
 ) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = SurfaceContainerDark,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = OnSurfaceDim) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (isExpanded) Modifier.fillMaxHeight(0.7f) else Modifier)
     ) {
-        Column(modifier = Modifier.fillMaxHeight(0.65f)) {
-            // Header
-            Row(
+        // Drag handle
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp, bottom = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+                    .width(32.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(OnSurfaceDim.copy(alpha = 0.4f))
+            )
+        }
+
+        // Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Queue",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = OnSurface
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Queue",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = OnSurface
+                    "${queue.size} tracks",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "${queue.size} tracks",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceDim
-                    )
-                    if (queue.isNotEmpty()) {
-                        Spacer(Modifier.width(8.dp))
-                        TextButton(onClick = onClearQueue) {
-                            Text("Clear", color = Pink500, style = MaterialTheme.typography.labelMedium)
-                        }
+                if (queue.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = onClearQueue) {
+                        Text("Clear", color = Pink500, style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
+        }
 
-            HorizontalDivider(color = WhiteOverlay10, modifier = Modifier.padding(horizontal = 20.dp))
+        HorizontalDivider(color = WhiteOverlay10, modifier = Modifier.padding(horizontal = 20.dp))
 
-            if (queue.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Queue is empty", color = OnSurfaceDim)
-                }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(vertical = 8.dp)
-                ) {
-                    itemsIndexed(queue) { index, track ->
-                        val isActive = index == currentIndex
-                        QueueItem(
-                            track = track,
-                            isActive = isActive,
-                            onPlay = { onPlayItem(index) },
-                            onRemove = { onRemoveItem(index) }
-                        )
-                    }
+        if (queue.isEmpty()) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(80.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Queue is empty", color = OnSurfaceDim)
+            }
+        } else {
+            LazyColumn(
+                contentPadding = PaddingValues(vertical = 8.dp, horizontal = 0.dp)
+            ) {
+                itemsIndexed(queue) { index, track ->
+                    val isActive = index == currentIndex
+                    QueueItem(
+                        track = track,
+                        isActive = isActive,
+                        onPlay = { onPlayItem(index) },
+                        onRemove = { onRemoveItem(index) }
+                    )
                 }
             }
         }
