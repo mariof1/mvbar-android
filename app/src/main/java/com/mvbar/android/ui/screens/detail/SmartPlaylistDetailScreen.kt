@@ -1,9 +1,11 @@
 package com.mvbar.android.ui.screens.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -47,7 +49,7 @@ fun SmartPlaylistDetailScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(220.dp)
+                    .height(280.dp)
                     .background(
                         Brush.verticalGradient(
                             listOf(Pink500.copy(alpha = 0.3f), BackgroundDark)
@@ -94,7 +96,10 @@ fun SmartPlaylistDetailScreen(
                         color = OnSurfaceSubtle
                     )
                     Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
                         if (tracks.isNotEmpty()) {
                             Button(
                                 onClick = onPlayAll,

@@ -60,6 +60,7 @@ fun SearchScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundDark)
+            .statusBarsPadding()
     ) {
         // Search input
         OutlinedTextField(
