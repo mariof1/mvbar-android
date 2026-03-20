@@ -164,12 +164,20 @@ class PlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             mediaId: String
         ): ListenableFuture<LibraryResult<MediaItem>> {
-            return Futures.immediateFuture(
-                LibraryResult.ofItem(
-                    MediaItem.Builder().setMediaId(mediaId).build(),
-                    null
+            // Determine if this is a browsable folder or a playable track
+            val isBrowsable = mediaId.startsWith("album:") || mediaId.startsWith("artist:") ||
+                    mediaId.startsWith("playlist:") || mediaId.startsWith("genre:") ||
+                    mediaId in listOf(ROOT_ID, RECENT_ID, FAVORITES_ID, ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID)
+            val item = MediaItem.Builder()
+                .setMediaId(mediaId)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setIsBrowsable(isBrowsable)
+                        .setIsPlayable(!isBrowsable)
+                        .build()
                 )
-            )
+                .build()
+            return Futures.immediateFuture(LibraryResult.ofItem(item, null))
         }
 
         override fun onAddMediaItems(
