@@ -1,10 +1,100 @@
 package com.mvbar.android.data.repository
 
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.local.MvbarDatabase
+import com.mvbar.android.data.local.entity.*
 import com.mvbar.android.data.model.*
+import com.mvbar.android.debug.DebugLog
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
-class MusicRepository {
+class MusicRepository(private val db: MvbarDatabase? = null) {
     private val api get() = ApiClient.api
+
+    // ── Cache-first reads (return from DB, fallback to API) ──
+
+    fun tracksFlow(): Flow<List<Track>>? =
+        db?.trackDao()?.allFlow()?.map { list -> list.map { it.toModel() } }
+
+    fun trackCountFlow(): Flow<Int>? = db?.trackDao()?.countFlow()
+
+    fun favoritesFlow(): Flow<List<Track>>? =
+        db?.favoriteDao()?.favoritesFlow()?.map { list -> list.map { it.toModel() } }
+
+    fun historyFlow(): Flow<List<Track>>? =
+        db?.historyDao()?.historyFlow()?.map { list -> list.map { it.toModel() } }
+
+    fun playlistsFlow(): Flow<List<Playlist>>? =
+        db?.playlistDao()?.allFlow()?.map { list -> list.map { it.toModel() } }
+
+    fun recommendationsFlow(): Flow<List<RecBucket>>? =
+        db?.recommendationDao()?.allFlow()?.map { list -> list.map { it.toModel() } }
+
+    fun artistsFlow(): Flow<List<Artist>>? =
+        db?.browseDao()?.allArtistsFlow()?.map { list -> list.map { it.toModel() } }
+
+    fun albumsFlow(): Flow<List<Album>>? =
+        db?.browseDao()?.allAlbumsFlow()?.map { list -> list.map { it.toModel() } }
+
+    fun genresFlow(): Flow<List<Genre>>? =
+        db?.browseDao()?.allGenresFlow()?.map { list -> list.map { it.toModel() } }
+
+    fun countriesFlow(): Flow<List<Country>>? =
+        db?.browseDao()?.allCountriesFlow()?.map { list -> list.map { it.toModel() } }
+
+    fun languagesFlow(): Flow<List<Language>>? =
+        db?.browseDao()?.allLanguagesFlow()?.map { list -> list.map { it.toModel() } }
+
+    fun podcastsFlow(): Flow<List<Podcast>>? =
+        db?.podcastDao()?.allPodcastsFlow()?.map { list -> list.map { it.toModel() } }
+
+    // ── Cached page reads ──
+
+    suspend fun getCachedArtists(limit: Int, offset: Int): List<Artist>? =
+        db?.browseDao()?.getArtists(limit, offset)?.map { it.toModel() }
+
+    suspend fun getCachedAlbums(limit: Int, offset: Int): List<Album>? =
+        db?.browseDao()?.getAlbums(limit, offset)?.map { it.toModel() }
+
+    suspend fun getCachedGenres(limit: Int, offset: Int): List<Genre>? =
+        db?.browseDao()?.getGenres(limit, offset)?.map { it.toModel() }
+
+    suspend fun getCachedCountries(limit: Int, offset: Int): List<Country>? =
+        db?.browseDao()?.getCountries(limit, offset)?.map { it.toModel() }
+
+    suspend fun getCachedLanguages(limit: Int, offset: Int): List<Language>? =
+        db?.browseDao()?.getLanguages(limit, offset)?.map { it.toModel() }
+
+    suspend fun getCachedArtistCount(): Int = db?.browseDao()?.artistCount() ?: 0
+    suspend fun getCachedAlbumCount(): Int = db?.browseDao()?.albumCount() ?: 0
+    suspend fun getCachedGenreCount(): Int = db?.browseDao()?.genreCount() ?: 0
+    suspend fun getCachedCountryCount(): Int = db?.browseDao()?.countryCount() ?: 0
+    suspend fun getCachedLanguageCount(): Int = db?.browseDao()?.languageCount() ?: 0
+
+    suspend fun getCachedRecentlyAdded(limit: Int): List<Track>? =
+        db?.trackDao()?.getRecentlyAdded(limit)?.map { it.toModel() }
+
+    suspend fun getCachedFavorites(): List<Track>? =
+        db?.favoriteDao()?.getFavorites()?.map { it.toModel() }
+
+    suspend fun getCachedHistory(): List<Track>? =
+        db?.historyDao()?.getHistory()?.map { it.toModel() }
+
+    suspend fun getCachedRecommendations(): List<RecBucket>? =
+        db?.recommendationDao()?.getAll()?.map { it.toModel() }
+
+    suspend fun getCachedPlaylists(): List<Playlist>? =
+        db?.playlistDao()?.getAll()?.map { it.toModel() }
+
+    suspend fun getCachedPlaylistItems(playlistId: Int): List<PlaylistItem>? {
+        val items = db?.playlistDao()?.getItems(playlistId) ?: return null
+        return items.map { item ->
+            val track = db.trackDao().getById(item.trackId)?.toModel()
+            item.toModel(track)
+        }
+    }
+
+    // ── API calls (unchanged) ──
 
     suspend fun getTracks(limit: Int = 100, offset: Int = 0) = api.getTracks(limit, offset)
     suspend fun getArtists(limit: Int = 50, offset: Int = 0) = api.getArtists(limit, offset)
@@ -57,4 +147,14 @@ class MusicRepository {
     suspend fun suggestSmartPlaylist(kind: String, query: String) = api.suggestSmartPlaylist(kind, query)
     suspend fun resolveArtistIds(ids: List<Int>) =
         api.suggestSmartPlaylist(kind = "artist", ids = ids.joinToString(","))
+
+    companion object {
+        @Volatile private var INSTANCE: MusicRepository? = null
+
+        fun getInstance(db: MvbarDatabase?): MusicRepository {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: MusicRepository(db).also { INSTANCE = it }
+            }
+        }
+    }
 }

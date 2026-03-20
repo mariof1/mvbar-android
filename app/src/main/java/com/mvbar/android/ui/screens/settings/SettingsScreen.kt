@@ -23,6 +23,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.local.MvbarDatabase
+import com.mvbar.android.data.sync.SyncManager
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.ui.theme.*
@@ -174,6 +176,23 @@ fun SettingsScreen(onLogout: () -> Unit) {
 
 @Composable
 private fun GeneralTab(onLogout: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val lastSync by SyncManager.lastSyncTime.collectAsState()
+    val isSyncing by SyncManager.isSyncing.collectAsState()
+    val syncIntervalOptions = listOf(1, 6, 12, 24)
+    var syncIntervalIndex by remember {
+        val current = SyncManager.getSyncIntervalHours()
+        mutableIntStateOf(syncIntervalOptions.indexOf(current).coerceAtLeast(0))
+    }
+    var cachedTrackCount by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        try {
+            cachedTrackCount = MvbarDatabase.getInstance(context).trackDao().count()
+        } catch (_: Exception) {}
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = 12.dp, bottom = 140.dp)
@@ -220,6 +239,103 @@ private fun GeneralTab(onLogout: () -> Unit) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OnSurfaceDim
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Data Sync section
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Sync, null, tint = Cyan500)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Data Sync", style = MaterialTheme.typography.titleMedium, color = OnSurface)
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Last sync time
+                    val lastSyncText = if (lastSync > 0) {
+                        val sdf = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault())
+                        "Last synced: ${sdf.format(java.util.Date(lastSync))}"
+                    } else {
+                        "Never synced"
+                    }
+                    Text(lastSyncText, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+
+                    // Cached tracks count
+                    Text(
+                        "$cachedTrackCount tracks cached locally",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceDim
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Sync interval
+                    Text("Sync Interval", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+                    Text(
+                        "Every ${syncIntervalOptions[syncIntervalIndex]} hour${if (syncIntervalOptions[syncIntervalIndex] != 1) "s" else ""}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Cyan500
+                    )
+                    Slider(
+                        value = syncIntervalIndex.toFloat(),
+                        onValueChange = { syncIntervalIndex = it.toInt() },
+                        onValueChangeFinished = {
+                            SyncManager.setSyncIntervalHours(context, syncIntervalOptions[syncIntervalIndex])
+                        },
+                        valueRange = 0f..(syncIntervalOptions.size - 1).toFloat(),
+                        steps = syncIntervalOptions.size - 2,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Cyan500,
+                            activeTrackColor = Cyan500,
+                            inactiveTrackColor = SurfaceDark
+                        )
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // Sync Now button
+                    Button(
+                        onClick = {
+                            SyncManager.syncNow(context)
+                            scope.launch {
+                                kotlinx.coroutines.delay(1000)
+                                try {
+                                    cachedTrackCount = MvbarDatabase.getInstance(context).trackDao().count()
+                                } catch (_: Exception) {}
+                            }
+                        },
+                        enabled = !isSyncing,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Cyan500.copy(alpha = 0.15f),
+                            contentColor = Cyan500
+                        )
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Cyan500,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Syncing…")
+                        } else {
+                            Icon(Icons.Filled.Sync, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Sync Now")
                         }
                     }
                 }

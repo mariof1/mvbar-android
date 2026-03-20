@@ -6,6 +6,8 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.local.MvbarDatabase
+import com.mvbar.android.data.sync.SyncManager
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
 import okhttp3.OkHttpClient
@@ -16,6 +18,13 @@ class MvbarApp : Application(), ImageLoaderFactory {
         DebugLog.init(this)
         DebugLog.installCrashHandler()
         AudioCacheManager.init(this)
+
+        // Initialize Room database
+        MvbarDatabase.getInstance(this)
+
+        // Initialize sync manager and schedule periodic sync
+        SyncManager.init(this)
+        SyncManager.schedulePeriodic(this)
     }
 
     override fun newImageLoader(): ImageLoader {

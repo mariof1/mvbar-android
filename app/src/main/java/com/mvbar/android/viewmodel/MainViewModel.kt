@@ -3,6 +3,7 @@ package com.mvbar.android.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
 import com.mvbar.android.debug.DebugLog
@@ -22,7 +23,8 @@ data class HomeState(
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
-    private val repo = MusicRepository()
+    private val db = MvbarDatabase.getInstance(app)
+    private val repo = MusicRepository.getInstance(db)
     val playerManager = PlayerManager.getInstance(app)
 
     private val _homeState = MutableStateFlow(HomeState())
@@ -93,6 +95,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _homeState.value = _homeState.value.copy(
                 isLoading = !isRefresh, isRefreshing = isRefresh, error = null
             )
+            // Load from cache first
+            if (!isRefresh) {
+                val cachedBuckets = try { repo.getCachedRecommendations() } catch (_: Exception) { null }
+                val cachedRecent = try { repo.getCachedRecentlyAdded(20) } catch (_: Exception) { null }
+                if (!cachedBuckets.isNullOrEmpty() || !cachedRecent.isNullOrEmpty()) {
+                    _homeState.value = HomeState(
+                        buckets = cachedBuckets ?: emptyList(),
+                        recentlyAdded = cachedRecent ?: emptyList()
+                    )
+                }
+            }
+            // Then fetch from API
             try {
                 DebugLog.i("Home", "Loading recommendations...")
                 val buckets = try {
@@ -101,7 +115,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     resp.buckets
                 } catch (e: Exception) {
                     DebugLog.e("Home", "Failed to load recommendations", e)
-                    emptyList()
+                    _homeState.value.buckets.ifEmpty { emptyList() }
                 }
                 val recent = try {
                     val resp = repo.getRecentlyAdded(20)
@@ -109,7 +123,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     resp.tracks
                 } catch (e: Exception) {
                     DebugLog.e("Home", "Failed to load recent tracks", e)
-                    emptyList()
+                    _homeState.value.recentlyAdded.ifEmpty { emptyList() }
                 }
                 _homeState.value = HomeState(buckets = buckets, recentlyAdded = recent)
             } catch (e: Exception) {
@@ -126,16 +140,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             if (!isRefresh) _favoritesLoading.value = true
             _favoritesError.value = null
+            // Load from cache first
+            if (!isRefresh) {
+                val cached = try { repo.getCachedFavorites() } catch (_: Exception) { null }
+                if (!cached.isNullOrEmpty()) {
+                    _favorites.value = cached
+                    _favoritesLoading.value = false
+                }
+            }
+            // Then fetch from API
             try {
                 val favTracks = repo.getFavorites().tracks
                 _favorites.value = favTracks
-                // Auto-cache favorites in background if enabled
                 if (AudioCacheManager.autoCacheFavorites && favTracks.isNotEmpty()) {
                     AudioCacheManager.cacheTracks(favTracks)
                 }
             } catch (e: Exception) {
                 DebugLog.e("Favorites", "Load failed", e)
-                _favoritesError.value = "Failed to load favorites"
+                if (_favorites.value.isEmpty()) _favoritesError.value = "Failed to load favorites"
             } finally {
                 _favoritesLoading.value = false
             }
@@ -146,11 +168,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             if (!isRefresh) _historyLoading.value = true
             _historyError.value = null
+            // Load from cache first
+            if (!isRefresh) {
+                val cached = try { repo.getCachedHistory() } catch (_: Exception) { null }
+                if (!cached.isNullOrEmpty()) {
+                    _history.value = cached
+                    _historyLoading.value = false
+                }
+            }
+            // Then fetch from API
             try {
                 _history.value = repo.getHistory().tracks
             } catch (e: Exception) {
                 DebugLog.e("History", "Load failed", e)
-                _historyError.value = "Failed to load history"
+                if (_history.value.isEmpty()) _historyError.value = "Failed to load history"
             } finally {
                 _historyLoading.value = false
             }
@@ -159,6 +190,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadPlaylists() {
         viewModelScope.launch {
+            // Load from cache first
+            val cached = try { repo.getCachedPlaylists() } catch (_: Exception) { null }
+            if (!cached.isNullOrEmpty()) _playlists.value = cached
+            // Then fetch from API
             try {
                 _playlists.value = repo.getPlaylists().playlists
             } catch (e: Exception) {

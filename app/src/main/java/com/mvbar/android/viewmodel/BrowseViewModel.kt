@@ -1,7 +1,9 @@
 package com.mvbar.android.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
 import com.mvbar.android.debug.DebugLog
@@ -28,8 +30,9 @@ data class BrowseState(
     val error: String? = null
 )
 
-class BrowseViewModel : ViewModel() {
-    private val repo = MusicRepository()
+class BrowseViewModel(app: Application) : AndroidViewModel(app) {
+    private val db = MvbarDatabase.getInstance(app)
+    private val repo = MusicRepository.getInstance(db)
     private val _state = MutableStateFlow(BrowseState())
     val state: StateFlow<BrowseState> = _state.asStateFlow()
 
@@ -103,6 +106,35 @@ class BrowseViewModel : ViewModel() {
             _state.value = _state.value.copy(
                 isLoading = !isRefresh, isRefreshing = isRefresh, error = null
             )
+            // Load from cache first
+            if (!isRefresh) {
+                val cachedArtists = try { repo.getCachedArtists(PAGE_SIZE, 0) } catch (_: Exception) { null }
+                val cachedAlbums = try { repo.getCachedAlbums(PAGE_SIZE, 0) } catch (_: Exception) { null }
+                val cachedGenres = try { repo.getCachedGenres(PAGE_SIZE, 0) } catch (_: Exception) { null }
+                val cachedCountries = try { repo.getCachedCountries(PAGE_SIZE, 0) } catch (_: Exception) { null }
+                val cachedLanguages = try { repo.getCachedLanguages(PAGE_SIZE, 0) } catch (_: Exception) { null }
+                val totalArtists = try { repo.getCachedArtistCount() } catch (_: Exception) { 0 }
+                val totalAlbums = try { repo.getCachedAlbumCount() } catch (_: Exception) { 0 }
+                val totalGenres = try { repo.getCachedGenreCount() } catch (_: Exception) { 0 }
+                val totalCountries = try { repo.getCachedCountryCount() } catch (_: Exception) { 0 }
+                val totalLanguages = try { repo.getCachedLanguageCount() } catch (_: Exception) { 0 }
+                if (!cachedArtists.isNullOrEmpty() || !cachedAlbums.isNullOrEmpty()) {
+                    _state.value = _state.value.copy(
+                        artists = cachedArtists ?: emptyList(),
+                        albums = cachedAlbums ?: emptyList(),
+                        genres = cachedGenres ?: emptyList(),
+                        countries = cachedCountries ?: emptyList(),
+                        languages = cachedLanguages ?: emptyList(),
+                        hasMoreArtists = (cachedArtists?.size ?: 0) < totalArtists,
+                        hasMoreAlbums = (cachedAlbums?.size ?: 0) < totalAlbums,
+                        hasMoreGenres = (cachedGenres?.size ?: 0) < totalGenres,
+                        hasMoreCountries = (cachedCountries?.size ?: 0) < totalCountries,
+                        hasMoreLanguages = (cachedLanguages?.size ?: 0) < totalLanguages,
+                        isLoading = false, isRefreshing = false
+                    )
+                }
+            }
+            // Then fetch from API
             try {
                 DebugLog.i("Browse", "Loading artists, albums, genres...")
                 val artists = try {
@@ -110,31 +142,46 @@ class BrowseViewModel : ViewModel() {
                     DebugLog.i("Browse", "Got ${r.artists.size} artists (total: ${r.total})")
                     _state.value = _state.value.copy(hasMoreArtists = r.artists.size >= PAGE_SIZE)
                     r.artists
-                } catch (e: Exception) { DebugLog.e("Browse", "Artists failed", e); emptyList() }
+                } catch (e: Exception) {
+                    DebugLog.e("Browse", "Artists failed", e)
+                    _state.value.artists.ifEmpty { emptyList() }
+                }
                 val albums = try {
                     val r = repo.getAlbums(PAGE_SIZE, 0)
                     DebugLog.i("Browse", "Got ${r.albums.size} albums (total: ${r.total})")
                     _state.value = _state.value.copy(hasMoreAlbums = r.albums.size >= PAGE_SIZE)
                     r.albums
-                } catch (e: Exception) { DebugLog.e("Browse", "Albums failed", e); emptyList() }
+                } catch (e: Exception) {
+                    DebugLog.e("Browse", "Albums failed", e)
+                    _state.value.albums.ifEmpty { emptyList() }
+                }
                 val genres = try {
                     val r = repo.getGenres(PAGE_SIZE, 0)
                     DebugLog.i("Browse", "Got ${r.genres.size} genres (total: ${r.total})")
                     _state.value = _state.value.copy(hasMoreGenres = r.genres.size >= PAGE_SIZE)
                     r.genres
-                } catch (e: Exception) { DebugLog.e("Browse", "Genres failed", e); emptyList() }
+                } catch (e: Exception) {
+                    DebugLog.e("Browse", "Genres failed", e)
+                    _state.value.genres.ifEmpty { emptyList() }
+                }
                 val countries = try {
                     val r = repo.getCountries(PAGE_SIZE, 0)
                     DebugLog.i("Browse", "Got ${r.countries.size} countries (total: ${r.total})")
                     _state.value = _state.value.copy(hasMoreCountries = r.countries.size >= PAGE_SIZE)
                     r.countries
-                } catch (e: Exception) { DebugLog.e("Browse", "Countries failed", e); emptyList() }
+                } catch (e: Exception) {
+                    DebugLog.e("Browse", "Countries failed", e)
+                    _state.value.countries.ifEmpty { emptyList() }
+                }
                 val languages = try {
                     val r = repo.getLanguages(PAGE_SIZE, 0)
                     DebugLog.i("Browse", "Got ${r.languages.size} languages (total: ${r.total})")
                     _state.value = _state.value.copy(hasMoreLanguages = r.languages.size >= PAGE_SIZE)
                     r.languages
-                } catch (e: Exception) { DebugLog.e("Browse", "Languages failed", e); emptyList() }
+                } catch (e: Exception) {
+                    DebugLog.e("Browse", "Languages failed", e)
+                    _state.value.languages.ifEmpty { emptyList() }
+                }
                 _state.value = _state.value.copy(
                     artists = artists, albums = albums, genres = genres,
                     countries = countries, languages = languages,
