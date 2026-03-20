@@ -69,18 +69,16 @@ fun NowPlayingScreen(
         if (showLyrics && !state.isPodcastMode) onLoadLyrics?.invoke(track.id)
     }
 
-    // Swipe-down-to-dismiss state
+    // Swipe-down-to-dismiss and swipe-up-for-queue state
     val screenHeightPx = with(LocalDensity.current) {
         LocalConfiguration.current.screenHeightDp.dp.toPx()
     }
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var isDismissing by remember { mutableStateOf(false) }
 
-    // Dismiss if any meaningful swipe down detected (low threshold)
     val dismissThreshold = screenHeightPx * 0.08f
+    val queueThreshold = screenHeightPx * 0.06f
 
-    // Use dragOffset directly during drag for instant feedback,
-    // only animate when snapping back
     val displayOffset = if (isDismissing) screenHeightPx else dragOffset
 
     Box(
@@ -95,13 +93,18 @@ fun NowPlayingScreen(
                         if (dragOffset > dismissThreshold) {
                             isDismissing = true
                             onBack()
+                        } else if (dragOffset < -queueThreshold) {
+                            showQueue = true
                         }
                         dragOffset = 0f
                     },
                     onDragCancel = { dragOffset = 0f },
                     onVerticalDrag = { change, dragAmount ->
                         change.consume()
-                        dragOffset = (dragOffset + dragAmount).coerceAtLeast(0f)
+                        // Allow downward drag (positive) and track upward drag (negative)
+                        dragOffset = (dragOffset + dragAmount).coerceIn(
+                            -screenHeightPx * 0.15f, screenHeightPx
+                        )
                     }
                 )
             }

@@ -354,10 +354,21 @@ fun MainScreen(
                 navController = navController,
                 startDestination = "home",
                 modifier = Modifier.padding(top = innerPadding.calculateTopPadding()),
-                enterTransition = { fadeIn(tween(200)) + slideInHorizontally(tween(200)) { it / 4 } },
-                exitTransition = { fadeOut(tween(200)) },
-                popEnterTransition = { fadeIn(tween(200)) + slideInHorizontally(tween(200)) { -it / 4 } },
-                popExitTransition = { fadeOut(tween(200)) + slideOutHorizontally(tween(200)) { it / 4 } }
+                enterTransition = {
+                    fadeIn(tween(250)) + slideInHorizontally(tween(300)) { it / 3 } +
+                        scaleIn(tween(300), initialScale = 0.92f)
+                },
+                exitTransition = {
+                    fadeOut(tween(200)) + scaleOut(tween(250), targetScale = 0.95f)
+                },
+                popEnterTransition = {
+                    fadeIn(tween(250)) + slideInHorizontally(tween(300)) { -it / 3 } +
+                        scaleIn(tween(300), initialScale = 0.92f)
+                },
+                popExitTransition = {
+                    fadeOut(tween(200)) + slideOutHorizontally(tween(300)) { it / 3 } +
+                        scaleOut(tween(250), targetScale = 0.95f)
+                }
             ) {
                 composable("home") {
                     HomeScreen(

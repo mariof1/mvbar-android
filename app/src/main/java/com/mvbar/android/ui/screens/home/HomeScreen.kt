@@ -135,14 +135,14 @@ private fun HomeContent(
                 }
 
                 val rows = state.buckets.chunked(2)
-                items(rows) { row ->
+                itemsIndexed(rows) { rowIndex, row ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        for (bucket in row) {
+                        for ((colIndex, bucket) in row.withIndex()) {
                             BucketCard(
                                 bucket = bucket,
                                 onClick = { onBucketClick(bucket) },
@@ -151,6 +151,7 @@ private fun HomeContent(
                                         onPlayTrack(bucket.tracks.first(), bucket.tracks)
                                     }
                                 },
+                                bucketIndex = rowIndex * 2 + colIndex,
                                 modifier = Modifier.weight(1f)
                             )
                         }
