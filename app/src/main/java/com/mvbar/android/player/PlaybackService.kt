@@ -2,6 +2,7 @@ package com.mvbar.android.player
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.Uri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -10,24 +11,41 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
+import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import com.mvbar.android.MainActivity
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.debug.DebugLog
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.guava.future
 import okhttp3.OkHttpClient
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class PlaybackService : MediaSessionService() {
-    private var mediaSession: MediaSession? = null
+class PlaybackService : MediaLibraryService() {
+    private var mediaSession: MediaLibrarySession? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    companion object {
+        private const val ROOT_ID = "[root]"
+        private const val RECENT_ID = "[recent]"
+        private const val ALBUMS_ID = "[albums]"
+        private const val ARTISTS_ID = "[artists]"
+        private const val PLAYLISTS_ID = "[playlists]"
+        private const val GENRES_ID = "[genres]"
+        private const val FAVORITES_ID = "[favorites]"
+    }
 
     override fun onCreate() {
         super.onCreate()
 
-        // Initialize audio cache
         AudioCacheManager.init(this)
 
-        // OkHttp client with auth header for streaming
         val okClient = OkHttpClient.Builder()
             .addInterceptor { chain ->
                 val builder = chain.request().newBuilder()
@@ -39,8 +57,6 @@ class PlaybackService : MediaSessionService() {
             .build()
 
         val upstreamFactory = OkHttpDataSource.Factory(okClient)
-
-        // Wrap with cache: reads from disk cache first, streams & caches on miss
         val dataSourceFactory = AudioCacheManager.createCacheDataSourceFactory(upstreamFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
 
@@ -56,7 +72,6 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
-        // Enable gapless playback (crossfade-free seamless transitions)
         player.pauseAtEndOfMediaItems = false
 
         player.addListener(object : Player.Listener {
@@ -71,15 +86,15 @@ class PlaybackService : MediaSessionService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        mediaSession = MediaSession.Builder(this, player)
+        mediaSession = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .setSessionActivity(pendingIntent)
             .setBitmapLoader(AuthBitmapLoader())
             .build()
 
-        DebugLog.i("Player", "PlaybackService created with cache + gapless playback")
+        DebugLog.i("Player", "PlaybackService created with Android Auto support")
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
         mediaSession
 
     override fun onDestroy() {
@@ -90,4 +105,293 @@ class PlaybackService : MediaSessionService() {
         mediaSession = null
         super.onDestroy()
     }
+
+    private inner class LibraryCallback : MediaLibrarySession.Callback {
+
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            val root = MediaItem.Builder()
+                .setMediaId(ROOT_ID)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                        .setTitle("mvbar")
+                        .build()
+                )
+                .build()
+            return Futures.immediateFuture(LibraryResult.ofItem(root, params))
+        }
+
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            return serviceScope.future {
+                try {
+                    val items = when {
+                        parentId == ROOT_ID -> getRootChildren()
+                        parentId == RECENT_ID -> getRecentTracks()
+                        parentId == FAVORITES_ID -> getFavoriteTracks()
+                        parentId == ALBUMS_ID -> getAlbumsList()
+                        parentId == ARTISTS_ID -> getArtistsList()
+                        parentId == PLAYLISTS_ID -> getPlaylistsList()
+                        parentId == GENRES_ID -> getGenresList()
+                        parentId.startsWith("album:") -> getAlbumTracks(parentId.removePrefix("album:"))
+                        parentId.startsWith("artist:") -> getArtistTracks(parentId.removePrefix("artist:").toInt())
+                        parentId.startsWith("playlist:") -> getPlaylistTracks(parentId.removePrefix("playlist:").toInt())
+                        parentId.startsWith("genre:") -> getGenreTracks(parentId.removePrefix("genre:"))
+                        else -> emptyList()
+                    }
+                    LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
+                } catch (e: Exception) {
+                    DebugLog.e("Auto", "Browse error for $parentId", e)
+                    LibraryResult.ofItemList(ImmutableList.of(), params)
+                }
+            }
+        }
+
+        override fun onGetItem(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            mediaId: String
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            return Futures.immediateFuture(
+                LibraryResult.ofItem(
+                    MediaItem.Builder().setMediaId(mediaId).build(),
+                    null
+                )
+            )
+        }
+
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>
+        ): ListenableFuture<MutableList<MediaItem>> {
+            // Resolve browseable media items to playable ones with stream URIs
+            val resolved = mediaItems.map { item ->
+                val trackId = item.mediaId.toIntOrNull()
+                if (trackId != null) {
+                    val streamUrl = ApiClient.streamUrl(trackId)
+                    item.buildUpon()
+                        .setUri(streamUrl)
+                        .build()
+                } else {
+                    item
+                }
+            }.toMutableList()
+            return Futures.immediateFuture(resolved)
+        }
+
+        override fun onSearch(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<Void>> {
+            serviceScope.future {
+                try {
+                    val api = ApiClient.api
+                    val results = api.search(query, limit = 20)
+                    val items = results.hits.map { trackToMediaItem(it) }
+                    session.notifySearchResultChanged(browser, query, items.size, params)
+                } catch (e: Exception) {
+                    DebugLog.e("Auto", "Search error", e)
+                }
+            }
+            return Futures.immediateFuture(LibraryResult.ofVoid())
+        }
+
+        override fun onGetSearchResult(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            return serviceScope.future {
+                try {
+                    val api = ApiClient.api
+                    val results = api.search(query, limit = pageSize)
+                    val items = results.hits.map { trackToMediaItem(it) }
+                    LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
+                } catch (e: Exception) {
+                    DebugLog.e("Auto", "Search results error", e)
+                    LibraryResult.ofItemList(ImmutableList.of(), params)
+                }
+            }
+        }
+    }
+
+    // Browse tree builders
+
+    private fun getRootChildren(): List<MediaItem> = listOf(
+        browseFolderItem(RECENT_ID, "Recently Added", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
+        browseFolderItem(FAVORITES_ID, "Favorites", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
+        browseFolderItem(ALBUMS_ID, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS),
+        browseFolderItem(ARTISTS_ID, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS),
+        browseFolderItem(PLAYLISTS_ID, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS),
+        browseFolderItem(GENRES_ID, "Genres", MediaMetadata.MEDIA_TYPE_FOLDER_GENRES),
+    )
+
+    private suspend fun getRecentTracks(): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getRecentlyAdded(limit = 50)
+        return response.tracks.map { trackToMediaItem(it) }
+    }
+
+    private suspend fun getFavoriteTracks(): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getFavorites()
+        return response.tracks.map { trackToMediaItem(it) }
+    }
+
+    private suspend fun getAlbumsList(): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getAlbums(limit = 100)
+        return response.albums.map { album ->
+            val artUri = album.artPath?.let { ApiClient.artPathUrl(it) }
+            MediaItem.Builder()
+                .setMediaId("album:${album.displayName}")
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(album.displayName)
+                        .setArtist(album.artist)
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_ALBUM)
+                        .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
+                        .build()
+                )
+                .build()
+        }
+    }
+
+    private suspend fun getArtistsList(): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getArtists(limit = 100)
+        return response.artists.mapNotNull { artist ->
+            val id = artist.id ?: return@mapNotNull null
+            MediaItem.Builder()
+                .setMediaId("artist:$id")
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(artist.name)
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_ARTIST)
+                        .build()
+                )
+                .build()
+        }
+    }
+
+    private suspend fun getPlaylistsList(): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getPlaylists()
+        return response.playlists.map { playlist ->
+            MediaItem.Builder()
+                .setMediaId("playlist:${playlist.id}")
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(playlist.name)
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
+                        .build()
+                )
+                .build()
+        }
+    }
+
+    private suspend fun getGenresList(): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getGenres(limit = 100)
+        return response.genres.map { genre ->
+            MediaItem.Builder()
+                .setMediaId("genre:${genre.name}")
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(genre.name)
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_GENRE)
+                        .build()
+                )
+                .build()
+        }
+    }
+
+    private suspend fun getAlbumTracks(albumName: String): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getAlbumTracks(albumName)
+        return response.tracks.map { trackToMediaItem(it) }
+    }
+
+    private suspend fun getArtistTracks(artistId: Int): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getArtistTracks(artistId)
+        return response.tracks.map { trackToMediaItem(it) }
+    }
+
+    private suspend fun getPlaylistTracks(playlistId: Int): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getPlaylistItems(playlistId)
+        return response.items.mapNotNull { it.track?.let { t -> trackToMediaItem(t) } }
+    }
+
+    private suspend fun getGenreTracks(genreName: String): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getGenreTracks(genreName, limit = 100)
+        return response.tracks.map { trackToMediaItem(it) }
+    }
+
+    // Helpers
+
+    private fun trackToMediaItem(track: com.mvbar.android.data.model.Track): MediaItem {
+        val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) }
+            ?: ApiClient.trackArtUrl(track.id)
+        val streamUrl = ApiClient.streamUrl(track.id)
+        return MediaItem.Builder()
+            .setMediaId(track.id.toString())
+            .setUri(streamUrl)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.displayTitle)
+                    .setArtist(track.displayArtist)
+                    .setAlbumTitle(track.displayAlbum)
+                    .setArtworkUri(Uri.parse(artUrl))
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    .build()
+            )
+            .build()
+    }
+
+    private fun browseFolderItem(
+        id: String,
+        title: String,
+        mediaType: Int
+    ): MediaItem = MediaItem.Builder()
+        .setMediaId(id)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setIsBrowsable(true)
+                .setIsPlayable(false)
+                .setMediaType(mediaType)
+                .build()
+        )
+        .build()
 }
