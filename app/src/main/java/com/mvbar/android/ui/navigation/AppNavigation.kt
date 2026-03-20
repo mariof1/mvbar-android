@@ -99,6 +99,7 @@ fun MainScreen(
 
     val homeState by mainVm.homeState.collectAsState()
     val favorites by mainVm.favorites.collectAsState()
+    val favoriteIds by mainVm.favoriteIds.collectAsState()
     val favoritesLoading by mainVm.favoritesLoading.collectAsState()
     val favoritesError by mainVm.favoritesError.collectAsState()
     val history by mainVm.history.collectAsState()
@@ -199,6 +200,8 @@ fun MainScreen(
                 }
             },
             onTrackLongPress = { contextTrack = it },
+            favoriteIds = favoriteIds,
+            onToggleFavorite = { mainVm.toggleFavorite(it) },
             onClose = { showSearch = false; mainVm.clearSearch() }
         )
         return
@@ -374,6 +377,7 @@ fun MainScreen(
                     HomeScreen(
                         state = homeState,
                         currentTrackId = currentTrackId,
+                        favoriteIds = favoriteIds,
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onAlbumClick = { name ->
                             DebugLog.i("Nav", "Home album click: '$name'")
@@ -384,6 +388,7 @@ fun MainScreen(
                             }
                         },
                         onRefresh = { mainVm.loadHome() },
+                        onToggleFavorite = { mainVm.toggleFavorite(it) },
                         onTrackLongPress = { contextTrack = it }
                     )
                 }
@@ -457,7 +462,9 @@ fun MainScreen(
                             try { navController.navigate("album?name=${Uri.encode(albumName)}") }
                             catch (_: Exception) {}
                         },
-                        onTrackLongPress = { contextTrack = it }
+                        onTrackLongPress = { contextTrack = it },
+                        favoriteIds = favoriteIds,
+                        onToggleFavorite = { mainVm.toggleFavorite(it) }
                     )
                 }
 
@@ -483,7 +490,9 @@ fun MainScreen(
                         onBack = { navController.popBackStack() },
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onPlayAll = { if (albumTracks.isNotEmpty()) mainVm.playTrack(albumTracks.first(), albumTracks) },
-                        onTrackLongPress = { contextTrack = it }
+                        onTrackLongPress = { contextTrack = it },
+                        favoriteIds = favoriteIds,
+                        onToggleFavorite = { mainVm.toggleFavorite(it) }
                     )
                 }
 
@@ -506,7 +515,9 @@ fun MainScreen(
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onPlayAll = { if (genreTracks.isNotEmpty()) mainVm.playTrack(genreTracks.first(), genreTracks) },
                         onLoadMore = { browseVm.loadMoreGenreTracks() },
-                        onTrackLongPress = { contextTrack = it }
+                        onTrackLongPress = { contextTrack = it },
+                        favoriteIds = favoriteIds,
+                        onToggleFavorite = { mainVm.toggleFavorite(it) }
                     )
                 }
 
@@ -529,7 +540,9 @@ fun MainScreen(
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onPlayAll = { if (countryTracks.isNotEmpty()) mainVm.playTrack(countryTracks.first(), countryTracks) },
                         onLoadMore = { browseVm.loadMoreCountryTracks() },
-                        onTrackLongPress = { contextTrack = it }
+                        onTrackLongPress = { contextTrack = it },
+                        favoriteIds = favoriteIds,
+                        onToggleFavorite = { mainVm.toggleFavorite(it) }
                     )
                 }
 
@@ -552,7 +565,9 @@ fun MainScreen(
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onPlayAll = { if (languageTracks.isNotEmpty()) mainVm.playTrack(languageTracks.first(), languageTracks) },
                         onLoadMore = { browseVm.loadMoreLanguageTracks() },
-                        onTrackLongPress = { contextTrack = it }
+                        onTrackLongPress = { contextTrack = it },
+                        favoriteIds = favoriteIds,
+                        onToggleFavorite = { mainVm.toggleFavorite(it) }
                     )
                 }
 
@@ -596,7 +611,9 @@ fun MainScreen(
                         onRemoveTrack = { trackId ->
                             selectedPlaylist?.let { mainVm.removeFromPlaylist(it.id, trackId) }
                         },
-                        onTrackLongPress = { contextTrack = it }
+                        onTrackLongPress = { contextTrack = it },
+                        favoriteIds = favoriteIds,
+                        onToggleFavorite = { mainVm.toggleFavorite(it) }
                     )
                 }
 
@@ -623,7 +640,9 @@ fun MainScreen(
                                 navController.popBackStack()
                             }
                         },
-                        onTrackLongPress = { contextTrack = it }
+                        onTrackLongPress = { contextTrack = it },
+                        favoriteIds = favoriteIds,
+                        onToggleFavorite = { mainVm.toggleFavorite(it) }
                     )
                 }
 
@@ -681,7 +700,9 @@ fun MainScreen(
                         onBack = { navController.popBackStack() },
                         isLoading = historyLoading,
                         error = historyError,
-                        onTrackLongPress = { contextTrack = it }
+                        onTrackLongPress = { contextTrack = it },
+                        favoriteIds = favoriteIds,
+                        onToggleFavorite = { mainVm.toggleFavorite(it) }
                     )
                 }
 

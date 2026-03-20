@@ -33,6 +33,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _favorites = MutableStateFlow<List<Track>>(emptyList())
     val favorites: StateFlow<List<Track>> = _favorites.asStateFlow()
 
+    private val _favoriteIds = MutableStateFlow<Set<Int>>(emptySet())
+    val favoriteIds: StateFlow<Set<Int>> = _favoriteIds.asStateFlow()
+
     private val _favoritesLoading = MutableStateFlow(false)
     val favoritesLoading: StateFlow<Boolean> = _favoritesLoading.asStateFlow()
 
@@ -88,6 +91,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch { playerManager.connect() }
+        // Sync favorite state whenever the current track changes
+        viewModelScope.launch {
+            var lastTrackId: Int? = null
+            playerManager.state.collect { state ->
+                val trackId = state.currentTrack?.id
+                if (trackId != lastTrackId) {
+                    lastTrackId = trackId
+                    if (trackId != null) {
+                        playerManager.setFavorite(trackId in _favoriteIds.value)
+                    }
+                }
+            }
+        }
     }
 
     fun loadHome(isRefresh: Boolean = false) {
@@ -145,6 +161,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val cached = try { repo.getCachedFavorites() } catch (_: Exception) { null }
                 if (!cached.isNullOrEmpty()) {
                     _favorites.value = cached
+                    _favoriteIds.value = cached.map { it.id }.toSet()
                     _favoritesLoading.value = false
                 }
             }
@@ -152,6 +169,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val favTracks = repo.getFavorites().tracks
                 _favorites.value = favTracks
+                _favoriteIds.value = favTracks.map { it.id }.toSet()
+                // Update player favorite state if current track is in favorites
+                syncPlayerFavoriteState()
                 if (AudioCacheManager.autoCacheFavorites && favTracks.isNotEmpty()) {
                     AudioCacheManager.cacheTracks(favTracks)
                 }
@@ -377,6 +397,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val tracks = queue ?: listOf(track)
         val idx = tracks.indexOf(track).coerceAtLeast(0)
         playerManager.playTracks(tracks, idx)
+        // Sync favorite state for the new track
+        playerManager.setFavorite(track.id in _favoriteIds.value)
         viewModelScope.launch {
             try { repo.recordPlay(track.id) } catch (_: Exception) {}
         }
@@ -385,12 +407,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun toggleFavorite(trackId: Int) {
+        // Optimistically toggle the favorite ID set
+        val currentIds = _favoriteIds.value
+        val isCurrentlyFav = trackId in currentIds
+        _favoriteIds.value = if (isCurrentlyFav) currentIds - trackId else currentIds + trackId
+        // Update player state if this is the current track
+        playerManager.state.value.currentTrack?.let {
+            if (it.id == trackId) playerManager.setFavorite(!isCurrentlyFav)
+        }
         viewModelScope.launch {
             try {
                 repo.toggleFavorite(trackId)
                 loadFavorites()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                // Revert on failure
+                _favoriteIds.value = currentIds
+                playerManager.state.value.currentTrack?.let {
+                    if (it.id == trackId) playerManager.setFavorite(isCurrentlyFav)
+                }
+            }
         }
+    }
+
+    private fun syncPlayerFavoriteState() {
+        val currentTrack = playerManager.state.value.currentTrack ?: return
+        playerManager.setFavorite(currentTrack.id in _favoriteIds.value)
     }
 
     fun addToQueue(track: Track) { playerManager.addToQueue(track) }

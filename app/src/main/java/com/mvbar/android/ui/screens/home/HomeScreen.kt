@@ -39,9 +39,11 @@ import com.mvbar.android.viewmodel.HomeState
 fun HomeScreen(
     state: HomeState,
     currentTrackId: Int?,
+    favoriteIds: Set<Int> = emptySet(),
     onPlayTrack: (Track, List<Track>) -> Unit,
     onAlbumClick: (String) -> Unit,
     onRefresh: () -> Unit,
+    onToggleFavorite: ((Int) -> Unit)? = null,
     onTrackLongPress: ((Track) -> Unit)? = null
 ) {
     LaunchedEffect(Unit) { onRefresh() }
@@ -65,16 +67,20 @@ fun HomeScreen(
             BucketDetailView(
                 bucket = bucket,
                 currentTrackId = currentTrackId,
+                favoriteIds = favoriteIds,
                 onPlayTrack = onPlayTrack,
+                onToggleFavorite = onToggleFavorite,
                 onBack = { selectedBucket = null }
             )
         } else {
             HomeContent(
                 state = state,
                 currentTrackId = currentTrackId,
+                favoriteIds = favoriteIds,
                 onPlayTrack = onPlayTrack,
                 onBucketClick = { selectedBucket = it },
                 onAlbumClick = onAlbumClick,
+                onToggleFavorite = onToggleFavorite,
                 onTrackLongPress = onTrackLongPress
             )
         }
@@ -86,9 +92,11 @@ fun HomeScreen(
 private fun HomeContent(
     state: HomeState,
     currentTrackId: Int?,
+    favoriteIds: Set<Int> = emptySet(),
     onPlayTrack: (Track, List<Track>) -> Unit,
     onBucketClick: (RecBucket) -> Unit,
     onAlbumClick: (String) -> Unit,
+    onToggleFavorite: ((Int) -> Unit)? = null,
     onTrackLongPress: ((Track) -> Unit)? = null
 ) {
     val pullRefreshState = rememberPullToRefreshState()
@@ -174,10 +182,12 @@ private fun HomeContent(
                     )
                 }
                 items(state.recentlyAdded.take(15)) { track ->
+                    val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
                     TrackListItem(
-                        track = track,
+                        track = trackWithFav,
                         isPlaying = track.id == currentTrackId,
                         onPlay = { onPlayTrack(track, state.recentlyAdded) },
+                        onFavorite = onToggleFavorite?.let { { it(track.id) } },
                         onMore = onTrackLongPress?.let { { it(track) } },
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
@@ -202,7 +212,9 @@ private fun HomeContent(
 private fun BucketDetailView(
     bucket: RecBucket,
     currentTrackId: Int?,
+    favoriteIds: Set<Int> = emptySet(),
     onPlayTrack: (Track, List<Track>) -> Unit,
+    onToggleFavorite: ((Int) -> Unit)? = null,
     onBack: () -> Unit
 ) {
     LazyColumn(
@@ -281,11 +293,13 @@ private fun BucketDetailView(
 
         // Track list
         itemsIndexed(bucket.tracks) { index, track ->
+            val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
             TrackListItem(
-                track = track,
+                track = trackWithFav,
                 index = index,
                 isPlaying = track.id == currentTrackId,
                 onPlay = { onPlayTrack(track, bucket.tracks) },
+                onFavorite = onToggleFavorite?.let { { it(track.id) } },
                 modifier = Modifier.padding(horizontal = 12.dp)
             )
         }

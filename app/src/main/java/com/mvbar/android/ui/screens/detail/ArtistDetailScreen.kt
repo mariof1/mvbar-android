@@ -43,7 +43,9 @@ fun ArtistDetailScreen(
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: () -> Unit,
     onAlbumClick: ((String) -> Unit)? = null,
-    onTrackLongPress: ((Track) -> Unit)? = null
+    onTrackLongPress: ((Track) -> Unit)? = null,
+    favoriteIds: Set<Int> = emptySet(),
+    onToggleFavorite: ((Int) -> Unit)? = null
 ) {
     if (artist == null) return
 
@@ -158,11 +160,13 @@ fun ArtistDetailScreen(
         }
 
         itemsIndexed(tracks) { index, track ->
+            val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
             TrackListItem(
-                track = track,
+                track = trackWithFav,
                 index = index,
                 isPlaying = track.id == currentTrackId,
                 onPlay = { onPlayTrack(track, tracks) },
+                onFavorite = onToggleFavorite?.let { { it(track.id) } },
                 onMore = onTrackLongPress?.let { { it(track) } },
                 modifier = Modifier.padding(horizontal = 12.dp)
             )

@@ -27,7 +27,9 @@ fun HistoryScreen(
     onBack: (() -> Unit)? = null,
     isLoading: Boolean = false,
     error: String? = null,
-    onTrackLongPress: ((Track) -> Unit)? = null
+    onTrackLongPress: ((Track) -> Unit)? = null,
+    favoriteIds: Set<Int> = emptySet(),
+    onToggleFavorite: ((Int) -> Unit)? = null
 ) {
     LaunchedEffect(Unit) { onRefresh() }
 
@@ -81,10 +83,12 @@ fun HistoryScreen(
                 else -> {
                     LazyColumn(contentPadding = PaddingValues(bottom = 140.dp)) {
                         items(history) { track ->
+                            val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
                             TrackListItem(
-                                track = track,
+                                track = trackWithFav,
                                 isPlaying = track.id == currentTrackId,
                                 onPlay = { onPlayTrack(track) },
+                                onFavorite = onToggleFavorite?.let { { it(track.id) } },
                                 onMore = onTrackLongPress?.let { { it(track) } },
                                 modifier = Modifier.padding(horizontal = 12.dp)
                             )

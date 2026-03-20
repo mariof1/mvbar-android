@@ -47,6 +47,8 @@ fun SearchScreen(
     onAlbumClick: (SearchAlbum) -> Unit,
     onPlaylistClick: (SearchPlaylist) -> Unit,
     onTrackLongPress: ((Track) -> Unit)? = null,
+    favoriteIds: Set<Int> = emptySet(),
+    onToggleFavorite: ((Int) -> Unit)? = null,
     onClose: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
@@ -146,10 +148,12 @@ fun SearchScreen(
                 if (hits.isNotEmpty()) {
                     item { SectionHeader("Songs") }
                     items(hits) { track ->
+                        val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
                         TrackListItem(
-                            track = track,
+                            track = trackWithFav,
                             isPlaying = track.id == currentTrackId,
                             onPlay = { onPlayTrack(track, hits) },
+                            onFavorite = onToggleFavorite?.let { { it(track.id) } },
                             onMore = onTrackLongPress?.let { handler -> { handler(track) } },
                             modifier = Modifier.padding(horizontal = 12.dp)
                         )

@@ -34,7 +34,9 @@ fun PlaylistDetailScreen(
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: () -> Unit,
     onRemoveTrack: (Int) -> Unit,
-    onTrackLongPress: ((Track) -> Unit)? = null
+    onTrackLongPress: ((Track) -> Unit)? = null,
+    favoriteIds: Set<Int> = emptySet(),
+    onToggleFavorite: ((Int) -> Unit)? = null
 ) {
     val name = playlist?.name ?: "Playlist"
 
@@ -115,12 +117,14 @@ fun PlaylistDetailScreen(
         }
 
         itemsIndexed(tracks) { index, track ->
+            val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TrackListItem(
-                    track = track,
+                    track = trackWithFav,
                     index = index,
                     isPlaying = track.id == currentTrackId,
                     onPlay = { onPlayTrack(track, tracks) },
+                    onFavorite = onToggleFavorite?.let { { it(track.id) } },
                     onMore = onTrackLongPress?.let { { it(track) } },
                     modifier = Modifier.weight(1f).padding(start = 12.dp)
                 )

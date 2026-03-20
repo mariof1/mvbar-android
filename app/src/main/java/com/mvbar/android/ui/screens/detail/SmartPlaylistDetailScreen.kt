@@ -37,7 +37,9 @@ fun SmartPlaylistDetailScreen(
     onPlayAll: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onTrackLongPress: ((Track) -> Unit)? = null
+    onTrackLongPress: ((Track) -> Unit)? = null,
+    favoriteIds: Set<Int> = emptySet(),
+    onToggleFavorite: ((Int) -> Unit)? = null
 ) {
     val tracks = detail?.tracks ?: emptyList()
 
@@ -149,11 +151,13 @@ fun SmartPlaylistDetailScreen(
         }
 
         itemsIndexed(tracks) { index, track ->
+            val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
             TrackListItem(
-                track = track,
+                track = trackWithFav,
                 index = index,
                 isPlaying = track.id == currentTrackId,
                 onPlay = { onPlayTrack(track, tracks) },
+                onFavorite = onToggleFavorite?.let { { it(track.id) } },
                 onMore = onTrackLongPress?.let { { it(track) } },
                 modifier = Modifier.padding(horizontal = 12.dp)
             )
