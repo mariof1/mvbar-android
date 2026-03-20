@@ -34,6 +34,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector) {
     DEBUG("Debug", Icons.Filled.BugReport)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onLogout: () -> Unit) {
     val context = LocalContext.current
@@ -79,13 +80,12 @@ fun SettingsScreen(onLogout: () -> Unit) {
         )
 
         // Tab row
-        TabRow(
+        SecondaryTabRow(
             selectedTabIndex = selectedTab.ordinal,
             containerColor = Color.Transparent,
             contentColor = Cyan500,
             indicator = {
                 TabRowDefaults.SecondaryIndicator(
-                    Modifier.fillMaxWidth(),
                     color = Cyan500
                 )
             },
