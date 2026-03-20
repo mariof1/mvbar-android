@@ -77,7 +77,7 @@ fun NowPlayingScreen(
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var isDismissing by remember { mutableStateOf(false) }
     val dismissThreshold = screenHeightPx * 0.08f
-    val displayOffset = if (isDismissing) screenHeightPx else dragOffset
+    val displayOffset = if (isDismissing) screenHeightPx else dragOffset.coerceAtLeast(0f)
 
     // Bottom sheet for queue
     val scaffoldState = rememberBottomSheetScaffoldState(
@@ -115,19 +115,23 @@ fun NowPlayingScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
+                .pointerInput(scaffoldState) {
                     detectVerticalDragGestures(
                         onDragEnd = {
                             if (dragOffset > dismissThreshold) {
                                 isDismissing = true
                                 onBack()
+                            } else if (dragOffset < -dismissThreshold) {
+                                // Swipe up → expand queue
+                                scope.launch { scaffoldState.bottomSheetState.expand() }
                             }
                             dragOffset = 0f
                         },
                         onDragCancel = { dragOffset = 0f },
                         onVerticalDrag = { change, dragAmount ->
                             change.consume()
-                            dragOffset = (dragOffset + dragAmount).coerceAtLeast(0f)
+                            // Track both directions: positive = down, negative = up
+                            dragOffset += dragAmount
                         }
                     )
                 }
