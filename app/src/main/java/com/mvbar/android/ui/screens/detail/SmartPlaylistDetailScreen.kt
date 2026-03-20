@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -56,6 +57,8 @@ fun SmartPlaylistDetailScreen(
                 IconButton(
                     onClick = onBack,
                     modifier = Modifier.statusBarsPadding().padding(8.dp)
+                        .size(40.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
                 ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
                 }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -225,6 +226,8 @@ private fun BucketDetailView(
                 IconButton(
                     onClick = onBack,
                     modifier = Modifier.statusBarsPadding().padding(8.dp)
+                        .size(40.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
                 ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
                 }
