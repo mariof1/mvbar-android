@@ -64,9 +64,9 @@ fun NowPlayingScreen(
     // Back gesture minimizes the player
     BackHandler(onBack = onBack)
 
-    // Load lyrics when switching to lyrics view or track changes
+    // Load lyrics when switching to lyrics view or track changes (skip for podcasts)
     LaunchedEffect(showLyrics, track.id) {
-        if (showLyrics) onLoadLyrics?.invoke(track.id)
+        if (showLyrics && !state.isPodcastMode) onLoadLyrics?.invoke(track.id)
     }
 
     // Swipe-down-to-dismiss state
@@ -137,12 +137,14 @@ fun NowPlayingScreen(
                     color = OnSurfaceDim
                 )
                 Row {
-                    IconButton(onClick = { showLyrics = !showLyrics }) {
-                        Icon(
-                            Icons.Filled.MusicNote,
-                            "Lyrics",
-                            tint = if (showLyrics) Cyan500 else OnSurfaceDim
-                        )
+                    if (!state.isPodcastMode) {
+                        IconButton(onClick = { showLyrics = !showLyrics }) {
+                            Icon(
+                                Icons.Filled.MusicNote,
+                                "Lyrics",
+                                tint = if (showLyrics) Cyan500 else OnSurfaceDim
+                            )
+                        }
                     }
                     IconButton(onClick = { showQueue = true }) {
                         Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = OnSurfaceDim)
@@ -153,7 +155,7 @@ fun NowPlayingScreen(
             Spacer(Modifier.weight(0.5f))
 
             // Album art or lyrics view
-            if (showLyrics) {
+            if (showLyrics && !state.isPodcastMode) {
                 com.mvbar.android.ui.components.LyricsView(
                     lyrics = lyrics,
                     isLoading = lyricsLoading,
@@ -165,9 +167,14 @@ fun NowPlayingScreen(
                         .background(SurfaceDark.copy(alpha = 0.5f))
                 )
             } else {
-                // Album art
+                // Album art — use podcast episode art URL for podcast tracks
+                val artModel = if (state.isPodcastMode) {
+                    ApiClient.episodeArtUrl(-track.id)
+                } else {
+                    track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+                }
                 AsyncImage(
-                    model = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id),
+                    model = artModel,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -432,8 +439,13 @@ private fun QueueItem(
             Spacer(Modifier.width(10.dp))
         }
 
+        val queueArtModel = if (track.id < 0) {
+            ApiClient.episodeArtUrl(-track.id)
+        } else {
+            track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+        }
         AsyncImage(
-            model = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id),
+            model = queueArtModel,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier

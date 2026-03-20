@@ -196,6 +196,16 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
         )
         playerManager.playTracks(listOf(pseudoTrack), 0)
 
+        // Resume from saved position if available
+        if (episode.positionMs > 0) {
+            DebugLog.i("Podcast", "Resuming episode ${episode.id} from ${episode.positionMs}ms")
+            viewModelScope.launch {
+                // Small delay to let ExoPlayer prepare the media before seeking
+                kotlinx.coroutines.delay(500)
+                playerManager.seekTo(episode.positionMs)
+            }
+        }
+
         // Start periodic progress saving
         startProgressSync(episode.id)
     }
