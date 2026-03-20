@@ -1,0 +1,32 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="128dp"
+    android:height="128dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+
+    <!-- Dark rounded background -->
+    <path
+        android:pathData="M24,0 L104,0 A24,24 0 0,1 128,24 L128,104 A24,24 0 0,1 104,128 L24,128 A24,24 0 0,1 0,104 L0,24 A24,24 0 0,1 24,0 Z"
+        android:fillColor="#0F172A"/>
+
+    <!-- Play triangle outline with gradient stroke -->
+    <path
+        android:pathData="M32,25 L105,64 L32,103 Z"
+        android:strokeWidth="8"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="128"
+                android:endY="128">
+                <item android:offset="0" android:color="#FF4DD9FF"/>
+                <item android:offset="1" android:color="#FF00A3CC"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
