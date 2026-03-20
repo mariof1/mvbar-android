@@ -25,6 +25,7 @@ import com.mvbar.android.ui.theme.*
 fun BucketCard(
     bucket: RecBucket,
     onClick: () -> Unit,
+    onPlay: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -42,24 +43,20 @@ fun BucketCard(
         ) {
             ArtGrid(artPaths = bucket.artPaths)
 
-            // Play button overlay
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
+            // Play button overlay — plays bucket directly
+            IconButton(
+                onClick = onPlay,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(44.dp)
+                    .background(Cyan500.copy(alpha = 0.9f), CircleShape)
             ) {
-                Surface(
-                    modifier = Modifier.size(40.dp),
-                    shape = CircleShape,
-                    color = Cyan500.copy(alpha = 0.9f),
-                    shadowElevation = 4.dp
-                ) {
-                    Icon(
-                        Icons.Filled.PlayArrow,
-                        contentDescription = "Play",
-                        tint = Color.Black,
-                        modifier = Modifier.padding(8.dp)
-                    )
-                }
+                Icon(
+                    Icons.Filled.PlayArrow,
+                    contentDescription = "Play ${bucket.name}",
+                    tint = Color.Black,
+                    modifier = Modifier.size(26.dp)
+                )
             }
         }
 

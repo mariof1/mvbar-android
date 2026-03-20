@@ -146,6 +146,11 @@ private fun HomeContent(
                             BucketCard(
                                 bucket = bucket,
                                 onClick = { onBucketClick(bucket) },
+                                onPlay = {
+                                    if (bucket.tracks.isNotEmpty()) {
+                                        onPlayTrack(bucket.tracks.first(), bucket.tracks)
+                                    }
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                         }

@@ -113,11 +113,12 @@ fun MiniPlayerBar(
                     Text("+15", color = OnSurfaceDim, style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                 }
             } else {
-                IconButton(onClick = onNext) {
+                val hasNext = state.queueIndex < state.queue.size - 1
+                IconButton(onClick = onNext, enabled = hasNext) {
                     Icon(
                         Icons.Filled.SkipNext,
                         contentDescription = "Next",
-                        tint = OnSurfaceDim,
+                        tint = if (hasNext) OnSurface else OnSurfaceDim.copy(alpha = 0.3f),
                         modifier = Modifier.size(24.dp)
                     )
                 }
