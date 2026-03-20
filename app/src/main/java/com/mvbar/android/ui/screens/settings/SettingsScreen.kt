@@ -180,6 +180,7 @@ private fun GeneralTab(onLogout: () -> Unit) {
     val scope = rememberCoroutineScope()
     val lastSync by SyncManager.lastSyncTime.collectAsState()
     val isSyncing by SyncManager.isSyncing.collectAsState()
+    val syncStatus by SyncManager.syncStatus.collectAsState()
     val syncIntervalOptions = listOf(1, 6, 12, 24)
     var syncIntervalIndex by remember {
         val current = SyncManager.getSyncIntervalHours()
@@ -331,7 +332,7 @@ private fun GeneralTab(onLogout: () -> Unit) {
                                 strokeWidth = 2.dp
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("Syncing…")
+                            Text(syncStatus.ifEmpty { "Syncing…" }, fontSize = 13.sp)
                         } else {
                             Icon(Icons.Filled.Sync, null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))

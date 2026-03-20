@@ -25,16 +25,23 @@ class SyncWorker(
 
         return try {
             // 1. Sync all tracks (paginated)
+            SyncManager.setSyncStatus("Syncing tracks...")
             syncTracks(db)
 
             // 2. Sync browse data (paginated)
+            SyncManager.setSyncStatus("Syncing artists...")
             syncArtists(db)
+            SyncManager.setSyncStatus("Syncing albums...")
             syncAlbums(db)
+            SyncManager.setSyncStatus("Syncing genres...")
             syncGenres(db)
+            SyncManager.setSyncStatus("Syncing countries...")
             syncCountries(db)
+            SyncManager.setSyncStatus("Syncing languages...")
             syncLanguages(db)
 
             // 3. Sync favorites
+            SyncManager.setSyncStatus("Syncing favorites...")
             try {
                 val favs = api.getFavorites()
                 db.favoriteDao().replaceAll(favs.tracks.map { FavoriteTrackEntity(it.id) })
@@ -44,6 +51,7 @@ class SyncWorker(
             }
 
             // 4. Sync history
+            SyncManager.setSyncStatus("Syncing history...")
             try {
                 val hist = api.getHistory(200)
                 db.historyDao().replaceAll(
@@ -55,6 +63,7 @@ class SyncWorker(
             }
 
             // 5. Sync playlists + items
+            SyncManager.setSyncStatus("Syncing playlists...")
             try {
                 val plResp = api.getPlaylists()
                 db.playlistDao().replaceAll(plResp.playlists.map { it.toEntity() })
@@ -75,6 +84,7 @@ class SyncWorker(
             }
 
             // 6. Sync recommendations
+            SyncManager.setSyncStatus("Syncing recommendations...")
             try {
                 val recs = api.getRecommendations()
                 db.recommendationDao().replaceAll(recs.buckets.map { it.toEntity() })
@@ -84,6 +94,7 @@ class SyncWorker(
             }
 
             // 7. Sync podcasts + episodes
+            SyncManager.setSyncStatus("Syncing podcasts...")
             try {
                 val pods = api.getPodcasts()
                 db.podcastDao().replaceAllPodcasts(pods.podcasts.map { it.toEntity() })
@@ -118,16 +129,14 @@ class SyncWorker(
     private suspend fun syncTracks(db: MvbarDatabase) {
         val api = ApiClient.api
         try {
-            val countResp = api.getTrackCount()
-            val total = countResp["count"] ?: 0
-            DebugLog.i("SyncWorker", "Track count from server: $total")
-
             val pageSize = 200
             val allTracks = mutableListOf<TrackEntity>()
             var offset = 0
-            while (offset < total) {
+            while (true) {
                 val resp = api.getTracks(limit = pageSize, offset = offset)
                 allTracks.addAll(resp.tracks.map { it.toEntity() })
+                SyncManager.setSyncStatus("Syncing tracks... ${allTracks.size} fetched")
+                if (resp.tracks.size < pageSize) break
                 offset += pageSize
             }
             db.trackDao().replaceAll(allTracks)

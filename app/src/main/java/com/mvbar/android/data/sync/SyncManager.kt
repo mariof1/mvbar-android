@@ -21,6 +21,9 @@ object SyncManager {
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
+    private val _syncStatus = MutableStateFlow("")
+    val syncStatus: StateFlow<String> = _syncStatus.asStateFlow()
+
     private lateinit var prefs: SharedPreferences
 
     fun init(context: Context) {
@@ -46,6 +49,11 @@ object SyncManager {
 
     fun setIsSyncing(syncing: Boolean) {
         _isSyncing.value = syncing
+        if (!syncing) _syncStatus.value = ""
+    }
+
+    fun setSyncStatus(status: String) {
+        _syncStatus.value = status
     }
 
     fun schedulePeriodic(context: Context, intervalHours: Int = getSyncIntervalHours()) {
