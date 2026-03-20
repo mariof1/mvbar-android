@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -27,10 +28,17 @@ import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.ui.theme.*
 import kotlinx.coroutines.launch
 
+private enum class SettingsTab(val label: String, val icon: ImageVector) {
+    GENERAL("General", Icons.Filled.Settings),
+    PLAYBACK("Playback", Icons.Filled.MusicNote),
+    DEBUG("Debug", Icons.Filled.BugReport)
+}
+
 @Composable
 fun SettingsScreen(onLogout: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var selectedTab by remember { mutableStateOf(SettingsTab.GENERAL) }
     var debugEnabled by remember { mutableStateOf(DebugLog.enabled) }
     var showLogViewer by remember { mutableStateOf(false) }
     var logEntries by remember { mutableStateOf(DebugLog.getEntries()) }
@@ -62,20 +70,115 @@ fun SettingsScreen(onLogout: () -> Unit) {
         return
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 140.dp)
-    ) {
-        item {
-            Text(
-                "Settings",
-                style = MaterialTheme.typography.headlineLarge,
-                color = OnSurface,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
-            )
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text(
+            "Settings",
+            style = MaterialTheme.typography.headlineLarge,
+            color = OnSurface,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+        )
+
+        // Tab row
+        TabRow(
+            selectedTabIndex = selectedTab.ordinal,
+            containerColor = Color.Transparent,
+            contentColor = Cyan500,
+            indicator = {
+                TabRowDefaults.SecondaryIndicator(
+                    Modifier.fillMaxWidth(),
+                    color = Cyan500
+                )
+            },
+            divider = { HorizontalDivider(color = SurfaceDark) }
+        ) {
+            SettingsTab.entries.forEach { tab ->
+                Tab(
+                    selected = selectedTab == tab,
+                    onClick = { selectedTab = tab },
+                    text = { Text(tab.label, fontSize = 13.sp) },
+                    icon = { Icon(tab.icon, null, modifier = Modifier.size(20.dp)) },
+                    selectedContentColor = Cyan500,
+                    unselectedContentColor = OnSurfaceDim
+                )
+            }
         }
 
-        // App info card
+        // Tab content
+        when (selectedTab) {
+            SettingsTab.GENERAL -> GeneralTab(onLogout)
+            SettingsTab.PLAYBACK -> PlaybackTab(
+                cacheSizeMb = cacheSizeMb,
+                cachedTrackCount = cachedTrackCount,
+                cacheLimitSteps = cacheLimitSteps,
+                cacheLimitIndex = cacheLimitIndex,
+                prefetchCount = prefetchCount,
+                wifiOnly = wifiOnly,
+                autoCacheFavorites = autoCacheFavorites,
+                onClearCache = {
+                    AudioCacheManager.clearCache()
+                    cacheSizeMb = 0
+                    cachedTrackCount = 0
+                },
+                onCacheLimitChange = { cacheLimitIndex = it },
+                onCacheLimitSet = { AudioCacheManager.setMaxCacheMb(cacheLimitSteps[cacheLimitIndex]) },
+                onPrefetchChange = { prefetchCount = it },
+                onPrefetchSet = { AudioCacheManager.setPrefetchCount(prefetchCount) },
+                onWifiOnlyChange = { wifiOnly = it; AudioCacheManager.setWifiOnlyDownload(it) },
+                onAutoCacheChange = { autoCacheFavorites = it; AudioCacheManager.setAutoCacheFavorites(it) }
+            )
+            SettingsTab.DEBUG -> DebugTab(
+                context = context,
+                scope = scope,
+                debugEnabled = debugEnabled,
+                uploadUrl = uploadUrl,
+                uploadStatus = uploadStatus,
+                isUploading = isUploading,
+                onToggleDebug = {
+                    debugEnabled = it
+                    DebugLog.enabled = it
+                    DebugLog.save(context)
+                    ApiClient.rebuild()
+                    if (it) DebugLog.i("Settings", "Debug logging enabled")
+                },
+                onViewLogs = {
+                    logEntries = DebugLog.getEntries()
+                    showLogViewer = true
+                },
+                onShareLogs = { DebugLog.shareLog(context) },
+                onCopyLogs = { DebugLog.copyToClipboard(context) },
+                onClearLogs = { DebugLog.clear(); logEntries = emptyList() },
+                onUploadUrlChange = {
+                    uploadUrl = it
+                    DebugLog.uploadServerUrl = it
+                    DebugLog.save(context)
+                },
+                onUpload = {
+                    DebugLog.uploadServerUrl = uploadUrl
+                    isUploading = true
+                    uploadStatus = null
+                    scope.launch {
+                        try {
+                            val result = DebugLog.uploadLog()
+                            uploadStatus = "✓ $result"
+                        } catch (e: Exception) {
+                            uploadStatus = "✗ ${e.message}"
+                        } finally {
+                            isUploading = false
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun GeneralTab(onLogout: () -> Unit) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 140.dp)
+    ) {
+        // App info
         item {
             Card(
                 modifier = Modifier
@@ -85,7 +188,7 @@ fun SettingsScreen(onLogout: () -> Unit) {
                 colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Row {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Info, null, tint = Cyan500)
                         Spacer(Modifier.width(12.dp))
                         Column {
@@ -97,383 +200,27 @@ fun SettingsScreen(onLogout: () -> Unit) {
             }
         }
 
-        // Playback & Cache section
-        item {
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Playback & Cache",
-                style = MaterialTheme.typography.titleMedium,
-                color = OnSurfaceDim,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
-            )
-        }
-
+        // Server info
         item {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    // Cache size display
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Audio Cache", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Dns, null, tint = Cyan500)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("Server", style = MaterialTheme.typography.titleMedium, color = OnSurface)
                             Text(
-                                "${cacheSizeMb} MB used · $cachedTrackCount tracks cached",
+                                ApiClient.getBaseUrl().removeSuffix("/"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OnSurfaceDim
                             )
                         }
-                        OutlinedButton(
-                            onClick = {
-                                AudioCacheManager.clearCache()
-                                cacheSizeMb = 0
-                                cachedTrackCount = 0
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Icon(Icons.Filled.Delete, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Clear", fontSize = 13.sp)
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    // Max cache size
-                    Text("Max Cache Size", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-                    Text(
-                        "${cacheLimitSteps[cacheLimitIndex]} MB",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Cyan500
-                    )
-                    Slider(
-                        value = cacheLimitIndex.toFloat(),
-                        onValueChange = { cacheLimitIndex = it.toInt() },
-                        onValueChangeFinished = {
-                            AudioCacheManager.setMaxCacheMb(cacheLimitSteps[cacheLimitIndex])
-                        },
-                        valueRange = 0f..(cacheLimitSteps.size - 1).toFloat(),
-                        steps = cacheLimitSteps.size - 2,
-                        colors = SliderDefaults.colors(
-                            thumbColor = Cyan500,
-                            activeTrackColor = Cyan500,
-                            inactiveTrackColor = SurfaceDark
-                        )
-                    )
-
-                    Spacer(Modifier.height(8.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    // Prefetch count
-                    Text("Prefetch Next Tracks", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-                    Text(
-                        "Auto-download $prefetchCount upcoming track${if (prefetchCount != 1) "s" else ""} for seamless playback",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceDim
-                    )
-                    Slider(
-                        value = prefetchCount.toFloat(),
-                        onValueChange = { prefetchCount = it.toInt() },
-                        onValueChangeFinished = {
-                            AudioCacheManager.setPrefetchCount(prefetchCount)
-                        },
-                        valueRange = 0f..5f,
-                        steps = 4,
-                        colors = SliderDefaults.colors(
-                            thumbColor = Cyan500,
-                            activeTrackColor = Cyan500,
-                            inactiveTrackColor = SurfaceDark
-                        )
-                    )
-
-                    Spacer(Modifier.height(8.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    // WiFi only
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("WiFi Only Downloads", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-                            Text(
-                                "Only prefetch and cache on WiFi",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceDim
-                            )
-                        }
-                        Switch(
-                            checked = wifiOnly,
-                            onCheckedChange = {
-                                wifiOnly = it
-                                AudioCacheManager.setWifiOnlyDownload(it)
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Cyan500,
-                                uncheckedThumbColor = OnSurfaceDim,
-                                uncheckedTrackColor = SurfaceDark
-                            )
-                        )
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    // Auto-cache favorites
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Auto-Cache Favorites", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-                            Text(
-                                "Keep favorited tracks available offline",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceDim
-                            )
-                        }
-                        Switch(
-                            checked = autoCacheFavorites,
-                            onCheckedChange = {
-                                autoCacheFavorites = it
-                                AudioCacheManager.setAutoCacheFavorites(it)
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Cyan500,
-                                uncheckedThumbColor = OnSurfaceDim,
-                                uncheckedTrackColor = SurfaceDark
-                            )
-                        )
-                    }
-                }
-            }
-        }
-
-        // Debug section
-        item {
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Debug",
-                style = MaterialTheme.typography.titleMedium,
-                color = OnSurfaceDim,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
-            )
-        }
-
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    // Debug logging toggle
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Debug Logging", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-                            Text(
-                                "Log API calls, errors, and crashes",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceDim
-                            )
-                        }
-                        Switch(
-                            checked = debugEnabled,
-                            onCheckedChange = {
-                                debugEnabled = it
-                                DebugLog.enabled = it
-                                DebugLog.save(context)
-                                ApiClient.rebuild()
-                                if (it) DebugLog.i("Settings", "Debug logging enabled")
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Cyan500,
-                                uncheckedThumbColor = OnSurfaceDim,
-                                uncheckedTrackColor = SurfaceDark
-                            )
-                        )
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    // View logs
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                logEntries = DebugLog.getEntries()
-                                showLogViewer = true
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
-                        ) {
-                            Icon(Icons.Filled.List, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("View Logs (${DebugLog.getEntries().size})")
-                        }
-
-                        OutlinedButton(
-                            onClick = { DebugLog.shareLog(context) },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
-                        ) {
-                            Icon(Icons.Filled.Share, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Share")
-                        }
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { DebugLog.copyToClipboard(context) },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
-                        ) {
-                            Icon(Icons.Filled.ContentCopy, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Copy")
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                DebugLog.clear()
-                                logEntries = emptyList()
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            Icon(Icons.Filled.Delete, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Clear")
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    // Upload to server
-                    Text(
-                        "Upload to Server",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = OnSurface
-                    )
-                    Text(
-                        "Send logs directly to your dev server",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceDim
-                    )
-                    Spacer(Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = uploadUrl,
-                        onValueChange = {
-                            uploadUrl = it
-                            DebugLog.uploadServerUrl = it
-                            DebugLog.save(context)
-                        },
-                        label = { Text("Server URL") },
-                        placeholder = { Text("http://10.10.100.5:9999") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Cyan500,
-                            unfocusedBorderColor = OnSurfaceSubtle,
-                            focusedLabelColor = Cyan500,
-                            unfocusedLabelColor = OnSurfaceDim,
-                            cursorColor = Cyan500,
-                            focusedTextColor = OnSurface,
-                            unfocusedTextColor = OnSurface
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Button(
-                        onClick = {
-                            DebugLog.uploadServerUrl = uploadUrl
-                            isUploading = true
-                            uploadStatus = null
-                            scope.launch {
-                                try {
-                                    val result = DebugLog.uploadLog()
-                                    uploadStatus = "✓ $result"
-                                } catch (e: Exception) {
-                                    uploadStatus = "✗ ${e.message}"
-                                } finally {
-                                    isUploading = false
-                                }
-                            }
-                        },
-                        enabled = !isUploading && uploadUrl.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
-                    ) {
-                        if (isUploading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = Color.Black,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(Icons.Filled.Upload, null, tint = Color.Black, modifier = Modifier.size(18.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (isUploading) "Uploading..." else "Upload Logs to Server",
-                            color = Color.Black,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    if (uploadStatus != null) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            uploadStatus!!,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (uploadStatus!!.startsWith("✓")) Color(0xFF22C55E) else MaterialTheme.colorScheme.error
-                        )
                     }
                 }
             }
@@ -499,6 +246,380 @@ fun SettingsScreen(onLogout: () -> Unit) {
                 Text("Sign Out")
             }
         }
+    }
+}
+
+@Composable
+private fun PlaybackTab(
+    cacheSizeMb: Long,
+    cachedTrackCount: Int,
+    cacheLimitSteps: List<Int>,
+    cacheLimitIndex: Int,
+    prefetchCount: Int,
+    wifiOnly: Boolean,
+    autoCacheFavorites: Boolean,
+    onClearCache: () -> Unit,
+    onCacheLimitChange: (Int) -> Unit,
+    onCacheLimitSet: () -> Unit,
+    onPrefetchChange: (Int) -> Unit,
+    onPrefetchSet: () -> Unit,
+    onWifiOnlyChange: (Boolean) -> Unit,
+    onAutoCacheChange: (Boolean) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 140.dp)
+    ) {
+        // Cache status
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Audio Cache", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+                            Text(
+                                "${cacheSizeMb} MB used · $cachedTrackCount tracks cached",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OnSurfaceDim
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = onClearCache,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Filled.Delete, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Clear", fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Cache limit
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Max Cache Size", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+                    Text(
+                        "${cacheLimitSteps[cacheLimitIndex]} MB",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Cyan500
+                    )
+                    Slider(
+                        value = cacheLimitIndex.toFloat(),
+                        onValueChange = { onCacheLimitChange(it.toInt()) },
+                        onValueChangeFinished = onCacheLimitSet,
+                        valueRange = 0f..(cacheLimitSteps.size - 1).toFloat(),
+                        steps = cacheLimitSteps.size - 2,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Cyan500,
+                            activeTrackColor = Cyan500,
+                            inactiveTrackColor = SurfaceDark
+                        )
+                    )
+                }
+            }
+        }
+
+        // Prefetch
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Prefetch Next Tracks", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+                    Text(
+                        "Auto-download $prefetchCount upcoming track${if (prefetchCount != 1) "s" else ""} for seamless playback",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceDim
+                    )
+                    Slider(
+                        value = prefetchCount.toFloat(),
+                        onValueChange = { onPrefetchChange(it.toInt()) },
+                        onValueChangeFinished = onPrefetchSet,
+                        valueRange = 0f..5f,
+                        steps = 4,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Cyan500,
+                            activeTrackColor = Cyan500,
+                            inactiveTrackColor = SurfaceDark
+                        )
+                    )
+                }
+            }
+        }
+
+        // Toggles
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    SettingsToggle(
+                        title = "WiFi Only Downloads",
+                        subtitle = "Only prefetch and cache on WiFi",
+                        checked = wifiOnly,
+                        onCheckedChange = onWifiOnlyChange
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider(color = SurfaceDark)
+                    Spacer(Modifier.height(8.dp))
+
+                    SettingsToggle(
+                        title = "Auto-Cache Favorites",
+                        subtitle = "Keep favorited tracks available offline",
+                        checked = autoCacheFavorites,
+                        onCheckedChange = onAutoCacheChange
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DebugTab(
+    context: android.content.Context,
+    scope: kotlinx.coroutines.CoroutineScope,
+    debugEnabled: Boolean,
+    uploadUrl: String,
+    uploadStatus: String?,
+    isUploading: Boolean,
+    onToggleDebug: (Boolean) -> Unit,
+    onViewLogs: () -> Unit,
+    onShareLogs: () -> Unit,
+    onCopyLogs: () -> Unit,
+    onClearLogs: () -> Unit,
+    onUploadUrlChange: (String) -> Unit,
+    onUpload: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 140.dp)
+    ) {
+        // Debug toggle
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    SettingsToggle(
+                        title = "Debug Logging",
+                        subtitle = "Log API calls, errors, and crashes",
+                        checked = debugEnabled,
+                        onCheckedChange = onToggleDebug
+                    )
+                }
+            }
+        }
+
+        // Log actions
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Log Actions", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+                    Spacer(Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onViewLogs,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
+                        ) {
+                            Icon(Icons.Filled.List, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("View (${DebugLog.getEntries().size})")
+                        }
+
+                        OutlinedButton(
+                            onClick = onShareLogs,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
+                        ) {
+                            Icon(Icons.Filled.Share, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Share")
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onCopyLogs,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
+                        ) {
+                            Icon(Icons.Filled.ContentCopy, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Copy")
+                        }
+
+                        OutlinedButton(
+                            onClick = onClearLogs,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Icon(Icons.Filled.Delete, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Clear")
+                        }
+                    }
+                }
+            }
+        }
+
+        // Upload to server
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Upload to Server", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+                    Text(
+                        "Send logs directly to your dev server",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceDim
+                    )
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = uploadUrl,
+                        onValueChange = onUploadUrlChange,
+                        label = { Text("Server URL") },
+                        placeholder = { Text("http://10.10.100.5:9999") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Cyan500,
+                            unfocusedBorderColor = OnSurfaceSubtle,
+                            focusedLabelColor = Cyan500,
+                            unfocusedLabelColor = OnSurfaceDim,
+                            cursorColor = Cyan500,
+                            focusedTextColor = OnSurface,
+                            unfocusedTextColor = OnSurface
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Button(
+                        onClick = onUpload,
+                        enabled = !isUploading && uploadUrl.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
+                    ) {
+                        if (isUploading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color.Black,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Filled.Upload, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (isUploading) "Uploading..." else "Upload Logs",
+                            color = Color.Black,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    if (uploadStatus != null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            uploadStatus,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (uploadStatus.startsWith("✓")) Color(0xFF22C55E) else MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggle(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Cyan500,
+                uncheckedThumbColor = OnSurfaceDim,
+                uncheckedTrackColor = SurfaceDark
+            )
+        )
     }
 }
 
