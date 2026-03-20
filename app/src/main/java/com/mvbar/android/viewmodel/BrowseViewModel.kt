@@ -51,17 +51,41 @@ class BrowseViewModel : ViewModel() {
     private val _genreLoading = MutableStateFlow(false)
     val genreLoading: StateFlow<Boolean> = _genreLoading.asStateFlow()
 
+    private val _hasMoreGenreTracks = MutableStateFlow(true)
+    val hasMoreGenreTracks: StateFlow<Boolean> = _hasMoreGenreTracks.asStateFlow()
+
+    private val _isLoadingMoreGenreTracks = MutableStateFlow(false)
+    val isLoadingMoreGenreTracks: StateFlow<Boolean> = _isLoadingMoreGenreTracks.asStateFlow()
+
+    private var currentGenreName: String = ""
+
     private val _countryTracks = MutableStateFlow<List<Track>>(emptyList())
     val countryTracks: StateFlow<List<Track>> = _countryTracks.asStateFlow()
 
     private val _countryLoading = MutableStateFlow(false)
     val countryLoading: StateFlow<Boolean> = _countryLoading.asStateFlow()
 
+    private val _hasMoreCountryTracks = MutableStateFlow(true)
+    val hasMoreCountryTracks: StateFlow<Boolean> = _hasMoreCountryTracks.asStateFlow()
+
+    private val _isLoadingMoreCountryTracks = MutableStateFlow(false)
+    val isLoadingMoreCountryTracks: StateFlow<Boolean> = _isLoadingMoreCountryTracks.asStateFlow()
+
+    private var currentCountryName: String = ""
+
     private val _languageTracks = MutableStateFlow<List<Track>>(emptyList())
     val languageTracks: StateFlow<List<Track>> = _languageTracks.asStateFlow()
 
     private val _languageLoading = MutableStateFlow(false)
     val languageLoading: StateFlow<Boolean> = _languageLoading.asStateFlow()
+
+    private val _hasMoreLanguageTracks = MutableStateFlow(true)
+    val hasMoreLanguageTracks: StateFlow<Boolean> = _hasMoreLanguageTracks.asStateFlow()
+
+    private val _isLoadingMoreLanguageTracks = MutableStateFlow(false)
+    val isLoadingMoreLanguageTracks: StateFlow<Boolean> = _isLoadingMoreLanguageTracks.asStateFlow()
+
+    private var currentLanguageName: String = ""
 
     // Artist albums from detail endpoint
     private val _artistAlbums = MutableStateFlow<List<Album>>(emptyList())
@@ -282,14 +306,17 @@ class BrowseViewModel : ViewModel() {
     }
 
     fun loadGenreTracks(genreName: String) {
+        currentGenreName = genreName
         viewModelScope.launch {
             _genreLoading.value = true
             _genreTracks.value = emptyList()
+            _hasMoreGenreTracks.value = true
             try {
                 DebugLog.i("Browse", "Loading genre tracks for '$genreName'")
-                val response = repo.getGenreTracks(genreName)
+                val response = repo.getGenreTracks(genreName, PAGE_SIZE, 0)
                 DebugLog.i("Browse", "Got ${response.tracks.size} tracks for genre '$genreName'")
                 _genreTracks.value = response.tracks
+                _hasMoreGenreTracks.value = response.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Genre tracks failed for '$genreName'", e)
             } finally {
@@ -298,15 +325,36 @@ class BrowseViewModel : ViewModel() {
         }
     }
 
+    fun loadMoreGenreTracks() {
+        if (_isLoadingMoreGenreTracks.value || !_hasMoreGenreTracks.value) return
+        viewModelScope.launch {
+            _isLoadingMoreGenreTracks.value = true
+            try {
+                val offset = _genreTracks.value.size
+                val response = repo.getGenreTracks(currentGenreName, PAGE_SIZE, offset)
+                DebugLog.i("Browse", "Loaded ${response.tracks.size} more genre tracks (offset $offset)")
+                _genreTracks.value = _genreTracks.value + response.tracks
+                _hasMoreGenreTracks.value = response.tracks.size >= PAGE_SIZE
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Load more genre tracks failed", e)
+            } finally {
+                _isLoadingMoreGenreTracks.value = false
+            }
+        }
+    }
+
     fun loadCountryTracks(name: String) {
+        currentCountryName = name
         viewModelScope.launch {
             _countryLoading.value = true
             _countryTracks.value = emptyList()
+            _hasMoreCountryTracks.value = true
             try {
                 DebugLog.i("Browse", "Loading country tracks for '$name'")
-                val response = repo.getCountryTracks(name)
+                val response = repo.getCountryTracks(name, PAGE_SIZE, 0)
                 DebugLog.i("Browse", "Got ${response.tracks.size} tracks for country '$name'")
                 _countryTracks.value = response.tracks
+                _hasMoreCountryTracks.value = response.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Country tracks failed for '$name'", e)
             } finally {
@@ -315,19 +363,58 @@ class BrowseViewModel : ViewModel() {
         }
     }
 
+    fun loadMoreCountryTracks() {
+        if (_isLoadingMoreCountryTracks.value || !_hasMoreCountryTracks.value) return
+        viewModelScope.launch {
+            _isLoadingMoreCountryTracks.value = true
+            try {
+                val offset = _countryTracks.value.size
+                val response = repo.getCountryTracks(currentCountryName, PAGE_SIZE, offset)
+                DebugLog.i("Browse", "Loaded ${response.tracks.size} more country tracks (offset $offset)")
+                _countryTracks.value = _countryTracks.value + response.tracks
+                _hasMoreCountryTracks.value = response.tracks.size >= PAGE_SIZE
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Load more country tracks failed", e)
+            } finally {
+                _isLoadingMoreCountryTracks.value = false
+            }
+        }
+    }
+
     fun loadLanguageTracks(name: String) {
+        currentLanguageName = name
         viewModelScope.launch {
             _languageLoading.value = true
             _languageTracks.value = emptyList()
+            _hasMoreLanguageTracks.value = true
             try {
                 DebugLog.i("Browse", "Loading language tracks for '$name'")
-                val response = repo.getLanguageTracks(name)
+                val response = repo.getLanguageTracks(name, PAGE_SIZE, 0)
                 DebugLog.i("Browse", "Got ${response.tracks.size} tracks for language '$name'")
                 _languageTracks.value = response.tracks
+                _hasMoreLanguageTracks.value = response.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Language tracks failed for '$name'", e)
             } finally {
                 _languageLoading.value = false
+            }
+        }
+    }
+
+    fun loadMoreLanguageTracks() {
+        if (_isLoadingMoreLanguageTracks.value || !_hasMoreLanguageTracks.value) return
+        viewModelScope.launch {
+            _isLoadingMoreLanguageTracks.value = true
+            try {
+                val offset = _languageTracks.value.size
+                val response = repo.getLanguageTracks(currentLanguageName, PAGE_SIZE, offset)
+                DebugLog.i("Browse", "Loaded ${response.tracks.size} more language tracks (offset $offset)")
+                _languageTracks.value = _languageTracks.value + response.tracks
+                _hasMoreLanguageTracks.value = response.tracks.size >= PAGE_SIZE
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Load more language tracks failed", e)
+            } finally {
+                _isLoadingMoreLanguageTracks.value = false
             }
         }
     }

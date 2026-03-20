@@ -57,7 +57,11 @@ interface MvbarApi {
     ): GenresListWrapper
 
     @GET("api/browse/genre/{name}/tracks")
-    suspend fun getGenreTracks(@Path("name") name: String): TracksResponse
+    suspend fun getGenreTracks(
+        @Path("name") name: String,
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): TracksResponse
 
     @GET("api/browse/countries")
     suspend fun getCountries(
@@ -66,7 +70,11 @@ interface MvbarApi {
     ): CountriesListWrapper
 
     @GET("api/browse/country/{name}/tracks")
-    suspend fun getCountryTracks(@Path("name") name: String): TracksResponse
+    suspend fun getCountryTracks(
+        @Path("name") name: String,
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): TracksResponse
 
     @GET("api/browse/languages")
     suspend fun getLanguages(
@@ -75,7 +83,11 @@ interface MvbarApi {
     ): LanguagesListWrapper
 
     @GET("api/browse/language/{name}/tracks")
-    suspend fun getLanguageTracks(@Path("name") name: String): TracksResponse
+    suspend fun getLanguageTracks(
+        @Path("name") name: String,
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): TracksResponse
 
     // Favorites
     @GET("api/favorites")

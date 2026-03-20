@@ -117,10 +117,16 @@ fun MainScreen(
     val selectedAlbum by browseVm.selectedAlbum.collectAsState()
     val genreTracks by browseVm.genreTracks.collectAsState()
     val genreLoading by browseVm.genreLoading.collectAsState()
+    val hasMoreGenreTracks by browseVm.hasMoreGenreTracks.collectAsState()
+    val isLoadingMoreGenreTracks by browseVm.isLoadingMoreGenreTracks.collectAsState()
     val countryTracks by browseVm.countryTracks.collectAsState()
     val countryLoading by browseVm.countryLoading.collectAsState()
+    val hasMoreCountryTracks by browseVm.hasMoreCountryTracks.collectAsState()
+    val isLoadingMoreCountryTracks by browseVm.isLoadingMoreCountryTracks.collectAsState()
     val languageTracks by browseVm.languageTracks.collectAsState()
     val languageLoading by browseVm.languageLoading.collectAsState()
+    val hasMoreLanguageTracks by browseVm.hasMoreLanguageTracks.collectAsState()
+    val isLoadingMoreLanguageTracks by browseVm.isLoadingMoreLanguageTracks.collectAsState()
     val lyrics by mainVm.lyrics.collectAsState()
     val lyricsLoading by mainVm.lyricsLoading.collectAsState()
     val playlistTracks by mainVm.playlistTracks.collectAsState()
@@ -482,10 +488,13 @@ fun MainScreen(
                         genreName = name,
                         tracks = genreTracks,
                         isLoading = genreLoading,
+                        hasMore = hasMoreGenreTracks,
+                        isLoadingMore = isLoadingMoreGenreTracks,
                         currentTrackId = currentTrackId,
                         onBack = { navController.popBackStack() },
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onPlayAll = { if (genreTracks.isNotEmpty()) mainVm.playTrack(genreTracks.first(), genreTracks) },
+                        onLoadMore = { browseVm.loadMoreGenreTracks() },
                         onTrackLongPress = { contextTrack = it }
                     )
                 }
@@ -502,10 +511,13 @@ fun MainScreen(
                         countryName = name,
                         tracks = countryTracks,
                         isLoading = countryLoading,
+                        hasMore = hasMoreCountryTracks,
+                        isLoadingMore = isLoadingMoreCountryTracks,
                         currentTrackId = currentTrackId,
                         onBack = { navController.popBackStack() },
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onPlayAll = { if (countryTracks.isNotEmpty()) mainVm.playTrack(countryTracks.first(), countryTracks) },
+                        onLoadMore = { browseVm.loadMoreCountryTracks() },
                         onTrackLongPress = { contextTrack = it }
                     )
                 }
@@ -522,10 +534,13 @@ fun MainScreen(
                         languageName = name,
                         tracks = languageTracks,
                         isLoading = languageLoading,
+                        hasMore = hasMoreLanguageTracks,
+                        isLoadingMore = isLoadingMoreLanguageTracks,
                         currentTrackId = currentTrackId,
                         onBack = { navController.popBackStack() },
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onPlayAll = { if (languageTracks.isNotEmpty()) mainVm.playTrack(languageTracks.first(), languageTracks) },
+                        onLoadMore = { browseVm.loadMoreLanguageTracks() },
                         onTrackLongPress = { contextTrack = it }
                     )
                 }

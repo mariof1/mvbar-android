@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -25,13 +26,27 @@ fun CountryDetailScreen(
     countryName: String,
     tracks: List<Track>,
     isLoading: Boolean,
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
     currentTrackId: Int?,
     onBack: () -> Unit,
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: () -> Unit,
+    onLoadMore: () -> Unit = {},
     onTrackLongPress: ((Track) -> Unit)? = null
 ) {
+    val listState = rememberLazyListState()
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            hasMore && !isLoadingMore && tracks.isNotEmpty() && lastVisible >= tracks.size - 5
+        }
+    }
+    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 140.dp)
     ) {
@@ -100,6 +115,13 @@ fun CountryDetailScreen(
                     onPlay = { onPlayTrack(track, tracks) },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
+            }
+            if (isLoadingMore) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                    }
+                }
             }
         }
     }
