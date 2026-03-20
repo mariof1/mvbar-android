@@ -7,17 +7,34 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
+import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.data.sync.SyncManager
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 
 class MvbarApp : Application(), ImageLoaderFactory {
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         DebugLog.init(this)
         DebugLog.installCrashHandler()
         AudioCacheManager.init(this)
+
+        // Restore API session early so PlaybackService (Android Auto) can access the server
+        appScope.launch {
+            try {
+                val auth = AuthRepository(this@MvbarApp)
+                auth.restoreSession()
+            } catch (e: Exception) {
+                DebugLog.e("App", "Failed to restore session at startup", e)
+            }
+        }
 
         // Initialize Room database
         MvbarDatabase.getInstance(this)

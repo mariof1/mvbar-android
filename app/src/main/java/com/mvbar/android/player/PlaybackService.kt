@@ -19,11 +19,13 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.mvbar.android.MainActivity
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -45,6 +47,18 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
 
         AudioCacheManager.init(this)
+
+        // Ensure API is configured (critical for Android Auto which may start service without Activity)
+        if (ApiClient.getBaseUrl() == "http://localhost/") {
+            serviceScope.launch {
+                try {
+                    AuthRepository(this@PlaybackService).restoreSession()
+                    DebugLog.i("Player", "Restored API session in PlaybackService")
+                } catch (e: Exception) {
+                    DebugLog.e("Player", "Failed to restore session in PlaybackService", e)
+                }
+            }
+        }
 
         val okClient = OkHttpClient.Builder()
             .addInterceptor { chain ->
