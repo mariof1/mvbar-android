@@ -117,10 +117,10 @@ class SyncWorker(
             // 8. Sync audiobooks + chapters
             SyncManager.setSyncStatus("Syncing audiobooks...")
             try {
-                val booksResp = api.getAudiobooks()
-                db.audiobookDao().replaceAllAudiobooks(booksResp.audiobooks.map { it.toEntity() })
-                DebugLog.i("SyncWorker", "Synced ${booksResp.audiobooks.size} audiobooks")
-                for (book in booksResp.audiobooks) {
+                val books = api.getAudiobooks()
+                db.audiobookDao().replaceAllAudiobooks(books.map { it.toEntity() })
+                DebugLog.i("SyncWorker", "Synced ${books.size} audiobooks")
+                for (book in books) {
                     try {
                         val detail = api.getAudiobookDetail(book.id)
                         db.audiobookDao().replaceChapters(book.id, detail.chapters.map { it.toEntity() })

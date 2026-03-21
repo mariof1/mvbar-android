@@ -481,11 +481,7 @@ data class AudiobookDetailProgress(
 )
 
 @Serializable
-data class AudiobooksResponse(val ok: Boolean = false, val audiobooks: List<Audiobook> = emptyList())
-
-@Serializable
 data class AudiobookDetailResponse(
-    val ok: Boolean = false,
     val audiobook: Audiobook? = null,
     val chapters: List<AudiobookChapter> = emptyList(),
     val progress: AudiobookDetailProgress? = null

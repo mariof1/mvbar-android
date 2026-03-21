@@ -202,7 +202,7 @@ interface MvbarApi {
 
     // Audiobooks
     @GET("api/audiobooks")
-    suspend fun getAudiobooks(): AudiobooksResponse
+    suspend fun getAudiobooks(): List<Audiobook>
 
     @GET("api/audiobooks/{id}")
     suspend fun getAudiobookDetail(@Path("id") id: Int): AudiobookDetailResponse

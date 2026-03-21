@@ -48,9 +48,9 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
             } catch (_: Exception) {}
             // Then API
             try {
-                val resp = ApiClient.api.getAudiobooks()
-                _audiobooks.value = resp.audiobooks
-                DebugLog.i("Audiobooks", "Loaded ${resp.audiobooks.size} audiobooks")
+                val books = ApiClient.api.getAudiobooks()
+                _audiobooks.value = books
+                DebugLog.i("Audiobooks", "Loaded ${books.size} audiobooks")
             } catch (e: Exception) {
                 DebugLog.e("Audiobooks", "Failed to load audiobooks", e)
             }
