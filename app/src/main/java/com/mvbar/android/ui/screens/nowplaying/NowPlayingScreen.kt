@@ -309,7 +309,7 @@ fun NowPlayingScreen(
                         }
                     }
 
-                    if (state.isPodcastMode) {
+                    if (state.isPodcastMode || state.isAudiobookMode) {
                         IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
                             Text("-15", color = OnSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
@@ -333,7 +333,7 @@ fun NowPlayingScreen(
                         )
                     }
 
-                    if (state.isPodcastMode) {
+                    if (state.isPodcastMode || state.isAudiobookMode) {
                         IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
                             Text("+15", color = OnSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }

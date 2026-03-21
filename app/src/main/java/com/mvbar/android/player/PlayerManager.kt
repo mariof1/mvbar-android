@@ -235,10 +235,10 @@ class PlayerManager private constructor(private val context: Context) {
 
     fun togglePlay() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
     fun next() {
-        if (_state.value.isPodcastMode) skipForward() else controller?.seekToNextMediaItem()
+        if (_state.value.isPodcastMode || _state.value.isAudiobookMode) skipForward() else controller?.seekToNextMediaItem()
     }
     fun previous() {
-        if (_state.value.isPodcastMode) skipBackward() else controller?.seekToPreviousMediaItem()
+        if (_state.value.isPodcastMode || _state.value.isAudiobookMode) skipBackward() else controller?.seekToPreviousMediaItem()
     }
     fun seekTo(positionMs: Long) { controller?.seekTo(positionMs) }
 
