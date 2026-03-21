@@ -31,9 +31,11 @@ data class PlayerState(
     val queue: List<Track> = emptyList(),
     val queueIndex: Int = -1,
     val playMode: PlayMode = PlayMode.NORMAL,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val isAudiobookMode: Boolean = false,
+    val artworkUrl: String? = null
 ) {
-    val isPodcastMode: Boolean get() = currentTrack != null && currentTrack.id < 0
+    val isPodcastMode: Boolean get() = currentTrack != null && currentTrack.id < 0 && !isAudiobookMode
 }
 
 class PlayerManager private constructor(private val context: Context) {
@@ -54,6 +56,8 @@ class PlayerManager private constructor(private val context: Context) {
     val state: StateFlow<PlayerState> = _state.asStateFlow()
 
     private val _queue = mutableListOf<Track>()
+    private var _customArtUrls: Map<Int, String> = emptyMap()
+    private var _isAudiobookMode: Boolean = false
 
     suspend fun connect() {
         if (controller != null) return
@@ -71,7 +75,9 @@ class PlayerManager private constructor(private val context: Context) {
                 _state.value = _state.value.copy(
                     currentTrack = track,
                     queueIndex = idx,
-                    duration = controller?.duration?.coerceAtLeast(0L) ?: 0L
+                    duration = controller?.duration?.coerceAtLeast(0L) ?: 0L,
+                    isAudiobookMode = _isAudiobookMode,
+                    artworkUrl = track?.id?.let { _customArtUrls[it] }
                 )
                 // Prefetch next tracks in background
                 if (_queue.isNotEmpty() && idx >= 0) {
@@ -96,6 +102,8 @@ class PlayerManager private constructor(private val context: Context) {
         }
         _queue.clear()
         _queue.addAll(tracks)
+        _customArtUrls = customArtUrls
+        _isAudiobookMode = customArtUrls.isNotEmpty() && tracks.any { it.id < 0 && customArtUrls.containsKey(it.id) }
 
         DebugLog.i("Player", "Playing ${tracks.size} tracks from index $startIndex")
 
@@ -131,7 +139,9 @@ class PlayerManager private constructor(private val context: Context) {
         _state.value = _state.value.copy(
             queue = tracks.toList(),
             queueIndex = startIndex,
-            currentTrack = tracks.getOrNull(startIndex)
+            currentTrack = tracks.getOrNull(startIndex),
+            isAudiobookMode = _isAudiobookMode,
+            artworkUrl = tracks.getOrNull(startIndex)?.id?.let { customArtUrls[it] }
         )
         // Prefetch is handled by onMediaItemTransition listener — no need to call here
     }

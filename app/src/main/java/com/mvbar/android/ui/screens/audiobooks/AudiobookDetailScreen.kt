@@ -1,5 +1,6 @@
 package com.mvbar.android.ui.screens.audiobooks
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -35,6 +36,7 @@ fun AudiobookDetailScreen(
     audiobook: Audiobook?,
     chapters: List<AudiobookChapter>,
     progress: AudiobookDetailProgress?,
+    playingChapterId: Int?,
     isLoading: Boolean,
     onBack: () -> Unit,
     onPlayChapter: (AudiobookChapter, Long) -> Unit,
@@ -204,13 +206,16 @@ fun AudiobookDetailScreen(
                 }
             }
 
-            itemsIndexed(chapters, key = { _, ch -> ch.id }) { _, chapter ->
-                val isCurrent = progress != null && chapter.id == progress.chapterId
-                val resumeMs = if (isCurrent) progress!!.positionMs else 0L
+            itemsIndexed(chapters, key = { _, ch -> ch.id }) { idx, chapter ->
+                val isPlaying = chapter.id == playingChapterId
+                val hasProgress = progress != null && chapter.id == progress.chapterId
+                val resumeMs = if (progress != null && hasProgress) progress.positionMs else 0L
 
                 ChapterListItem(
                     chapter = chapter,
-                    isCurrent = isCurrent,
+                    index = idx,
+                    isPlaying = isPlaying,
+                    hasProgress = hasProgress,
                     onClick = { onPlayChapter(chapter, resumeMs) }
                 )
             }
@@ -221,22 +226,31 @@ fun AudiobookDetailScreen(
 @Composable
 private fun ChapterListItem(
     chapter: AudiobookChapter,
-    isCurrent: Boolean,
+    index: Int,
+    isPlaying: Boolean,
+    hasProgress: Boolean,
     onClick: () -> Unit
 ) {
+    val highlight = isPlaying || hasProgress
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .background(if (isCurrent) Cyan900.copy(alpha = 0.2f) else Color.Transparent)
+            .background(
+                when {
+                    isPlaying -> Cyan900.copy(alpha = 0.3f)
+                    hasProgress -> Cyan900.copy(alpha = 0.1f)
+                    else -> Color.Transparent
+                }
+            )
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Chapter number
         Text(
-            "${chapter.position + 1}",
-            color = if (isCurrent) Cyan400 else OnSurfaceSubtle,
+            "${index + 1}",
+            color = if (isPlaying) Cyan400 else if (hasProgress) Cyan600 else OnSurfaceSubtle,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.width(28.dp)
@@ -246,9 +260,9 @@ private fun ChapterListItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 chapter.title,
-                color = if (isCurrent) Cyan400 else OnSurface,
+                color = if (isPlaying) Cyan400 else if (hasProgress) Cyan600 else OnSurface,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = if (highlight) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -261,13 +275,44 @@ private fun ChapterListItem(
             }
         }
 
-        // Play icon
-        if (isCurrent) {
+        // Now playing indicator
+        if (isPlaying) {
+            NowPlayingIndicator()
+        } else if (hasProgress) {
             Icon(
                 Icons.Filled.PlayArrow,
-                contentDescription = "Now playing",
-                tint = Cyan400,
+                contentDescription = "Has progress",
+                tint = Cyan600,
                 modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun NowPlayingIndicator() {
+    val infiniteTransition = rememberInfiniteTransition(label = "equalizer")
+    val bars = listOf(0, 100, 200)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom,
+        modifier = Modifier.height(16.dp)
+    ) {
+        bars.forEach { delayMs ->
+            val height by infiniteTransition.animateFloat(
+                initialValue = 4f,
+                targetValue = 14f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(400, delayMillis = delayMs, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "bar"
+            )
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(height.dp)
+                    .background(Cyan400, RoundedCornerShape(1.dp))
             )
         }
     }

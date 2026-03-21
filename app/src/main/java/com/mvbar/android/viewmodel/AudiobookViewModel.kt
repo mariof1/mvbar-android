@@ -37,6 +37,23 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
     val playingAudiobook: StateFlow<Audiobook?> = _playingAudiobook.asStateFlow()
 
     private var progressJob: Job? = null
+    private var currentAudiobookId: Int? = null
+    private var currentChaptersList: List<AudiobookChapter> = emptyList()
+
+    init {
+        viewModelScope.launch {
+            playerManager.state.collect { state ->
+                val trackId = state.currentTrack?.id ?: return@collect
+                if (trackId >= 0 || currentAudiobookId == null) return@collect
+                val abId = currentAudiobookId ?: return@collect
+                val chId = -(trackId) - abId * 100000
+                if (chId > 0) {
+                    val chapter = currentChaptersList.find { it.id == chId }
+                    if (chapter != null) _playingChapter.value = chapter
+                }
+            }
+        }
+    }
 
     fun loadAudiobooks() {
         viewModelScope.launch {
@@ -59,6 +76,9 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadAudiobookDetail(audiobookId: Int) {
+        _selectedAudiobook.value = null
+        _chapters.value = emptyList()
+        _detailProgress.value = null
         viewModelScope.launch {
             _isLoading.value = true
             // Cache first
@@ -81,25 +101,34 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun playChapter(audiobook: Audiobook, chapter: AudiobookChapter, resumePositionMs: Long = 0) {
-        // Use negative ID convention to avoid collision with tracks and podcasts
-        val pseudoTrack = Track(
-            id = -(audiobook.id * 100000 + chapter.id),
-            title = chapter.title,
-            artist = audiobook.author,
-            album = audiobook.title
-        )
-        val streamUrl = ApiClient.audiobookChapterStreamUrl(audiobook.id, chapter.id)
-        val artUrl = ApiClient.audiobookArtUrl(audiobook.id)
-        playerManager.playTracks(
-            listOf(pseudoTrack), 0,
-            customStreamUrls = mapOf(pseudoTrack.id to streamUrl),
-            customArtUrls = mapOf(pseudoTrack.id to artUrl)
-        )
+        val chapters = _chapters.value
+        currentAudiobookId = audiobook.id
+        currentChaptersList = chapters
+
+        val allPseudoTracks = chapters.map { ch ->
+            Track(
+                id = -(audiobook.id * 100000 + ch.id),
+                title = ch.title,
+                artist = audiobook.author,
+                album = audiobook.title
+            )
+        }
+        val allStreamUrls = chapters.associate { ch ->
+            val pseudoId = -(audiobook.id * 100000 + ch.id)
+            pseudoId to ApiClient.audiobookChapterStreamUrl(audiobook.id, ch.id)
+        }
+        val allArtUrls = chapters.associate { ch ->
+            val pseudoId = -(audiobook.id * 100000 + ch.id)
+            pseudoId to ApiClient.audiobookArtUrl(audiobook.id)
+        }
+
+        val startIndex = chapters.indexOfFirst { it.id == chapter.id }.coerceAtLeast(0)
+
+        playerManager.playTracks(allPseudoTracks, startIndex, allStreamUrls, allArtUrls)
 
         _playingChapter.value = chapter
         _playingAudiobook.value = audiobook
 
-        // Seek to resume position after a brief delay
         if (resumePositionMs > 0) {
             viewModelScope.launch {
                 delay(500)
@@ -107,7 +136,7 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        startProgressSync(audiobook.id, chapter.id)
+        startProgressSync(audiobook.id)
     }
 
     fun continueListening(audiobook: Audiobook) {
@@ -121,7 +150,7 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun startProgressSync(audiobookId: Int, chapterId: Int) {
+    private fun startProgressSync(audiobookId: Int) {
         progressJob?.cancel()
         progressJob = viewModelScope.launch {
             while (isActive) {
@@ -129,10 +158,14 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     val state = playerManager.state.value
                     if (state.isPlaying) {
+                        val trackId = state.currentTrack?.id ?: continue
+                        if (trackId >= 0) continue
+                        val chId = -(trackId) - audiobookId * 100000
+                        if (chId <= 0) continue
                         val posMs = state.position
                         ApiClient.api.updateAudiobookProgress(
                             audiobookId,
-                            AudiobookProgressRequest(chapterId = chapterId, positionMs = posMs)
+                            AudiobookProgressRequest(chapterId = chId, positionMs = posMs)
                         )
                     }
                 } catch (e: Exception) {
@@ -158,11 +191,5 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
                 DebugLog.e("Audiobooks", "Failed to mark finished", e)
             }
         }
-    }
-
-    fun clearDetail() {
-        _selectedAudiobook.value = null
-        _chapters.value = emptyList()
-        _detailProgress.value = null
     }
 }

@@ -161,12 +161,16 @@ fun NowPlayingScreen(
                         Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(32.dp))
                     }
                     Text(
-                        "Now Playing",
+                        when {
+                            state.isAudiobookMode -> "Audiobook"
+                            state.isPodcastMode -> "Podcast"
+                            else -> "Now Playing"
+                        },
                         style = MaterialTheme.typography.titleSmall,
                         color = OnSurfaceDim
                     )
                     Row {
-                        if (!state.isPodcastMode) {
+                        if (!state.isPodcastMode && !state.isAudiobookMode) {
                             IconButton(onClick = { showLyrics = !showLyrics }) {
                                 Icon(
                                     Icons.Filled.MusicNote,
@@ -196,7 +200,7 @@ fun NowPlayingScreen(
                 Spacer(Modifier.weight(0.5f))
 
                 // Album art or lyrics view
-                if (showLyrics && !state.isPodcastMode) {
+                if (showLyrics && !state.isPodcastMode && !state.isAudiobookMode) {
                     com.mvbar.android.ui.components.LyricsView(
                         lyrics = lyrics,
                         isLoading = lyricsLoading,
@@ -208,11 +212,12 @@ fun NowPlayingScreen(
                             .background(SurfaceDark.copy(alpha = 0.5f))
                     )
                 } else {
-                    val artModel = if (state.isPodcastMode) {
-                        ApiClient.episodeArtUrl(-track.id)
-                    } else {
-                        track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
-                    }
+                    val artModel = state.artworkUrl
+                        ?: if (state.isPodcastMode) {
+                            ApiClient.episodeArtUrl(-track.id)
+                        } else {
+                            track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+                        }
                     AsyncImage(
                         model = artModel,
                         contentDescription = null,
@@ -287,7 +292,7 @@ fun NowPlayingScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (state.isPodcastMode) {
+                    if (state.isPodcastMode || state.isAudiobookMode) {
                         Spacer(Modifier.size(48.dp))
                     } else {
                         IconButton(onClick = onCyclePlayMode) {
@@ -338,7 +343,7 @@ fun NowPlayingScreen(
                         }
                     }
 
-                    if (state.isPodcastMode) {
+                    if (state.isPodcastMode || state.isAudiobookMode) {
                         Spacer(Modifier.size(48.dp))
                     } else {
                         IconButton(onClick = onToggleFavorite) {
