@@ -199,16 +199,21 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>
         ): ListenableFuture<MutableList<MediaItem>> {
-            // Resolve browseable media items to playable ones with stream URIs
+            // Resolve media items: keep existing URI if present, otherwise build from track ID
             val resolved = mediaItems.map { item ->
-                val trackId = item.mediaId.toIntOrNull()
-                if (trackId != null) {
-                    val streamUrl = ApiClient.streamUrl(trackId)
-                    item.buildUpon()
-                        .setUri(streamUrl)
-                        .build()
-                } else {
+                if (item.localConfiguration?.uri != null) {
+                    // Already has a stream URI (e.g. audiobook chapter, podcast episode)
                     item
+                } else {
+                    val trackId = item.mediaId.toIntOrNull()
+                    if (trackId != null) {
+                        val streamUrl = ApiClient.streamUrl(trackId)
+                        item.buildUpon()
+                            .setUri(streamUrl)
+                            .build()
+                    } else {
+                        item
+                    }
                 }
             }.toMutableList()
             return Futures.immediateFuture(resolved)
