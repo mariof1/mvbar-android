@@ -89,7 +89,7 @@ class PlayerManager private constructor(private val context: Context) {
         })
     }
 
-    fun playTracks(tracks: List<Track>, startIndex: Int = 0) {
+    fun playTracks(tracks: List<Track>, startIndex: Int = 0, customStreamUrls: Map<Int, String> = emptyMap(), customArtUrls: Map<Int, String> = emptyMap()) {
         val ctrl = controller ?: run {
             DebugLog.e("Player", "Controller is null, cannot play")
             return
@@ -101,12 +101,14 @@ class PlayerManager private constructor(private val context: Context) {
 
         val items = tracks.map { track ->
             val isPodcast = track.id < 0
-            val streamUrl = if (isPodcast) ApiClient.episodeStreamUrl(-track.id) else ApiClient.streamUrl(track.id)
-            val artUrl = if (isPodcast) {
-                ApiClient.episodeArtUrl(-track.id)
-            } else {
-                track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
-            }
+            val streamUrl = customStreamUrls[track.id]
+                ?: if (isPodcast) ApiClient.episodeStreamUrl(-track.id) else ApiClient.streamUrl(track.id)
+            val artUrl = customArtUrls[track.id]
+                ?: if (isPodcast) {
+                    ApiClient.episodeArtUrl(-track.id)
+                } else {
+                    track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+                }
             DebugLog.d("Player", "Track ${track.id}: stream=$streamUrl")
             MediaItem.Builder()
                 .setUri(streamUrl)

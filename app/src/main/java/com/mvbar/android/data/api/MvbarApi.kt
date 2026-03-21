@@ -199,4 +199,20 @@ interface MvbarApi {
 
     @POST("api/podcasts/{id}/refresh")
     suspend fun refreshPodcast(@Path("id") id: Int): PodcastRefreshResponse
+
+    // Audiobooks
+    @GET("api/audiobooks")
+    suspend fun getAudiobooks(): AudiobooksResponse
+
+    @GET("api/audiobooks/{id}")
+    suspend fun getAudiobookDetail(@Path("id") id: Int): AudiobookDetailResponse
+
+    @POST("api/audiobooks/{id}/progress")
+    suspend fun updateAudiobookProgress(
+        @Path("id") audiobookId: Int,
+        @Body body: AudiobookProgressRequest
+    ): Response<Unit>
+
+    @POST("api/audiobooks/{id}/mark-finished")
+    suspend fun markAudiobookFinished(@Path("id") audiobookId: Int): Response<Unit>
 }

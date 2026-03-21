@@ -134,3 +134,27 @@ fun EpisodeEntity.toModel() = Episode(
     podcastTitle = podcastTitle, podcastImageUrl = podcastImageUrl,
     podcastImagePath = podcastImagePath
 )
+
+// Audiobook ↔ AudiobookEntity
+fun Audiobook.toEntity() = AudiobookEntity(
+    id = id, title = title, author = author, narrator = narrator,
+    description = description, coverPath = coverPath, durationMs = durationMs,
+    chapterCount = chapterCount, createdAt = createdAt
+)
+
+fun AudiobookEntity.toModel() = Audiobook(
+    id = id, title = title, author = author, narrator = narrator,
+    description = description, coverPath = coverPath, durationMs = durationMs,
+    chapterCount = chapterCount, createdAt = createdAt
+)
+
+// AudiobookChapter ↔ AudiobookChapterEntity
+fun AudiobookChapter.toEntity() = AudiobookChapterEntity(
+    id = id, audiobookId = audiobookId, title = title, position = position,
+    durationMs = durationMs, sizeBytes = sizeBytes, createdAt = createdAt
+)
+
+fun AudiobookChapterEntity.toModel() = AudiobookChapter(
+    id = id, audiobookId = audiobookId, title = title, position = position,
+    durationMs = durationMs, sizeBytes = sizeBytes, createdAt = createdAt
+)

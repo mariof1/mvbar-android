@@ -47,10 +47,13 @@ import com.mvbar.android.ui.screens.smartplaylist.CreateSmartPlaylistScreen
 import com.mvbar.android.ui.screens.podcast.PodcastsScreen
 import com.mvbar.android.ui.screens.podcast.PodcastDetailScreen
 import com.mvbar.android.ui.screens.podcast.SubscribePodcastDialog
+import com.mvbar.android.ui.screens.audiobooks.AudiobooksScreen
+import com.mvbar.android.ui.screens.audiobooks.AudiobookDetailScreen
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.BrowseViewModel
 import com.mvbar.android.viewmodel.MainViewModel
 import com.mvbar.android.viewmodel.PodcastViewModel
+import com.mvbar.android.viewmodel.AudiobookViewModel
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -75,6 +78,8 @@ enum class BottomTab(
     BROWSE("browse", "Browse", Icons.Filled.GridView, Icons.Outlined.GridView),
     LIBRARY("library", "Library", Icons.Filled.LibraryMusic, Icons.Outlined.LibraryMusic),
     PODCASTS("podcasts", "Podcasts", Icons.Filled.Podcasts, Icons.Outlined.Podcasts),
+    @Suppress("DEPRECATION")
+    AUDIOBOOKS("audiobooks", "Books", Icons.Filled.MenuBook, Icons.Outlined.MenuBook),
     FAVORITES("favorites", "Favorites", Icons.Filled.Favorite, Icons.Outlined.FavoriteBorder)
 }
 
@@ -88,6 +93,7 @@ fun MainScreen(
     val navController = rememberNavController()
     val browseVm: BrowseViewModel = viewModel()
     val podcastVm: PodcastViewModel = viewModel()
+    val audiobookVm: AudiobookViewModel = viewModel()
     var showSearch by remember { mutableStateOf(false) }
     var showNowPlaying by remember { mutableStateOf(false) }
     var contextTrack by remember { mutableStateOf<Track?>(null) }
@@ -144,6 +150,13 @@ fun MainScreen(
     val podcastEpisodes by podcastVm.episodes.collectAsState()
     val podcastSearchResults by podcastVm.searchResults.collectAsState()
     val podcastSearchLoading by podcastVm.searchLoading.collectAsState()
+
+    // Audiobook state
+    val audiobooksList by audiobookVm.audiobooks.collectAsState()
+    val audiobookIsLoading by audiobookVm.isLoading.collectAsState()
+    val audiobookSelected by audiobookVm.selectedAudiobook.collectAsState()
+    val audiobookChapters by audiobookVm.chapters.collectAsState()
+    val audiobookProgress by audiobookVm.detailProgress.collectAsState()
 
     val currentTrackId = playerState.currentTrack?.id
 
@@ -316,7 +329,8 @@ fun MainScreen(
                                 (currentTab == "history" && tab == BottomTab.LIBRARY) ||
                                 (currentTab?.startsWith("playlist/") == true && tab == BottomTab.LIBRARY) ||
                                 (currentTab?.startsWith("smart-playlist") == true && tab == BottomTab.LIBRARY) ||
-                                (currentTab?.startsWith("podcast/") == true && tab == BottomTab.PODCASTS)
+                                (currentTab?.startsWith("podcast/") == true && tab == BottomTab.PODCASTS) ||
+                                (currentTab?.startsWith("audiobook/") == true && tab == BottomTab.AUDIOBOOKS)
 
                             NavigationBarItem(
                                 selected = selected,
@@ -762,6 +776,42 @@ fun MainScreen(
                                 podcastVm.unsubscribe(it.id)
                                 navController.popBackStack()
                             }
+                        }
+                    )
+                }
+
+                composable("audiobooks") {
+                    AudiobooksScreen(
+                        audiobooks = audiobooksList,
+                        isLoading = audiobookIsLoading,
+                        onAudiobookClick = { book ->
+                            audiobookVm.loadAudiobookDetail(book.id)
+                            navController.navigate("audiobook/${book.id}")
+                        },
+                        onRefresh = { audiobookVm.loadAudiobooks() }
+                    )
+                }
+
+                composable(
+                    route = "audiobook/{id}",
+                    arguments = listOf(navArgument("id") { type = NavType.IntType })
+                ) { backStackEntry ->
+                    val bookId = backStackEntry.arguments?.getInt("id") ?: return@composable
+                    LaunchedEffect(bookId) { audiobookVm.loadAudiobookDetail(bookId) }
+                    AudiobookDetailScreen(
+                        audiobook = audiobookSelected,
+                        chapters = audiobookChapters,
+                        progress = audiobookProgress,
+                        isLoading = audiobookIsLoading,
+                        onBack = { navController.popBackStack() },
+                        onPlayChapter = { chapter, resumeMs ->
+                            audiobookSelected?.let { audiobookVm.playChapter(it, chapter, resumeMs) }
+                        },
+                        onContinueListening = {
+                            audiobookSelected?.let { audiobookVm.continueListening(it) }
+                        },
+                        onMarkFinished = {
+                            audiobookVm.markFinished(bookId)
                         }
                     )
                 }

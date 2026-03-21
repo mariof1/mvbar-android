@@ -109,4 +109,9 @@ object ApiClient {
     fun podcastArtPathUrl(artPath: String): String = "${baseUrl}api/podcast-art/$artPath"
     fun episodeArtUrl(episodeId: Int): String = "${baseUrl}api/podcasts/episodes/$episodeId/art"
     fun episodeStreamUrl(episodeId: Int): String = "${baseUrl}api/podcasts/episodes/$episodeId/stream"
+
+    // Audiobooks
+    fun audiobookArtUrl(audiobookId: Int): String = "${baseUrl}api/audiobook-art/$audiobookId"
+    fun audiobookChapterStreamUrl(audiobookId: Int, chapterId: Int): String =
+        "${baseUrl}api/audiobooks/$audiobookId/chapters/$chapterId/stream"
 }

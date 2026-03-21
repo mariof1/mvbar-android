@@ -94,6 +94,13 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
         }
     }
 
+    // Audiobooks
+    suspend fun getCachedAudiobooks(): List<Audiobook>? =
+        db?.audiobookDao()?.getAllAudiobooks()?.map { it.toModel() }
+
+    suspend fun getCachedAudiobookChapters(audiobookId: Int): List<AudiobookChapter>? =
+        db?.audiobookDao()?.getChapters(audiobookId)?.map { it.toModel() }
+
     // ── API calls (unchanged) ──
 
     suspend fun getTracks(limit: Int = 100, offset: Int = 0) = api.getTracks(limit, offset)
@@ -156,5 +163,8 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
                 INSTANCE ?: MusicRepository(db).also { INSTANCE = it }
             }
         }
+
+        fun getInstance(): MusicRepository =
+            INSTANCE ?: MusicRepository(null)
     }
 }

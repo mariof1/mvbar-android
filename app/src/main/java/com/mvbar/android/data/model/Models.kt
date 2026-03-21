@@ -406,3 +406,95 @@ data class EpisodeProgressRequest(val positionMs: Long? = null, val played: Bool
 @Serializable
 data class EpisodePlayedRequest(val played: Boolean)
 
+// ============================================================================
+// AUDIOBOOK MODELS
+// ============================================================================
+
+@Serializable
+data class Audiobook(
+    val id: Int = 0,
+    val title: String = "",
+    val author: String? = null,
+    val narrator: String? = null,
+    val description: String? = null,
+    @SerialName("cover_path") val coverPath: String? = null,
+    @SerialName("duration_ms") val durationMs: Long = 0,
+    @SerialName("chapter_count") val chapterCount: Int = 0,
+    @SerialName("created_at") val createdAt: String? = null,
+    val progress: AudiobookProgress? = null
+) {
+    val durationFormatted: String get() {
+        val totalSeconds = (durationMs / 1000).toInt()
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
+    }
+
+    val progressPercent: Int get() {
+        val p = progress ?: return 0
+        if (p.totalChapters <= 0) return 0
+        val chapterProgress = if (p.finished) p.totalChapters.toDouble()
+        else p.chaptersFinished + (if (p.positionMs > 0) 0.5 else 0.0)
+        return ((chapterProgress / p.totalChapters) * 100).toInt().coerceIn(0, 100)
+    }
+
+    val isFinished: Boolean get() = progress?.finished == true
+}
+
+@Serializable
+data class AudiobookProgress(
+    @SerialName("chapter_id") val chapterId: Int = 0,
+    @SerialName("chapter_position") val chapterPosition: Int = 0,
+    @SerialName("chapter_title") val chapterTitle: String? = null,
+    @SerialName("position_ms") val positionMs: Long = 0,
+    val finished: Boolean = false,
+    @SerialName("total_chapters") val totalChapters: Int = 0,
+    @SerialName("chapters_finished") val chaptersFinished: Int = 0
+)
+
+@Serializable
+data class AudiobookChapter(
+    val id: Int = 0,
+    @SerialName("audiobook_id") val audiobookId: Int = 0,
+    val title: String = "",
+    val position: Int = 0,
+    @SerialName("duration_ms") val durationMs: Long? = null,
+    @SerialName("size_bytes") val sizeBytes: Long? = null,
+    @SerialName("created_at") val createdAt: String? = null
+) {
+    val durationFormatted: String get() {
+        val ms = durationMs ?: return ""
+        val totalSeconds = (ms / 1000).toInt()
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
+        else "%d:%02d".format(minutes, seconds)
+    }
+}
+
+@Serializable
+data class AudiobookDetailProgress(
+    @SerialName("chapter_id") val chapterId: Int = 0,
+    @SerialName("position_ms") val positionMs: Long = 0,
+    val finished: Boolean = false
+)
+
+@Serializable
+data class AudiobooksResponse(val ok: Boolean = false, val audiobooks: List<Audiobook> = emptyList())
+
+@Serializable
+data class AudiobookDetailResponse(
+    val ok: Boolean = false,
+    val audiobook: Audiobook? = null,
+    val chapters: List<AudiobookChapter> = emptyList(),
+    val progress: AudiobookDetailProgress? = null
+)
+
+@Serializable
+data class AudiobookProgressRequest(
+    @SerialName("chapter_id") val chapterId: Int,
+    @SerialName("position_ms") val positionMs: Long,
+    val finished: Boolean? = null
+)
+

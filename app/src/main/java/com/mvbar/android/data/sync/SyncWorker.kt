@@ -114,6 +114,24 @@ class SyncWorker(
                 DebugLog.e("SyncWorker", "Podcasts sync failed", e)
             }
 
+            // 8. Sync audiobooks + chapters
+            SyncManager.setSyncStatus("Syncing audiobooks...")
+            try {
+                val booksResp = api.getAudiobooks()
+                db.audiobookDao().replaceAllAudiobooks(booksResp.audiobooks.map { it.toEntity() })
+                DebugLog.i("SyncWorker", "Synced ${booksResp.audiobooks.size} audiobooks")
+                for (book in booksResp.audiobooks) {
+                    try {
+                        val detail = api.getAudiobookDetail(book.id)
+                        db.audiobookDao().replaceChapters(book.id, detail.chapters.map { it.toEntity() })
+                    } catch (e: Exception) {
+                        DebugLog.e("SyncWorker", "Failed to sync chapters for audiobook ${book.id}", e)
+                    }
+                }
+            } catch (e: Exception) {
+                DebugLog.e("SyncWorker", "Audiobooks sync failed", e)
+            }
+
             val now = System.currentTimeMillis()
             SyncManager.updateLastSyncTime(now)
             SyncManager.setIsSyncing(false)

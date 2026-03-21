@@ -155,3 +155,36 @@ data class EpisodeEntity(
     val podcastImageUrl: String?,
     val podcastImagePath: String?
 )
+
+@Entity(tableName = "audiobooks")
+data class AudiobookEntity(
+    @PrimaryKey val id: Int,
+    val title: String,
+    val author: String?,
+    val narrator: String?,
+    val description: String?,
+    val coverPath: String?,
+    val durationMs: Long,
+    val chapterCount: Int,
+    val createdAt: String?
+)
+
+@Entity(
+    tableName = "audiobook_chapters",
+    indices = [Index("audiobookId")],
+    foreignKeys = [ForeignKey(
+        entity = AudiobookEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["audiobookId"],
+        onDelete = ForeignKey.CASCADE
+    )]
+)
+data class AudiobookChapterEntity(
+    @PrimaryKey val id: Int,
+    val audiobookId: Int,
+    val title: String,
+    val position: Int,
+    val durationMs: Long?,
+    val sizeBytes: Long?,
+    val createdAt: String?
+)

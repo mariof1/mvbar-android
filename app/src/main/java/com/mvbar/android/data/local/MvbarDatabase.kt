@@ -22,9 +22,11 @@ import com.mvbar.android.data.local.entity.*
         HistoryEntryEntity::class,
         RecBucketEntity::class,
         PodcastEntity::class,
-        EpisodeEntity::class
+        EpisodeEntity::class,
+        AudiobookEntity::class,
+        AudiobookChapterEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -36,6 +38,7 @@ abstract class MvbarDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
     abstract fun recommendationDao(): RecommendationDao
     abstract fun podcastDao(): PodcastDao
+    abstract fun audiobookDao(): AudiobookDao
 
     companion object {
         @Volatile
