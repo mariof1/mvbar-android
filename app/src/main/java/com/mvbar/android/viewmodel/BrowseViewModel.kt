@@ -97,6 +97,14 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     private val _artistAppearsOn = MutableStateFlow<List<Album>>(emptyList())
     val artistAppearsOn: StateFlow<List<Album>> = _artistAppearsOn.asStateFlow()
 
+    private val _hasMoreArtistTracks = MutableStateFlow(true)
+    val hasMoreArtistTracks: StateFlow<Boolean> = _hasMoreArtistTracks.asStateFlow()
+
+    private val _isLoadingMoreArtistTracks = MutableStateFlow(false)
+    val isLoadingMoreArtistTracks: StateFlow<Boolean> = _isLoadingMoreArtistTracks.asStateFlow()
+
+    private var currentArtistId: Int? = null
+
     private companion object {
         const val PAGE_SIZE = 50
     }
@@ -303,6 +311,8 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         _selectedArtist.value = artist
         _artistAlbums.value = emptyList()
         _artistAppearsOn.value = emptyList()
+        _hasMoreArtistTracks.value = true
+        currentArtistId = artist.id
         viewModelScope.launch {
             try {
                 artist.id?.let { id ->
@@ -310,7 +320,9 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                     // Load tracks and albums in parallel
                     launch {
                         try {
-                            _artistTracks.value = repo.getArtistTracks(id).tracks
+                            val response = repo.getArtistTracks(id, PAGE_SIZE, 0)
+                            _artistTracks.value = response.tracks
+                            _hasMoreArtistTracks.value = response.tracks.size >= PAGE_SIZE
                         } catch (e: Exception) {
                             DebugLog.e("Browse", "Artist tracks failed", e)
                         }
@@ -334,6 +346,25 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Artist detail failed", e)
+            }
+        }
+    }
+
+    fun loadMoreArtistTracks() {
+        if (_isLoadingMoreArtistTracks.value || !_hasMoreArtistTracks.value) return
+        val id = currentArtistId ?: return
+        viewModelScope.launch {
+            _isLoadingMoreArtistTracks.value = true
+            try {
+                val offset = _artistTracks.value.size
+                val response = repo.getArtistTracks(id, PAGE_SIZE, offset)
+                DebugLog.i("Browse", "Loaded ${response.tracks.size} more artist tracks (offset $offset)")
+                _artistTracks.value = _artistTracks.value + response.tracks
+                _hasMoreArtistTracks.value = response.tracks.size >= PAGE_SIZE
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Load more artist tracks failed", e)
+            } finally {
+                _isLoadingMoreArtistTracks.value = false
             }
         }
     }

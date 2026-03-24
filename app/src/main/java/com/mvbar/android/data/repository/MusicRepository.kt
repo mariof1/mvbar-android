@@ -106,7 +106,7 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun getTracks(limit: Int = 100, offset: Int = 0) = api.getTracks(limit, offset)
     suspend fun getArtists(limit: Int = 50, offset: Int = 0) = api.getArtists(limit, offset)
     suspend fun getArtistDetail(id: Int) = api.getArtistDetail(id)
-    suspend fun getArtistTracks(id: Int) = api.getArtistTracks(id)
+    suspend fun getArtistTracks(id: Int, limit: Int = 50, offset: Int = 0) = api.getArtistTracks(id, limit, offset)
     suspend fun getAlbums(limit: Int = 50, offset: Int = 0) = api.getAlbums(limit, offset)
     suspend fun getAlbumTracks(name: String) = api.getAlbumTracks(name)
     suspend fun getGenres(limit: Int = 50, offset: Int = 0) = api.getGenres(limit, offset)
@@ -117,11 +117,11 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun getLanguageTracks(name: String, limit: Int = 50, offset: Int = 0) = api.getLanguageTracks(name, limit, offset)
     suspend fun getFavorites() = api.getFavorites()
     suspend fun toggleFavorite(trackId: Int) = api.toggleFavorite(trackId)
-    suspend fun getHistory(limit: Int = 50) = api.getHistory(limit)
+    suspend fun getHistory(limit: Int = 50, offset: Int = 0) = api.getHistory(limit, offset)
     suspend fun recordPlay(trackId: Int) = api.recordPlay(trackId)
-    suspend fun search(query: String) = api.search(query)
+    suspend fun search(query: String, limit: Int = 50, offset: Int = 0) = api.search(query, limit, offset)
     suspend fun getRecommendations() = api.getRecommendations()
-    suspend fun getRecentlyAdded(limit: Int = 50) = api.getRecentlyAdded(limit = limit)
+    suspend fun getRecentlyAdded(limit: Int = 50, offset: Int = 0) = api.getRecentlyAdded(limit = limit, offset = offset)
 
     // Playlists
     suspend fun getPlaylists() = api.getPlaylists()

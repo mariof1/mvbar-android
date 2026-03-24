@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,7 +50,10 @@ fun SearchScreen(
     onTrackLongPress: ((Track) -> Unit)? = null,
     favoriteIds: Set<Int> = emptySet(),
     onToggleFavorite: ((Int) -> Unit)? = null,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    onLoadMore: () -> Unit = {}
 ) {
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
@@ -115,7 +119,29 @@ fun SearchScreen(
         )
 
         if (hasResults) {
-            LazyColumn(contentPadding = PaddingValues(bottom = 140.dp)) {
+            val listState = rememberLazyListState()
+            val totalItems = (results!!.artists.take(4).size +
+                results.albums.take(4).size +
+                results.playlists.take(4).size +
+                results.hits.size +
+                // section headers
+                (if (results.artists.isNotEmpty()) 1 else 0) +
+                (if (results.albums.isNotEmpty()) 1 else 0) +
+                (if (results.playlists.isNotEmpty()) 1 else 0) +
+                (if (results.hits.isNotEmpty()) 1 else 0))
+            val shouldLoadMore = remember {
+                derivedStateOf {
+                    val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                    lastVisible >= totalItems - 5 && hasMore && !isLoadingMore
+                }
+            }
+            LaunchedEffect(shouldLoadMore.value) {
+                if (shouldLoadMore.value) onLoadMore()
+            }
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(bottom = 140.dp)
+            ) {
                 // Artists section
                 val artists = results!!.artists
                 if (artists.isNotEmpty()) {
@@ -157,6 +183,20 @@ fun SearchScreen(
                             onMore = onTrackLongPress?.let { handler -> { handler(track) } },
                             modifier = Modifier.padding(horizontal = 12.dp)
                         )
+                    }
+                }
+
+                if (isLoadingMore) {
+                    item {
+                        Box(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = Cyan500,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
                 }
             }

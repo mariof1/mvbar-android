@@ -3,6 +3,7 @@ package com.mvbar.android.ui.screens.history
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -29,7 +30,10 @@ fun HistoryScreen(
     error: String? = null,
     onTrackLongPress: ((Track) -> Unit)? = null,
     favoriteIds: Set<Int> = emptySet(),
-    onToggleFavorite: ((Int) -> Unit)? = null
+    onToggleFavorite: ((Int) -> Unit)? = null,
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    onLoadMore: () -> Unit = {}
 ) {
     LaunchedEffect(Unit) { onRefresh() }
 
@@ -81,7 +85,20 @@ fun HistoryScreen(
                     }
                 }
                 else -> {
-                    LazyColumn(contentPadding = PaddingValues(bottom = 140.dp)) {
+                    val listState = rememberLazyListState()
+                    val shouldLoadMore = remember {
+                        derivedStateOf {
+                            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            lastVisible >= history.size - 5 && hasMore && !isLoadingMore
+                        }
+                    }
+                    LaunchedEffect(shouldLoadMore.value) {
+                        if (shouldLoadMore.value) onLoadMore()
+                    }
+                    LazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(bottom = 140.dp)
+                    ) {
                         items(history) { track ->
                             val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
                             TrackListItem(
@@ -92,6 +109,19 @@ fun HistoryScreen(
                                 onMore = onTrackLongPress?.let { { it(track) } },
                                 modifier = Modifier.padding(horizontal = 12.dp)
                             )
+                        }
+                        if (isLoadingMore) {
+                            item {
+                                Box(
+                                    Modifier.fillMaxWidth().padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = Cyan500,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -45,11 +46,27 @@ fun ArtistDetailScreen(
     onAlbumClick: ((String) -> Unit)? = null,
     onTrackLongPress: ((Track) -> Unit)? = null,
     favoriteIds: Set<Int> = emptySet(),
-    onToggleFavorite: ((Int) -> Unit)? = null
+    onToggleFavorite: ((Int) -> Unit)? = null,
+    hasMoreTracks: Boolean = false,
+    isLoadingMoreTracks: Boolean = false,
+    onLoadMoreTracks: () -> Unit = {}
 ) {
     if (artist == null) return
 
+    val listState = rememberLazyListState()
+    val shouldLoadMore = remember {
+        derivedStateOf {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val totalItems = listState.layoutInfo.totalItemsCount
+            lastVisible >= totalItems - 5 && hasMoreTracks && !isLoadingMoreTracks
+        }
+    }
+    LaunchedEffect(shouldLoadMore.value) {
+        if (shouldLoadMore.value) onLoadMoreTracks()
+    }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 140.dp)
     ) {
@@ -170,6 +187,20 @@ fun ArtistDetailScreen(
                 onMore = onTrackLongPress?.let { { it(track) } },
                 modifier = Modifier.padding(horizontal = 12.dp)
             )
+        }
+
+        if (isLoadingMoreTracks) {
+            item {
+                Box(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = Cyan500,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
         }
     }
 }

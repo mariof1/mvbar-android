@@ -65,6 +65,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private var searchJob: kotlinx.coroutines.Job? = null
 
+    private companion object {
+        const val PAGE_SIZE = 50
+    }
+
+    // History pagination
+    private val _hasMoreHistory = MutableStateFlow(true)
+    val hasMoreHistory: StateFlow<Boolean> = _hasMoreHistory.asStateFlow()
+
+    private val _isLoadingMoreHistory = MutableStateFlow(false)
+    val isLoadingMoreHistory: StateFlow<Boolean> = _isLoadingMoreHistory.asStateFlow()
+
+    // Search pagination
+    private val _hasMoreSearch = MutableStateFlow(false)
+    val hasMoreSearch: StateFlow<Boolean> = _hasMoreSearch.asStateFlow()
+
+    private val _isLoadingMoreSearch = MutableStateFlow(false)
+    val isLoadingMoreSearch: StateFlow<Boolean> = _isLoadingMoreSearch.asStateFlow()
+
+    private var currentSearchQuery: String = ""
+
     // Lyrics
     private val _lyrics = MutableStateFlow<List<LyricLine>>(emptyList())
     val lyrics: StateFlow<List<LyricLine>> = _lyrics.asStateFlow()
@@ -114,7 +134,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Load from cache first
             if (!isRefresh) {
                 val cachedBuckets = try { repo.getCachedRecommendations() } catch (_: Exception) { null }
-                val cachedRecent = try { repo.getCachedRecentlyAdded(20) } catch (_: Exception) { null }
+                val cachedRecent = try { repo.getCachedRecentlyAdded(PAGE_SIZE) } catch (_: Exception) { null }
                 if (!cachedBuckets.isNullOrEmpty() || !cachedRecent.isNullOrEmpty()) {
                     _homeState.value = HomeState(
                         buckets = cachedBuckets ?: emptyList(),
@@ -134,7 +154,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _homeState.value.buckets.ifEmpty { emptyList() }
                 }
                 val recent = try {
-                    val resp = repo.getRecentlyAdded(20)
+                    val resp = repo.getRecentlyAdded(PAGE_SIZE)
                     DebugLog.i("Home", "Got ${resp.tracks.size} recent tracks")
                     resp.tracks
                 } catch (e: Exception) {
@@ -188,6 +208,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             if (!isRefresh) _historyLoading.value = true
             _historyError.value = null
+            _hasMoreHistory.value = true
             // Load from cache first
             if (!isRefresh) {
                 val cached = try { repo.getCachedHistory() } catch (_: Exception) { null }
@@ -198,12 +219,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             // Then fetch from API
             try {
-                _history.value = repo.getHistory().tracks
+                val result = repo.getHistory(PAGE_SIZE, 0)
+                _history.value = result.tracks
+                _hasMoreHistory.value = result.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("History", "Load failed", e)
                 if (_history.value.isEmpty()) _historyError.value = "Failed to load history"
             } finally {
                 _historyLoading.value = false
+            }
+        }
+    }
+
+    fun loadMoreHistory() {
+        if (_isLoadingMoreHistory.value || !_hasMoreHistory.value) return
+        viewModelScope.launch {
+            _isLoadingMoreHistory.value = true
+            try {
+                val offset = _history.value.size
+                val result = repo.getHistory(PAGE_SIZE, offset)
+                DebugLog.i("History", "Loaded ${result.tracks.size} more history tracks (offset $offset)")
+                _history.value = _history.value + result.tracks
+                _hasMoreHistory.value = result.tracks.size >= PAGE_SIZE
+            } catch (e: Exception) {
+                DebugLog.e("History", "Load more failed", e)
+            } finally {
+                _isLoadingMoreHistory.value = false
             }
         }
     }
@@ -375,15 +416,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (query.length < 2) {
             _searchResults.value = null
             _searchLoading.value = false
+            _hasMoreSearch.value = false
+            currentSearchQuery = ""
             return
         }
+        currentSearchQuery = query
         _searchLoading.value = true
+        _hasMoreSearch.value = false
         searchJob = viewModelScope.launch {
             kotlinx.coroutines.delay(200)
             try {
-                _searchResults.value = repo.search(query)
+                val results = repo.search(query, PAGE_SIZE, 0)
+                _searchResults.value = results
+                _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
             } catch (_: Exception) {}
             _searchLoading.value = false
+        }
+    }
+
+    fun loadMoreSearchResults() {
+        if (_isLoadingMoreSearch.value || !_hasMoreSearch.value) return
+        val current = _searchResults.value ?: return
+        viewModelScope.launch {
+            _isLoadingMoreSearch.value = true
+            try {
+                val offset = current.hits.size
+                val results = repo.search(currentSearchQuery, PAGE_SIZE, offset)
+                DebugLog.i("Search", "Loaded ${results.hits.size} more hits (offset $offset)")
+                _searchResults.value = current.copy(hits = current.hits + results.hits)
+                _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
+            } catch (e: Exception) {
+                DebugLog.e("Search", "Load more failed", e)
+            } finally {
+                _isLoadingMoreSearch.value = false
+            }
         }
     }
 
@@ -391,6 +457,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         searchJob?.cancel()
         _searchResults.value = null
         _searchLoading.value = false
+        _hasMoreSearch.value = false
+        currentSearchQuery = ""
     }
 
     fun playTrack(track: Track, queue: List<Track>? = null) {

@@ -111,10 +111,14 @@ fun MainScreen(
     val history by mainVm.history.collectAsState()
     val historyLoading by mainVm.historyLoading.collectAsState()
     val historyError by mainVm.historyError.collectAsState()
+    val hasMoreHistory by mainVm.hasMoreHistory.collectAsState()
+    val isLoadingMoreHistory by mainVm.isLoadingMoreHistory.collectAsState()
     val playlists by mainVm.playlists.collectAsState()
     val smartPlaylists by mainVm.smartPlaylists.collectAsState()
     val searchResults by mainVm.searchResults.collectAsState()
     val searchLoading by mainVm.searchLoading.collectAsState()
+    val hasMoreSearch by mainVm.hasMoreSearch.collectAsState()
+    val isLoadingMoreSearch by mainVm.isLoadingMoreSearch.collectAsState()
     val browseState by browseVm.state.collectAsState()
     val artistTracks by browseVm.artistTracks.collectAsState()
     val artistAlbums by browseVm.artistAlbums.collectAsState()
@@ -134,6 +138,8 @@ fun MainScreen(
     val languageLoading by browseVm.languageLoading.collectAsState()
     val hasMoreLanguageTracks by browseVm.hasMoreLanguageTracks.collectAsState()
     val isLoadingMoreLanguageTracks by browseVm.isLoadingMoreLanguageTracks.collectAsState()
+    val hasMoreArtistTracks by browseVm.hasMoreArtistTracks.collectAsState()
+    val isLoadingMoreArtistTracks by browseVm.isLoadingMoreArtistTracks.collectAsState()
     val lyrics by mainVm.lyrics.collectAsState()
     val lyricsLoading by mainVm.lyricsLoading.collectAsState()
     val playlistTracks by mainVm.playlistTracks.collectAsState()
@@ -216,7 +222,10 @@ fun MainScreen(
             onTrackLongPress = { contextTrack = it },
             favoriteIds = favoriteIds,
             onToggleFavorite = { mainVm.toggleFavorite(it) },
-            onClose = { showSearch = false; mainVm.clearSearch() }
+            onClose = { showSearch = false; mainVm.clearSearch() },
+            hasMore = hasMoreSearch,
+            isLoadingMore = isLoadingMoreSearch,
+            onLoadMore = { mainVm.loadMoreSearchResults() }
         )
         return
     }
@@ -479,7 +488,10 @@ fun MainScreen(
                         },
                         onTrackLongPress = { contextTrack = it },
                         favoriteIds = favoriteIds,
-                        onToggleFavorite = { mainVm.toggleFavorite(it) }
+                        onToggleFavorite = { mainVm.toggleFavorite(it) },
+                        hasMoreTracks = hasMoreArtistTracks,
+                        isLoadingMoreTracks = isLoadingMoreArtistTracks,
+                        onLoadMoreTracks = { browseVm.loadMoreArtistTracks() }
                     )
                 }
 
@@ -717,7 +729,10 @@ fun MainScreen(
                         error = historyError,
                         onTrackLongPress = { contextTrack = it },
                         favoriteIds = favoriteIds,
-                        onToggleFavorite = { mainVm.toggleFavorite(it) }
+                        onToggleFavorite = { mainVm.toggleFavorite(it) },
+                        hasMore = hasMoreHistory,
+                        isLoadingMore = isLoadingMoreHistory,
+                        onLoadMore = { mainVm.loadMoreHistory() }
                     )
                 }
 

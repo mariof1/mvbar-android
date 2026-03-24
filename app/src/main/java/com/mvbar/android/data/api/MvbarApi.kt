@@ -39,7 +39,11 @@ interface MvbarApi {
     suspend fun getArtistDetail(@Path("id") id: Int): ArtistDetailResponse
 
     @GET("api/browse/artists/{id}/tracks")
-    suspend fun getArtistTracks(@Path("id") id: Int): TracksResponse
+    suspend fun getArtistTracks(
+        @Path("id") id: Int,
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): TracksResponse
 
     @GET("api/browse/albums")
     suspend fun getAlbums(
@@ -98,7 +102,10 @@ interface MvbarApi {
 
     // History
     @GET("api/history")
-    suspend fun getHistory(@Query("limit") limit: Int = 50): HistoryResponse
+    suspend fun getHistory(
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): HistoryResponse
 
     @POST("api/history/{trackId}")
     suspend fun recordPlay(@Path("trackId") trackId: Int): Response<Unit>
@@ -128,7 +135,11 @@ interface MvbarApi {
 
     // Search
     @GET("api/search")
-    suspend fun search(@Query("q") query: String, @Query("limit") limit: Int = 20): SearchResults
+    suspend fun search(
+        @Query("q") query: String,
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): SearchResults
 
     // Recommendations
     @GET("api/recommendations")
@@ -139,7 +150,8 @@ interface MvbarApi {
     suspend fun getRecentlyAdded(
         @Query("sort") sort: String = "created_at",
         @Query("order") order: String = "desc",
-        @Query("limit") limit: Int = 50
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
     ): TracksResponse
 
     // Smart Playlists
