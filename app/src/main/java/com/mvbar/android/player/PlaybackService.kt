@@ -35,6 +35,7 @@ class PlaybackService : MediaLibraryService() {
 
     companion object {
         private const val ROOT_ID = "[root]"
+        private const val FOR_YOU_ID = "[foryou]"
         private const val RECENT_ID = "[recent]"
         private const val ALBUMS_ID = "[albums]"
         private const val ARTISTS_ID = "[artists]"
@@ -155,6 +156,7 @@ class PlaybackService : MediaLibraryService() {
                 try {
                     val items = when {
                         parentId == ROOT_ID -> getRootChildren()
+                        parentId == FOR_YOU_ID -> getForYouBuckets()
                         parentId == RECENT_ID -> getRecentTracks()
                         parentId == FAVORITES_ID -> getFavoriteTracks()
                         parentId == ALBUMS_ID -> getAlbumsList()
@@ -163,6 +165,7 @@ class PlaybackService : MediaLibraryService() {
                         parentId == GENRES_ID -> getGenresList()
                         parentId == PODCASTS_ID -> getPodcastsList()
                         parentId == AUDIOBOOKS_ID -> getAudiobooksList()
+                        parentId.startsWith("bucket:") -> getBucketTracks(parentId.removePrefix("bucket:"))
                         parentId.startsWith("album:") -> getAlbumTracks(parentId.removePrefix("album:"))
                         parentId.startsWith("artist:") -> getArtistTracks(parentId.removePrefix("artist:").toInt())
                         parentId.startsWith("playlist:") -> getPlaylistTracks(parentId.removePrefix("playlist:").toInt())
@@ -187,9 +190,10 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<MediaItem>> {
             // Determine if this is a browsable folder or a playable track
             val isBrowsable = mediaId.startsWith("album:") || mediaId.startsWith("artist:") ||
-                    mediaId.startsWith("playlist:") || mediaId.startsWith("smartpl:") || mediaId.startsWith("genre:") ||
+                    mediaId.startsWith("playlist:") || mediaId.startsWith("smartpl:") ||
+                    mediaId.startsWith("genre:") || mediaId.startsWith("bucket:") ||
                     mediaId.startsWith("podcast:") || mediaId.startsWith("audiobook:") ||
-                    mediaId in listOf(ROOT_ID, RECENT_ID, FAVORITES_ID, ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID, PODCASTS_ID, AUDIOBOOKS_ID)
+                    mediaId in listOf(ROOT_ID, FOR_YOU_ID, RECENT_ID, FAVORITES_ID, ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID, PODCASTS_ID, AUDIOBOOKS_ID)
             val item = MediaItem.Builder()
                 .setMediaId(mediaId)
                 .setMediaMetadata(
@@ -271,6 +275,7 @@ class PlaybackService : MediaLibraryService() {
     // Browse tree builders
 
     private fun getRootChildren(): List<MediaItem> = listOf(
+        browseFolderItem(FOR_YOU_ID, "For You", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
         browseFolderItem(RECENT_ID, "Recently Added", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
         browseFolderItem(FAVORITES_ID, "Favorites", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
         browseFolderItem(ALBUMS_ID, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS),
@@ -285,6 +290,43 @@ class PlaybackService : MediaLibraryService() {
         val api = ApiClient.api
         val response = api.getRecentlyAdded(limit = 50)
         return response.tracks.map { trackToMediaItem(it) }
+    }
+
+    private var cachedBuckets: List<com.mvbar.android.data.model.RecBucket> = emptyList()
+
+    private suspend fun getForYouBuckets(): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getRecommendations()
+        cachedBuckets = response.buckets
+        return response.buckets.mapIndexed { index, bucket ->
+            val artUri = bucket.artPaths.firstOrNull()?.let { ApiClient.artPathUrl(it) }
+            MediaItem.Builder()
+                .setMediaId("bucket:$index")
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(bucket.name)
+                        .setSubtitle(bucket.subtitle ?: "${bucket.count} tracks")
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
+                        .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
+                        .build()
+                )
+                .build()
+        }
+    }
+
+    private suspend fun getBucketTracks(indexStr: String): List<MediaItem> {
+        val index = indexStr.toIntOrNull() ?: return emptyList()
+        val bucket = cachedBuckets.getOrNull(index)
+        if (bucket != null && bucket.tracks.isNotEmpty()) {
+            return bucket.tracks.map { trackToMediaItem(it) }
+        }
+        // Fallback: re-fetch if cache is empty
+        val api = ApiClient.api
+        val response = api.getRecommendations()
+        cachedBuckets = response.buckets
+        return response.buckets.getOrNull(index)?.tracks?.map { trackToMediaItem(it) } ?: emptyList()
     }
 
     private suspend fun getFavoriteTracks(): List<MediaItem> {
