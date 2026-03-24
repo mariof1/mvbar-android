@@ -166,6 +166,7 @@ class PlaybackService : MediaLibraryService() {
                         parentId.startsWith("album:") -> getAlbumTracks(parentId.removePrefix("album:"))
                         parentId.startsWith("artist:") -> getArtistTracks(parentId.removePrefix("artist:").toInt())
                         parentId.startsWith("playlist:") -> getPlaylistTracks(parentId.removePrefix("playlist:").toInt())
+                        parentId.startsWith("smartpl:") -> getSmartPlaylistTracks(parentId.removePrefix("smartpl:").toInt())
                         parentId.startsWith("genre:") -> getGenreTracks(parentId.removePrefix("genre:"))
                         parentId.startsWith("podcast:") -> getPodcastEpisodes(parentId.removePrefix("podcast:").toInt())
                         parentId.startsWith("audiobook:") -> getAudiobookChapters(parentId.removePrefix("audiobook:").toInt())
@@ -186,7 +187,7 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<MediaItem>> {
             // Determine if this is a browsable folder or a playable track
             val isBrowsable = mediaId.startsWith("album:") || mediaId.startsWith("artist:") ||
-                    mediaId.startsWith("playlist:") || mediaId.startsWith("genre:") ||
+                    mediaId.startsWith("playlist:") || mediaId.startsWith("smartpl:") || mediaId.startsWith("genre:") ||
                     mediaId.startsWith("podcast:") || mediaId.startsWith("audiobook:") ||
                     mediaId in listOf(ROOT_ID, RECENT_ID, FAVORITES_ID, ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID, PODCASTS_ID, AUDIOBOOKS_ID)
             val item = MediaItem.Builder()
@@ -334,20 +335,39 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun getPlaylistsList(): List<MediaItem> {
         val api = ApiClient.api
-        val response = api.getPlaylists()
-        return response.playlists.map { playlist ->
-            MediaItem.Builder()
-                .setMediaId("playlist:${playlist.id}")
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(playlist.name)
-                        .setIsBrowsable(true)
-                        .setIsPlayable(false)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
-                        .build()
-                )
-                .build()
-        }
+        val playlists = try {
+            api.getPlaylists().playlists.map { playlist ->
+                MediaItem.Builder()
+                    .setMediaId("playlist:${playlist.id}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(playlist.name)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (_: Exception) { emptyList() }
+
+        val smartPlaylists = try {
+            api.getSmartPlaylists().items.map { sp ->
+                MediaItem.Builder()
+                    .setMediaId("smartpl:${sp.id}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle("⚡ ${sp.name}")
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (_: Exception) { emptyList() }
+
+        return playlists + smartPlaylists
     }
 
     private suspend fun getGenresList(): List<MediaItem> {
@@ -384,6 +404,12 @@ class PlaybackService : MediaLibraryService() {
         val api = ApiClient.api
         val response = api.getPlaylistItems(playlistId)
         return response.items.mapNotNull { it.track?.let { t -> trackToMediaItem(t) } }
+    }
+
+    private suspend fun getSmartPlaylistTracks(smartPlaylistId: Int): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getSmartPlaylist(smartPlaylistId, limit = 100)
+        return response.tracks.map { trackToMediaItem(it) }
     }
 
     private suspend fun getGenreTracks(genreName: String): List<MediaItem> {
