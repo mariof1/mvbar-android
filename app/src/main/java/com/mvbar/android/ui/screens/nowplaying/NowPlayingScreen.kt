@@ -72,12 +72,16 @@ fun NowPlayingScreen(
     }
 
     // Swipe-down-to-dismiss state
-    val screenHeightPx = with(LocalDensity.current) {
+    val density = LocalDensity.current
+    val screenHeightPx = with(density) {
         LocalConfiguration.current.screenHeightDp.dp.toPx()
     }
+    val expandThreshold = with(density) { 40.dp.toPx() } // 40dp for expand (snappier)
+
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var isDismissing by remember { mutableStateOf(false) }
-    val dismissThreshold = screenHeightPx * 0.08f
+    val dismissThreshold = screenHeightPx * 0.15f // 15% for dismiss
+    
     val displayOffset = if (isDismissing) screenHeightPx else dragOffset.coerceAtLeast(0f)
 
     // Bottom sheet for queue
@@ -90,7 +94,7 @@ fun NowPlayingScreen(
 
     BottomSheetScaffold(
         scaffoldState = scaffoldState,
-        sheetPeekHeight = 52.dp,
+        sheetPeekHeight = 72.dp, // Increased from 52dp for better grab area
         sheetContainerColor = SurfaceContainerDark,
         sheetContentColor = OnSurface,
         sheetTonalElevation = 0.dp,
@@ -102,7 +106,7 @@ fun NowPlayingScreen(
             QueueSheetContent(
                 queue = state.queue,
                 currentIndex = state.queueIndex,
-                isExpanded = scaffoldState.bottomSheetState.currentValue == SheetValue.Expanded,
+                isExpanded = scaffoldState.bottomSheetState.targetValue == SheetValue.Expanded,
                 onPlayItem = onPlayQueueItem,
                 onRemoveItem = onRemoveFromQueue,
                 onClearQueue = onClearQueue
@@ -122,7 +126,7 @@ fun NowPlayingScreen(
                             if (dragOffset > dismissThreshold) {
                                 isDismissing = true
                                 onBack()
-                            } else if (dragOffset < -dismissThreshold) {
+                            } else if (dragOffset < -expandThreshold) {
                                 // Swipe up → expand queue
                                 scope.launch { scaffoldState.bottomSheetState.expand() }
                             }
@@ -394,10 +398,13 @@ private fun QueueSheetContent(
     onRemoveItem: (Int) -> Unit,
     onClearQueue: () -> Unit
 ) {
+    val nextTrack = if (currentIndex < queue.size - 1) queue[currentIndex + 1] else null
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (isExpanded) Modifier.fillMaxHeight(0.7f) else Modifier)
+            .animateContentSize()
     ) {
         // Drag handle
         Box(
@@ -415,58 +422,97 @@ private fun QueueSheetContent(
             )
         }
 
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "Queue",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = OnSurface
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "${queue.size} tracks",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceDim
+        if (!isExpanded) {
+            // Collapsed: Show "Up Next" preview
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { /* Let the sheet handle expansion */ }
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Up Next",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Cyan500,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        nextTrack?.displayTitle ?: "End of queue",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = OnSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Icon(
+                    Icons.Filled.KeyboardArrowUp,
+                    "Open Queue",
+                    tint = OnSurfaceDim
                 )
-                if (queue.isNotEmpty()) {
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = onClearQueue) {
-                        Text("Clear", color = Pink500, style = MaterialTheme.typography.labelMedium)
+            }
+        } else {
+            // Expanded: Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Queue",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = OnSurface
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${queue.size} tracks",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceDim
+                    )
+                    if (queue.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = onClearQueue) {
+                            Text("Clear", color = Pink500, style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                 }
             }
-        }
+            
+            HorizontalDivider(color = WhiteOverlay10, modifier = Modifier.padding(horizontal = 20.dp))
 
-        HorizontalDivider(color = WhiteOverlay10, modifier = Modifier.padding(horizontal = 20.dp))
-
-        if (queue.isEmpty()) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(80.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Queue is empty", color = OnSurfaceDim)
-            }
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(vertical = 8.dp, horizontal = 0.dp)
-            ) {
-                itemsIndexed(queue) { index, track ->
-                    val isActive = index == currentIndex
-                    QueueItem(
-                        track = track,
-                        isActive = isActive,
-                        onPlay = { onPlayItem(index) },
-                        onRemove = { onRemoveItem(index) }
-                    )
+            if (queue.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Queue is empty", color = OnSurfaceDim)
+                }
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    itemsIndexed(queue) { index, track ->
+                        val isActive = index == currentIndex
+                        // Only show passed tracks if recent (e.g., previous 1-2)? 
+                        // For now keep showing all.
+                        val isPast = index < currentIndex
+                        
+                        Box(modifier = Modifier.graphicsLayer { alpha = if (isPast) 0.5f else 1f }) {
+                            QueueItem(
+                                track = track,
+                                isActive = isActive,
+                                onPlay = { onPlayItem(index) },
+                                onRemove = { onRemoveItem(index) }
+                            )
+                        }
+                    }
                 }
             }
         }
