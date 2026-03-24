@@ -54,15 +54,12 @@ fun ArtistDetailScreen(
     if (artist == null) return
 
     val listState = rememberLazyListState()
-    val shouldLoadMore = remember {
-        derivedStateOf {
+    LaunchedEffect(listState, hasMoreTracks, isLoadingMoreTracks) {
+        snapshotFlow {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val totalItems = listState.layoutInfo.totalItemsCount
             lastVisible >= totalItems - 5 && hasMoreTracks && !isLoadingMoreTracks
-        }
-    }
-    LaunchedEffect(shouldLoadMore.value) {
-        if (shouldLoadMore.value) onLoadMoreTracks()
+        }.collect { if (it) onLoadMoreTracks() }
     }
 
     LazyColumn(

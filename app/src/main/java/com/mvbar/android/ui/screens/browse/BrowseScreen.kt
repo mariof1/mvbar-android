@@ -97,13 +97,12 @@ private fun ArtistsGrid(
     val gridState = rememberLazyGridState()
 
     // Trigger load more when near end
-    val shouldLoadMore by remember {
-        derivedStateOf {
+    LaunchedEffect(gridState, hasMore, isLoadingMore, artists.size) {
+        snapshotFlow {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             hasMore && !isLoadingMore && artists.isNotEmpty() && lastVisible >= artists.size - 6
-        }
+        }.collect { if (it) onLoadMore() }
     }
-    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
 
     LazyVerticalGrid(
         state = gridState,
@@ -138,13 +137,12 @@ private fun AlbumsGrid(
 ) {
     val gridState = rememberLazyGridState()
 
-    val shouldLoadMore by remember {
-        derivedStateOf {
+    LaunchedEffect(gridState, hasMore, isLoadingMore, albums.size) {
+        snapshotFlow {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             hasMore && !isLoadingMore && albums.isNotEmpty() && lastVisible >= albums.size - 6
-        }
+        }.collect { if (it) onLoadMore() }
     }
-    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
 
     LazyVerticalGrid(
         state = gridState,
@@ -178,13 +176,12 @@ private fun GenresGrid(
 ) {
     val gridState = rememberLazyGridState()
 
-    val shouldLoadMore by remember {
-        derivedStateOf {
+    LaunchedEffect(gridState, hasMore, isLoadingMore, genres.size) {
+        snapshotFlow {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             hasMore && !isLoadingMore && genres.isNotEmpty() && lastVisible >= genres.size - 6
-        }
+        }.collect { if (it) onLoadMore() }
     }
-    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
 
     val gradients = listOf(
         listOf(Cyan500, Cyan700),
@@ -254,13 +251,12 @@ private fun CountriesGrid(
 ) {
     val gridState = rememberLazyGridState()
 
-    val shouldLoadMore by remember {
-        derivedStateOf {
+    LaunchedEffect(gridState, hasMore, isLoadingMore, countries.size) {
+        snapshotFlow {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             hasMore && !isLoadingMore && countries.isNotEmpty() && lastVisible >= countries.size - 6
-        }
+        }.collect { if (it) onLoadMore() }
     }
-    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
 
     val gradients = listOf(
         listOf(Color(0xFF2E7D32), Color(0xFF1B5E20)),
@@ -300,13 +296,12 @@ private fun LanguagesGrid(
 ) {
     val gridState = rememberLazyGridState()
 
-    val shouldLoadMore by remember {
-        derivedStateOf {
+    LaunchedEffect(gridState, hasMore, isLoadingMore, languages.size) {
+        snapshotFlow {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             hasMore && !isLoadingMore && languages.isNotEmpty() && lastVisible >= languages.size - 6
-        }
+        }.collect { if (it) onLoadMore() }
     }
-    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
 
     val gradients = listOf(
         listOf(Color(0xFF6A1B9A), Color(0xFF4A148C)),

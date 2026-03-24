@@ -86,14 +86,11 @@ fun HistoryScreen(
                 }
                 else -> {
                     val listState = rememberLazyListState()
-                    val shouldLoadMore = remember {
-                        derivedStateOf {
+                    LaunchedEffect(listState, hasMore, isLoadingMore, history.size) {
+                        snapshotFlow {
                             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
                             lastVisible >= history.size - 5 && hasMore && !isLoadingMore
-                        }
-                    }
-                    LaunchedEffect(shouldLoadMore.value) {
-                        if (shouldLoadMore.value) onLoadMore()
+                        }.collect { if (it) onLoadMore() }
                     }
                     LazyColumn(
                         state = listState,

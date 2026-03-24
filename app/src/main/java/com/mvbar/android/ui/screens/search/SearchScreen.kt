@@ -129,14 +129,11 @@ fun SearchScreen(
                 (if (results.albums.isNotEmpty()) 1 else 0) +
                 (if (results.playlists.isNotEmpty()) 1 else 0) +
                 (if (results.hits.isNotEmpty()) 1 else 0))
-            val shouldLoadMore = remember {
-                derivedStateOf {
+            LaunchedEffect(listState, hasMore, isLoadingMore, totalItems) {
+                snapshotFlow {
                     val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
                     lastVisible >= totalItems - 5 && hasMore && !isLoadingMore
-                }
-            }
-            LaunchedEffect(shouldLoadMore.value) {
-                if (shouldLoadMore.value) onLoadMore()
+                }.collect { if (it) onLoadMore() }
             }
             LazyColumn(
                 state = listState,

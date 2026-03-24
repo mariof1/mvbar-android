@@ -40,13 +40,12 @@ fun GenreDetailScreen(
 ) {
     val listState = rememberLazyListState()
 
-    val shouldLoadMore by remember {
-        derivedStateOf {
+    LaunchedEffect(listState, hasMore, isLoadingMore, tracks.size) {
+        snapshotFlow {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             hasMore && !isLoadingMore && tracks.isNotEmpty() && lastVisible >= tracks.size - 5
-        }
+        }.collect { if (it) onLoadMore() }
     }
-    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
 
     LazyColumn(
         state = listState,
