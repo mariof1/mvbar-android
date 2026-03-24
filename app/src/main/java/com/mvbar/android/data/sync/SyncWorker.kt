@@ -6,6 +6,7 @@ import androidx.work.WorkerParameters
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.local.entity.*
+import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.debug.DebugLog
 
 class SyncWorker(
@@ -14,6 +15,16 @@ class SyncWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        // Ensure API is configured (WorkManager may start before Activity calls configure)
+        if (ApiClient.getBaseUrl() == "http://localhost/") {
+            val restored = AuthRepository(applicationContext).restoreSession()
+            if (!restored) {
+                DebugLog.e("SyncWorker", "No saved session, skipping sync")
+                return Result.failure()
+            }
+            DebugLog.i("SyncWorker", "Restored API session for background sync")
+        }
+
         val api = try { ApiClient.api } catch (e: Exception) {
             DebugLog.e("SyncWorker", "API not configured", e)
             return Result.retry()
