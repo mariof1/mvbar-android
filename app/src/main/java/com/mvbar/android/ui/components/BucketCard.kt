@@ -1,7 +1,5 @@
 package com.mvbar.android.ui.components
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,13 +9,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -34,22 +29,8 @@ fun BucketCard(
     bucketIndex: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    // Scale-up entrance animation
-    val animProgress = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        animProgress.animateTo(
-            1f,
-            animationSpec = tween(durationMillis = 400, delayMillis = bucketIndex * 80)
-        )
-    }
-
     Column(
         modifier = modifier
-            .graphicsLayer {
-                alpha = animProgress.value
-                scaleX = 0.85f + 0.15f * animProgress.value
-                scaleY = 0.85f + 0.15f * animProgress.value
-            }
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
     ) {

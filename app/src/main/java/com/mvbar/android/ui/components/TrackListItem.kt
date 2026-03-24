@@ -1,7 +1,6 @@
 package com.mvbar.android.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,32 +34,20 @@ fun TrackListItem(
     onMore: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    // Staggered entrance animation
-    val animProgress = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        val staggerDelay = ((index ?: 0).coerceIn(0, 15)) * 30
-        animProgress.animateTo(
-            1f,
-            animationSpec = tween(durationMillis = 300, delayMillis = staggerDelay)
-        )
-    }
-
     val bgColor by animateColorAsState(
         if (isPlaying) Cyan500.copy(alpha = 0.15f) else androidx.compose.ui.graphics.Color.Transparent,
+        animationSpec = tween(200),
         label = "trackBg"
     )
     val textColor by animateColorAsState(
         if (isPlaying) Cyan400 else OnSurface,
+        animationSpec = tween(200),
         label = "trackText"
     )
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .graphicsLayer {
-                alpha = animProgress.value
-                translationX = (1f - animProgress.value) * 60f
-            }
             .clip(RoundedCornerShape(12.dp))
             .background(bgColor)
             .clickable(onClick = onPlay)
