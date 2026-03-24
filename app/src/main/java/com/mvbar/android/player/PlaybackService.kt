@@ -41,6 +41,8 @@ class PlaybackService : MediaLibraryService() {
         private const val PLAYLISTS_ID = "[playlists]"
         private const val GENRES_ID = "[genres]"
         private const val FAVORITES_ID = "[favorites]"
+        private const val PODCASTS_ID = "[podcasts]"
+        private const val AUDIOBOOKS_ID = "[audiobooks]"
     }
 
     override fun onCreate() {
@@ -159,10 +161,14 @@ class PlaybackService : MediaLibraryService() {
                         parentId == ARTISTS_ID -> getArtistsList()
                         parentId == PLAYLISTS_ID -> getPlaylistsList()
                         parentId == GENRES_ID -> getGenresList()
+                        parentId == PODCASTS_ID -> getPodcastsList()
+                        parentId == AUDIOBOOKS_ID -> getAudiobooksList()
                         parentId.startsWith("album:") -> getAlbumTracks(parentId.removePrefix("album:"))
                         parentId.startsWith("artist:") -> getArtistTracks(parentId.removePrefix("artist:").toInt())
                         parentId.startsWith("playlist:") -> getPlaylistTracks(parentId.removePrefix("playlist:").toInt())
                         parentId.startsWith("genre:") -> getGenreTracks(parentId.removePrefix("genre:"))
+                        parentId.startsWith("podcast:") -> getPodcastEpisodes(parentId.removePrefix("podcast:").toInt())
+                        parentId.startsWith("audiobook:") -> getAudiobookChapters(parentId.removePrefix("audiobook:").toInt())
                         else -> emptyList()
                     }
                     LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
@@ -181,7 +187,8 @@ class PlaybackService : MediaLibraryService() {
             // Determine if this is a browsable folder or a playable track
             val isBrowsable = mediaId.startsWith("album:") || mediaId.startsWith("artist:") ||
                     mediaId.startsWith("playlist:") || mediaId.startsWith("genre:") ||
-                    mediaId in listOf(ROOT_ID, RECENT_ID, FAVORITES_ID, ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID)
+                    mediaId.startsWith("podcast:") || mediaId.startsWith("audiobook:") ||
+                    mediaId in listOf(ROOT_ID, RECENT_ID, FAVORITES_ID, ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID, PODCASTS_ID, AUDIOBOOKS_ID)
             val item = MediaItem.Builder()
                 .setMediaId(mediaId)
                 .setMediaMetadata(
@@ -269,6 +276,8 @@ class PlaybackService : MediaLibraryService() {
         browseFolderItem(ARTISTS_ID, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS),
         browseFolderItem(PLAYLISTS_ID, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS),
         browseFolderItem(GENRES_ID, "Genres", MediaMetadata.MEDIA_TYPE_FOLDER_GENRES),
+        browseFolderItem(PODCASTS_ID, "Podcasts", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
+        browseFolderItem(AUDIOBOOKS_ID, "Audiobooks", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
     )
 
     private suspend fun getRecentTracks(): List<MediaItem> {
@@ -381,6 +390,105 @@ class PlaybackService : MediaLibraryService() {
         val api = ApiClient.api
         val response = api.getGenreTracks(genreName, limit = 100)
         return response.tracks.map { trackToMediaItem(it) }
+    }
+
+    // Podcast browse
+
+    private suspend fun getPodcastsList(): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getPodcasts()
+        return response.podcasts.map { podcast ->
+            val artUri = podcast.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+                ?: ApiClient.podcastArtUrl(podcast.id)
+            MediaItem.Builder()
+                .setMediaId("podcast:${podcast.id}")
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(podcast.title)
+                        .setArtist(podcast.author)
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST)
+                        .setArtworkUri(Uri.parse(artUri))
+                        .build()
+                )
+                .build()
+        }
+    }
+
+    private suspend fun getPodcastEpisodes(podcastId: Int): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getPodcastDetail(podcastId)
+        return response.episodes.map { episode ->
+            val artUri = episode.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+                ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
+                ?: ApiClient.episodeArtUrl(episode.id)
+            val streamUrl = ApiClient.episodeStreamUrl(episode.id)
+            val pseudoId = -episode.id
+            MediaItem.Builder()
+                .setMediaId(pseudoId.toString())
+                .setUri(streamUrl)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(episode.title)
+                        .setArtist(episode.podcastTitle ?: response.podcast?.title)
+                        .setArtworkUri(Uri.parse(artUri))
+                        .setIsBrowsable(false)
+                        .setIsPlayable(true)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
+                        .build()
+                )
+                .build()
+        }
+    }
+
+    // Audiobook browse
+
+    private suspend fun getAudiobooksList(): List<MediaItem> {
+        val api = ApiClient.api
+        val books = api.getAudiobooks()
+        return books.map { book ->
+            val artUri = ApiClient.audiobookArtUrl(book.id)
+            MediaItem.Builder()
+                .setMediaId("audiobook:${book.id}")
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(book.title)
+                        .setArtist(book.author)
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                        .setArtworkUri(Uri.parse(artUri))
+                        .build()
+                )
+                .build()
+        }
+    }
+
+    private suspend fun getAudiobookChapters(audiobookId: Int): List<MediaItem> {
+        val api = ApiClient.api
+        val response = api.getAudiobookDetail(audiobookId)
+        val book = response.audiobook ?: return emptyList()
+        val artUri = ApiClient.audiobookArtUrl(audiobookId)
+        return response.chapters.map { chapter ->
+            val pseudoId = -(audiobookId * 100000 + chapter.id)
+            val streamUrl = ApiClient.audiobookChapterStreamUrl(audiobookId, chapter.id)
+            MediaItem.Builder()
+                .setMediaId(pseudoId.toString())
+                .setUri(streamUrl)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(chapter.title)
+                        .setArtist(book.author)
+                        .setAlbumTitle(book.title)
+                        .setArtworkUri(Uri.parse(artUri))
+                        .setIsBrowsable(false)
+                        .setIsPlayable(true)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                        .build()
+                )
+                .build()
+        }
     }
 
     // Helpers
