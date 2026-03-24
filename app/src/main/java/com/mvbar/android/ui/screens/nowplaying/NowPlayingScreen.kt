@@ -290,10 +290,25 @@ fun NowPlayingScreen(
                 Spacer(Modifier.height(24.dp))
 
                 // Progress bar
-                val progress = if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
+                var isDragging by remember { mutableStateOf(false) }
+                var dragProgress by remember { mutableFloatStateOf(0f) }
+                
+                val currentProgress = if (isDragging) {
+                    dragProgress
+                } else {
+                    if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
+                }
+
                 Slider(
-                    value = progress,
-                    onValueChange = { onSeek((it * state.duration).toLong()) },
+                    value = currentProgress,
+                    onValueChange = { 
+                        isDragging = true
+                        dragProgress = it
+                    },
+                    onValueChangeFinished = {
+                        isDragging = false
+                        onSeek((dragProgress * state.duration).toLong())
+                    },
                     colors = SliderDefaults.colors(
                         thumbColor = Cyan500,
                         activeTrackColor = Cyan500,
@@ -306,7 +321,12 @@ fun NowPlayingScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(formatTime(state.position), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
+                    val displayPosition = if (isDragging) {
+                        (dragProgress * state.duration).toLong()
+                    } else {
+                        state.position
+                    }
+                    Text(formatTime(displayPosition), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
                     Text(formatTime(state.duration), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
                 }
 
