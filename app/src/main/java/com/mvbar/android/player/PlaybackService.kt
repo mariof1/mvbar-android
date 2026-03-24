@@ -128,6 +128,20 @@ class PlaybackService : MediaLibraryService() {
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
 
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): MediaSession.ConnectionResult {
+            val playerCommands = Player.Commands.Builder()
+                .addAllCommands()
+                .build()
+            val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailablePlayerCommands(playerCommands)
+                .setAvailableSessionCommands(sessionCommands)
+                .build()
+        }
+
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
