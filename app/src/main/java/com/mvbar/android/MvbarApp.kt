@@ -7,6 +7,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
+import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.data.sync.SyncManager
 import com.mvbar.android.debug.DebugLog
@@ -25,6 +26,7 @@ class MvbarApp : Application(), ImageLoaderFactory {
         DebugLog.init(this)
         DebugLog.installCrashHandler()
         AudioCacheManager.init(this)
+        NetworkMonitor.init(this)
 
         // Restore API session early so PlaybackService (Android Auto) can access the server
         appScope.launch {

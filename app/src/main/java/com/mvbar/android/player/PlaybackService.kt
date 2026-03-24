@@ -21,6 +21,7 @@ import com.mvbar.android.MainActivity
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.local.entity.toModel
+import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.CoroutineScope
@@ -35,6 +36,7 @@ class PlaybackService : MediaLibraryService() {
     private var mediaSession: MediaLibrarySession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val db by lazy { MvbarDatabase.getInstance(this) }
+    private var reconnectListener: (() -> Unit)? = null
 
     companion object {
         private const val ROOT_ID = "[root]"
@@ -111,6 +113,26 @@ class PlaybackService : MediaLibraryService() {
             .setBitmapLoader(AuthBitmapLoader())
             .build()
 
+        // Monitor network: refresh browse tree when connectivity is restored
+        NetworkMonitor.init(this)
+        val listener: () -> Unit = {
+            DebugLog.i("Player", "Network restored — refreshing Android Auto browse tree")
+            mediaSession?.let { session ->
+                val topLevelIds = listOf(
+                    ROOT_ID, FOR_YOU_ID, RECENT_ID, FAVORITES_ID,
+                    ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID,
+                    PODCASTS_ID, AUDIOBOOKS_ID
+                )
+                for (id in topLevelIds) {
+                    session.connectedControllers.forEach { ctrl ->
+                        session.notifyChildrenChanged(ctrl, id, 0, null)
+                    }
+                }
+            }
+        }
+        reconnectListener = listener
+        NetworkMonitor.addReconnectListener(listener)
+
         DebugLog.i("Player", "PlaybackService created with Android Auto support")
     }
 
@@ -118,6 +140,8 @@ class PlaybackService : MediaLibraryService() {
         mediaSession
 
     override fun onDestroy() {
+        reconnectListener?.let { NetworkMonitor.removeReconnectListener(it) }
+        reconnectListener = null
         mediaSession?.run {
             player.release()
             release()
@@ -303,21 +327,41 @@ class PlaybackService : MediaLibraryService() {
         browseFolderItem(AUDIOBOOKS_ID, "Audiobooks", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
     )
 
-    private suspend fun getRecentTracks(): List<MediaItem> {
-        return try {
-            val api = ApiClient.api
-            val response = api.getRecentlyAdded(limit = 50)
-            response.tracks.map { trackToMediaItem(it) }
-        } catch (e: Exception) {
-            DebugLog.w("Auto", "Recent tracks API failed, using cache", e)
-            db.trackDao().getRecentlyAdded(50).map { trackToMediaItem(it.toModel()) }
+    /** Try API call if online, otherwise skip straight to DB fallback (avoids 30s timeout) */
+    private suspend fun <T> apiOrCache(
+        tag: String,
+        apiCall: suspend () -> T,
+        cacheCall: suspend () -> T
+    ): T {
+        if (!NetworkMonitor.isOnline.value) {
+            DebugLog.d("Auto", "$tag: offline, using cache")
+            return cacheCall()
         }
+        return try {
+            apiCall()
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "$tag API failed, using cache", e)
+            cacheCall()
+        }
+    }
+
+    private suspend fun getRecentTracks(): List<MediaItem> {
+        return apiOrCache("Recent tracks",
+            apiCall = {
+                val response = ApiClient.api.getRecentlyAdded(limit = 50)
+                response.tracks.map { trackToMediaItem(it) }
+            },
+            cacheCall = {
+                db.trackDao().getRecentlyAdded(50).map { trackToMediaItem(it.toModel()) }
+            }
+        )
     }
 
     private var cachedBuckets: List<com.mvbar.android.data.model.RecBucket> = emptyList()
 
     private suspend fun getForYouBuckets(): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val response = api.getRecommendations()
             cachedBuckets = response.buckets
@@ -366,15 +410,21 @@ class PlaybackService : MediaLibraryService() {
         if (bucket != null && bucket.tracks.isNotEmpty()) {
             return bucket.tracks.map { trackToMediaItem(it) }
         }
-        // Fallback: re-fetch if cache is empty
-        val api = ApiClient.api
-        val response = api.getRecommendations()
-        cachedBuckets = response.buckets
-        return response.buckets.getOrNull(index)?.tracks?.map { trackToMediaItem(it) } ?: emptyList()
+        if (!NetworkMonitor.isOnline.value) return emptyList()
+        return try {
+            val api = ApiClient.api
+            val response = api.getRecommendations()
+            cachedBuckets = response.buckets
+            response.buckets.getOrNull(index)?.tracks?.map { trackToMediaItem(it) } ?: emptyList()
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Bucket tracks API failed", e)
+            emptyList()
+        }
     }
 
     private suspend fun getFavoriteTracks(): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val response = api.getFavorites()
             response.tracks.map { trackToMediaItem(it) }
@@ -386,6 +436,7 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun getAlbumsList(): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val response = api.getAlbums(limit = 100)
             response.albums.map { album ->
@@ -428,6 +479,7 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun getArtistsList(): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val response = api.getArtists(limit = 100)
             response.artists.mapNotNull { artist ->
@@ -465,7 +517,9 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getPlaylistsList(): List<MediaItem> {
+        val offline = !NetworkMonitor.isOnline.value
         val playlists = try {
+            if (offline) throw java.io.IOException("offline")
             val api = ApiClient.api
             api.getPlaylists().playlists.map { playlist ->
                 MediaItem.Builder()
@@ -498,6 +552,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         val smartPlaylists = try {
+            if (offline) throw java.io.IOException("offline")
             val api = ApiClient.api
             api.getSmartPlaylists().items.map { sp ->
                 MediaItem.Builder()
@@ -519,6 +574,7 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun getGenresList(): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val response = api.getGenres(limit = 100)
             response.genres.map { genre ->
@@ -554,6 +610,7 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun getAlbumTracks(albumName: String): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val response = api.getAlbumTracks(albumName)
             response.tracks.map { trackToMediaItem(it) }
@@ -565,6 +622,7 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun getArtistTracks(artistId: Int): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val response = api.getArtistTracks(artistId)
             response.tracks.map { trackToMediaItem(it) }
@@ -580,19 +638,35 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getPlaylistTracks(playlistId: Int): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getPlaylistItems(playlistId)
-        return response.items.mapNotNull { it.track?.let { t -> trackToMediaItem(t) } }
+        return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
+            val api = ApiClient.api
+            val response = api.getPlaylistItems(playlistId)
+            response.items.mapNotNull { it.track?.let { t -> trackToMediaItem(t) } }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Playlist tracks API failed, using cache", e)
+            db.playlistDao().getItems(playlistId).mapNotNull {
+                val track = db.trackDao().getById(it.trackId)
+                track?.let { t -> trackToMediaItem(t.toModel()) }
+            }
+        }
     }
 
     private suspend fun getSmartPlaylistTracks(smartPlaylistId: Int): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getSmartPlaylist(smartPlaylistId, limit = 100)
-        return response.tracks.map { trackToMediaItem(it) }
+        return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
+            val api = ApiClient.api
+            val response = api.getSmartPlaylist(smartPlaylistId, limit = 100)
+            response.tracks.map { trackToMediaItem(it) }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Smart playlist tracks API failed", e)
+            emptyList()
+        }
     }
 
     private suspend fun getGenreTracks(genreName: String): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val response = api.getGenreTracks(genreName, limit = 100)
             response.tracks.map { trackToMediaItem(it) }
@@ -606,6 +680,7 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun getPodcastsList(): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val response = api.getPodcasts()
             response.podcasts.map { podcast ->
@@ -650,6 +725,7 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun getPodcastEpisodes(podcastId: Int): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val response = api.getPodcastDetail(podcastId)
             response.episodes.map { episode ->
@@ -703,6 +779,7 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun getAudiobooksList(): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val books = api.getAudiobooks()
             books.map { book ->
@@ -745,6 +822,7 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun getAudiobookChapters(audiobookId: Int): List<MediaItem> {
         return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
             val api = ApiClient.api
             val response = api.getAudiobookDetail(audiobookId)
             val book = response.audiobook ?: return emptyList()

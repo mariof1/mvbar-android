@@ -3,6 +3,7 @@ package com.mvbar.android.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
@@ -122,6 +123,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         playerManager.setFavorite(trackId in _favoriteIds.value)
                     }
                 }
+            }
+        }
+        // Auto-reload home data when network is restored after being offline
+        viewModelScope.launch {
+            NetworkMonitor.reconnectEvents(app).collect {
+                DebugLog.i("Home", "Network restored — refreshing home data")
+                loadHome(isRefresh = true)
             }
         }
     }
