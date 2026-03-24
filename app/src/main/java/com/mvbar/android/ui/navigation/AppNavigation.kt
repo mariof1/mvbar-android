@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -313,7 +314,11 @@ fun MainScreen(
             bottomBar = {
                 Column {
                     // Mini player
-                    if (playerState.currentTrack != null) {
+                    AnimatedVisibility(
+                        visible = playerState.currentTrack != null,
+                        enter = slideInVertically { it } + fadeIn(),
+                        exit = slideOutVertically { it } + fadeOut()
+                    ) {
                         MiniPlayerBar(
                             state = playerState,
                             onTogglePlay = { mainVm.playerManager.togglePlay() },
@@ -363,7 +368,15 @@ fun MainScreen(
                                         tab.label
                                     )
                                 },
-                                label = { Text(tab.label, style = MaterialTheme.typography.labelSmall) },
+                                label = {
+                                    Text(
+                                        tab.label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                alwaysShowLabel = false,
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = Cyan500,
                                     selectedTextColor = Cyan500,

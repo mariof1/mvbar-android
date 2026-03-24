@@ -15,6 +15,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -40,89 +41,94 @@ fun MiniPlayerBar(
         track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
     }
 
-    Column(modifier = modifier) {
-        // Progress bar
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(2.dp),
-            color = if (isPodcast) Orange500 else Cyan500,
-            trackColor = WhiteOverlay10,
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(SurfaceDark.copy(alpha = 0.95f), SurfaceDark)
-                    )
-                )
-                .clickable(onClick = onTap)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AsyncImage(
-                model = artUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+    // Floating pill design
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .height(64.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onTap),
+        color = SurfaceElevated,
+        tonalElevation = 8.dp,
+        shadowElevation = 8.dp
+    ) {
+        Column {
+            Row(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-            )
-
-            Spacer(Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    track.displayTitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = OnSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(
+                    model = artUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(8.dp))
                 )
-                Text(
-                    track.displayArtist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceDim,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
 
-            if (isPodcast && onPrevious != null) {
-                // -15s button for podcasts
-                IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
-                    Text("-15", color = OnSurfaceDim, style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                }
-            }
+                Spacer(Modifier.width(12.dp))
 
-            IconButton(onClick = onTogglePlay) {
-                Icon(
-                    if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (state.isPlaying) "Pause" else "Play",
-                    tint = OnSurface,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-
-            if (isPodcast) {
-                // +15s button for podcasts
-                IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
-                    Text("+15", color = OnSurfaceDim, style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                }
-            } else {
-                val hasNext = state.queueIndex < state.queue.size - 1
-                IconButton(onClick = onNext, enabled = hasNext) {
-                    Icon(
-                        Icons.Filled.SkipNext,
-                        contentDescription = "Next",
-                        tint = if (hasNext) OnSurface else OnSurfaceDim.copy(alpha = 0.3f),
-                        modifier = Modifier.size(24.dp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        track.displayTitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = OnSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        track.displayArtist,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceDim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+
+                if (isPodcast && onPrevious != null) {
+                    IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
+                        Text("-15", color = OnSurfaceDim, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                IconButton(onClick = onTogglePlay) {
+                    Icon(
+                        if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (state.isPlaying) "Pause" else "Play",
+                        tint = OnSurface,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                if (isPodcast) {
+                    IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
+                        Text("+15", color = OnSurfaceDim, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    val hasNext = state.queueIndex < state.queue.size - 1
+                    IconButton(onClick = onNext, enabled = hasNext) {
+                        Icon(
+                            Icons.Filled.SkipNext,
+                            contentDescription = "Next",
+                            tint = if (hasNext) OnSurface else OnSurfaceDim.copy(alpha = 0.3f),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
             }
+            
+            // Thin progress bar at bottom of pill
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp),
+                color = if (isPodcast) Orange500 else Cyan500,
+                trackColor = Color.Transparent,
+            )
         }
     }
 }

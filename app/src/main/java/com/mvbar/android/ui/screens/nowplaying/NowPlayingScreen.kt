@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -136,12 +137,33 @@ fun NowPlayingScreen(
                     )
                 }
                 .background(BackgroundDark)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Cyan900.copy(alpha = 0.4f), Color.Transparent)
-                    )
-                )
         ) {
+            // Dynamic blurred background
+            val artModel = state.artworkUrl
+                ?: if (state.isPodcastMode) {
+                    ApiClient.episodeArtUrl(-track.id)
+                } else {
+                    track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+                }
+            
+            AsyncImage(
+                model = artModel,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = 0.6f }
+                    .blur(100.dp) // Safe blur (API 31+, ignored on others)
+            )
+            
+            // Dark overlay for readability
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+            )
+
+            // Content
             Column(
                 modifier = Modifier
                     .fillMaxSize()
