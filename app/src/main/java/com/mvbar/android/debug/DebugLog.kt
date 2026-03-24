@@ -121,6 +121,9 @@ object DebugLog {
     fun i(tag: String, message: String) = log("I", tag, message)
     fun d(tag: String, message: String) = log("D", tag, message)
     fun w(tag: String, message: String) = log("W", tag, message)
+    fun w(tag: String, message: String, throwable: Throwable) {
+        log("W", tag, "$message\n${throwable.stackTraceToString()}")
+    }
     fun e(tag: String, message: String) = log("E", tag, message)
     fun e(tag: String, message: String, throwable: Throwable) {
         log("E", tag, "$message\n${throwable.stackTraceToString()}")

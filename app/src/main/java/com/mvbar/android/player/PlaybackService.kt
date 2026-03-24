@@ -19,6 +19,8 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.mvbar.android.MainActivity
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.local.MvbarDatabase
+import com.mvbar.android.data.local.entity.toModel
 import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +34,7 @@ import okhttp3.OkHttpClient
 class PlaybackService : MediaLibraryService() {
     private var mediaSession: MediaLibrarySession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val db by lazy { MvbarDatabase.getInstance(this) }
 
     companion object {
         private const val ROOT_ID = "[root]"
@@ -287,32 +290,59 @@ class PlaybackService : MediaLibraryService() {
     )
 
     private suspend fun getRecentTracks(): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getRecentlyAdded(limit = 50)
-        return response.tracks.map { trackToMediaItem(it) }
+        return try {
+            val api = ApiClient.api
+            val response = api.getRecentlyAdded(limit = 50)
+            response.tracks.map { trackToMediaItem(it) }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Recent tracks API failed, using cache", e)
+            db.trackDao().getRecentlyAdded(50).map { trackToMediaItem(it.toModel()) }
+        }
     }
 
     private var cachedBuckets: List<com.mvbar.android.data.model.RecBucket> = emptyList()
 
     private suspend fun getForYouBuckets(): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getRecommendations()
-        cachedBuckets = response.buckets
-        return response.buckets.mapIndexed { index, bucket ->
-            val artUri = bucket.artPaths.firstOrNull()?.let { ApiClient.artPathUrl(it) }
-            MediaItem.Builder()
-                .setMediaId("bucket:$index")
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(bucket.name)
-                        .setSubtitle(bucket.subtitle ?: "${bucket.count} tracks")
-                        .setIsBrowsable(true)
-                        .setIsPlayable(false)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
-                        .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
-                        .build()
-                )
-                .build()
+        return try {
+            val api = ApiClient.api
+            val response = api.getRecommendations()
+            cachedBuckets = response.buckets
+            response.buckets.mapIndexed { index, bucket ->
+                val artUri = bucket.artPaths.firstOrNull()?.let { ApiClient.artPathUrl(it) }
+                MediaItem.Builder()
+                    .setMediaId("bucket:$index")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(bucket.name)
+                            .setSubtitle(bucket.subtitle ?: "${bucket.count} tracks")
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
+                            .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "For You API failed, using cache", e)
+            val cached = db.recommendationDao().getAll().map { it.toModel() }
+            cachedBuckets = cached
+            cached.mapIndexed { index, bucket ->
+                val artUri = bucket.artPaths.firstOrNull()?.let { ApiClient.artPathUrl(it) }
+                MediaItem.Builder()
+                    .setMediaId("bucket:$index")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(bucket.name)
+                            .setSubtitle(bucket.subtitle ?: "${bucket.count} tracks")
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
+                            .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
+                            .build()
+                    )
+                    .build()
+            }
         }
     }
 
@@ -330,54 +360,99 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getFavoriteTracks(): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getFavorites()
-        return response.tracks.map { trackToMediaItem(it) }
+        return try {
+            val api = ApiClient.api
+            val response = api.getFavorites()
+            response.tracks.map { trackToMediaItem(it) }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Favorites API failed, using cache", e)
+            db.favoriteDao().getFavorites().map { trackToMediaItem(it.toModel()) }
+        }
     }
 
     private suspend fun getAlbumsList(): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getAlbums(limit = 100)
-        return response.albums.map { album ->
-            val artUri = album.artPath?.let { ApiClient.artPathUrl(it) }
-            MediaItem.Builder()
-                .setMediaId("album:${album.displayName}")
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(album.displayName)
-                        .setArtist(album.artist)
-                        .setIsBrowsable(true)
-                        .setIsPlayable(false)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_ALBUM)
-                        .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
-                        .build()
-                )
-                .build()
+        return try {
+            val api = ApiClient.api
+            val response = api.getAlbums(limit = 100)
+            response.albums.map { album ->
+                val artUri = album.artPath?.let { ApiClient.artPathUrl(it) }
+                MediaItem.Builder()
+                    .setMediaId("album:${album.displayName}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(album.displayName)
+                            .setArtist(album.artist)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_ALBUM)
+                            .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Albums API failed, using cache", e)
+            db.browseDao().getAlbums(100, 0).map { entity ->
+                val album = entity.toModel()
+                val artUri = album.artPath?.let { ApiClient.artPathUrl(it) }
+                MediaItem.Builder()
+                    .setMediaId("album:${album.displayName}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(album.displayName)
+                            .setArtist(album.artist)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_ALBUM)
+                            .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
+                            .build()
+                    )
+                    .build()
+            }
         }
     }
 
     private suspend fun getArtistsList(): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getArtists(limit = 100)
-        return response.artists.mapNotNull { artist ->
-            val id = artist.id ?: return@mapNotNull null
-            MediaItem.Builder()
-                .setMediaId("artist:$id")
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(artist.name)
-                        .setIsBrowsable(true)
-                        .setIsPlayable(false)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_ARTIST)
-                        .build()
-                )
-                .build()
+        return try {
+            val api = ApiClient.api
+            val response = api.getArtists(limit = 100)
+            response.artists.mapNotNull { artist ->
+                val id = artist.id ?: return@mapNotNull null
+                MediaItem.Builder()
+                    .setMediaId("artist:$id")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(artist.name)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_ARTIST)
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Artists API failed, using cache", e)
+            db.browseDao().getArtists(100, 0).mapNotNull { entity ->
+                val artist = entity.toModel()
+                val id = artist.id ?: return@mapNotNull null
+                MediaItem.Builder()
+                    .setMediaId("artist:$id")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(artist.name)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_ARTIST)
+                            .build()
+                    )
+                    .build()
+            }
         }
     }
 
     private suspend fun getPlaylistsList(): List<MediaItem> {
-        val api = ApiClient.api
         val playlists = try {
+            val api = ApiClient.api
             api.getPlaylists().playlists.map { playlist ->
                 MediaItem.Builder()
                     .setMediaId("playlist:${playlist.id}")
@@ -391,9 +466,25 @@ class PlaybackService : MediaLibraryService() {
                     )
                     .build()
             }
-        } catch (_: Exception) { emptyList() }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Playlists API failed, using cache", e)
+            db.playlistDao().getAll().map { entity ->
+                MediaItem.Builder()
+                    .setMediaId("playlist:${entity.id}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(entity.name)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
+                            .build()
+                    )
+                    .build()
+            }
+        }
 
         val smartPlaylists = try {
+            val api = ApiClient.api
             api.getSmartPlaylists().items.map { sp ->
                 MediaItem.Builder()
                     .setMediaId("smartpl:${sp.id}")
@@ -413,33 +504,65 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getGenresList(): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getGenres(limit = 100)
-        return response.genres.map { genre ->
-            MediaItem.Builder()
-                .setMediaId("genre:${genre.name}")
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(genre.name)
-                        .setIsBrowsable(true)
-                        .setIsPlayable(false)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_GENRE)
-                        .build()
-                )
-                .build()
+        return try {
+            val api = ApiClient.api
+            val response = api.getGenres(limit = 100)
+            response.genres.map { genre ->
+                MediaItem.Builder()
+                    .setMediaId("genre:${genre.name}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(genre.name)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_GENRE)
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Genres API failed, using cache", e)
+            db.browseDao().getGenres(100, 0).map { entity ->
+                MediaItem.Builder()
+                    .setMediaId("genre:${entity.name}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(entity.name)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_GENRE)
+                            .build()
+                    )
+                    .build()
+            }
         }
     }
 
     private suspend fun getAlbumTracks(albumName: String): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getAlbumTracks(albumName)
-        return response.tracks.map { trackToMediaItem(it) }
+        return try {
+            val api = ApiClient.api
+            val response = api.getAlbumTracks(albumName)
+            response.tracks.map { trackToMediaItem(it) }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Album tracks API failed, using cache", e)
+            db.trackDao().getByAlbum(albumName).map { trackToMediaItem(it.toModel()) }
+        }
     }
 
     private suspend fun getArtistTracks(artistId: Int): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getArtistTracks(artistId)
-        return response.tracks.map { trackToMediaItem(it) }
+        return try {
+            val api = ApiClient.api
+            val response = api.getArtistTracks(artistId)
+            response.tracks.map { trackToMediaItem(it) }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Artist tracks API failed, using cache", e)
+            // Try to find artist name from browse cache, then query by name
+            val artists = db.browseDao().getArtists(200, 0)
+            val artistName = artists.find { it.artistId == artistId }?.name
+            if (artistName != null) {
+                db.trackDao().getByArtist(artistName).map { trackToMediaItem(it.toModel()) }
+            } else emptyList()
+        }
     }
 
     private suspend fun getPlaylistTracks(playlistId: Int): List<MediaItem> {
@@ -455,107 +578,206 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getGenreTracks(genreName: String): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getGenreTracks(genreName, limit = 100)
-        return response.tracks.map { trackToMediaItem(it) }
+        return try {
+            val api = ApiClient.api
+            val response = api.getGenreTracks(genreName, limit = 100)
+            response.tracks.map { trackToMediaItem(it) }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Genre tracks API failed, using cache", e)
+            db.trackDao().getByGenre(genreName, 100, 0).map { trackToMediaItem(it.toModel()) }
+        }
     }
 
     // Podcast browse
 
     private suspend fun getPodcastsList(): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getPodcasts()
-        return response.podcasts.map { podcast ->
-            val artUri = podcast.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
-                ?: ApiClient.podcastArtUrl(podcast.id)
-            MediaItem.Builder()
-                .setMediaId("podcast:${podcast.id}")
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(podcast.title)
-                        .setArtist(podcast.author)
-                        .setIsBrowsable(true)
-                        .setIsPlayable(false)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST)
-                        .setArtworkUri(Uri.parse(artUri))
-                        .build()
-                )
-                .build()
+        return try {
+            val api = ApiClient.api
+            val response = api.getPodcasts()
+            response.podcasts.map { podcast ->
+                val artUri = podcast.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+                    ?: ApiClient.podcastArtUrl(podcast.id)
+                MediaItem.Builder()
+                    .setMediaId("podcast:${podcast.id}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(podcast.title)
+                            .setArtist(podcast.author)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST)
+                            .setArtworkUri(Uri.parse(artUri))
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Podcasts API failed, using cache", e)
+            db.podcastDao().getAllPodcasts().map { entity ->
+                val podcast = entity.toModel()
+                val artUri = podcast.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+                    ?: ApiClient.podcastArtUrl(podcast.id)
+                MediaItem.Builder()
+                    .setMediaId("podcast:${podcast.id}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(podcast.title)
+                            .setArtist(podcast.author)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST)
+                            .setArtworkUri(Uri.parse(artUri))
+                            .build()
+                    )
+                    .build()
+            }
         }
     }
 
     private suspend fun getPodcastEpisodes(podcastId: Int): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getPodcastDetail(podcastId)
-        return response.episodes.map { episode ->
-            val artUri = episode.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
-                ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
-                ?: ApiClient.episodeArtUrl(episode.id)
-            val streamUrl = ApiClient.episodeStreamUrl(episode.id)
-            val pseudoId = -episode.id
-            MediaItem.Builder()
-                .setMediaId(pseudoId.toString())
-                .setUri(streamUrl)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(episode.title)
-                        .setArtist(episode.podcastTitle ?: response.podcast?.title)
-                        .setArtworkUri(Uri.parse(artUri))
-                        .setIsBrowsable(false)
-                        .setIsPlayable(true)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
-                        .build()
-                )
-                .build()
+        return try {
+            val api = ApiClient.api
+            val response = api.getPodcastDetail(podcastId)
+            response.episodes.map { episode ->
+                val artUri = episode.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+                    ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
+                    ?: ApiClient.episodeArtUrl(episode.id)
+                val streamUrl = ApiClient.episodeStreamUrl(episode.id)
+                val pseudoId = -episode.id
+                MediaItem.Builder()
+                    .setMediaId(pseudoId.toString())
+                    .setUri(streamUrl)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(episode.title)
+                            .setArtist(episode.podcastTitle ?: response.podcast?.title)
+                            .setArtworkUri(Uri.parse(artUri))
+                            .setIsBrowsable(false)
+                            .setIsPlayable(true)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Podcast episodes API failed, using cache", e)
+            db.podcastDao().getEpisodes(podcastId).map { entity ->
+                val episode = entity.toModel()
+                val artUri = episode.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+                    ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
+                    ?: ApiClient.episodeArtUrl(episode.id)
+                val streamUrl = ApiClient.episodeStreamUrl(episode.id)
+                val pseudoId = -episode.id
+                MediaItem.Builder()
+                    .setMediaId(pseudoId.toString())
+                    .setUri(streamUrl)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(episode.title)
+                            .setArtworkUri(Uri.parse(artUri))
+                            .setIsBrowsable(false)
+                            .setIsPlayable(true)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
+                            .build()
+                    )
+                    .build()
+            }
         }
     }
 
     // Audiobook browse
 
     private suspend fun getAudiobooksList(): List<MediaItem> {
-        val api = ApiClient.api
-        val books = api.getAudiobooks()
-        return books.map { book ->
-            val artUri = ApiClient.audiobookArtUrl(book.id)
-            MediaItem.Builder()
-                .setMediaId("audiobook:${book.id}")
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(book.title)
-                        .setArtist(book.author)
-                        .setIsBrowsable(true)
-                        .setIsPlayable(false)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-                        .setArtworkUri(Uri.parse(artUri))
-                        .build()
-                )
-                .build()
+        return try {
+            val api = ApiClient.api
+            val books = api.getAudiobooks()
+            books.map { book ->
+                val artUri = ApiClient.audiobookArtUrl(book.id)
+                MediaItem.Builder()
+                    .setMediaId("audiobook:${book.id}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(book.title)
+                            .setArtist(book.author)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                            .setArtworkUri(Uri.parse(artUri))
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Audiobooks API failed, using cache", e)
+            db.audiobookDao().getAllAudiobooks().map { entity ->
+                val book = entity.toModel()
+                val artUri = ApiClient.audiobookArtUrl(book.id)
+                MediaItem.Builder()
+                    .setMediaId("audiobook:${book.id}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(book.title)
+                            .setArtist(book.author)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                            .setArtworkUri(Uri.parse(artUri))
+                            .build()
+                    )
+                    .build()
+            }
         }
     }
 
     private suspend fun getAudiobookChapters(audiobookId: Int): List<MediaItem> {
-        val api = ApiClient.api
-        val response = api.getAudiobookDetail(audiobookId)
-        val book = response.audiobook ?: return emptyList()
-        val artUri = ApiClient.audiobookArtUrl(audiobookId)
-        return response.chapters.map { chapter ->
-            val pseudoId = -(audiobookId * 100000 + chapter.id)
-            val streamUrl = ApiClient.audiobookChapterStreamUrl(audiobookId, chapter.id)
-            MediaItem.Builder()
-                .setMediaId(pseudoId.toString())
-                .setUri(streamUrl)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(chapter.title)
-                        .setArtist(book.author)
-                        .setAlbumTitle(book.title)
-                        .setArtworkUri(Uri.parse(artUri))
-                        .setIsBrowsable(false)
-                        .setIsPlayable(true)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-                        .build()
-                )
-                .build()
+        return try {
+            val api = ApiClient.api
+            val response = api.getAudiobookDetail(audiobookId)
+            val book = response.audiobook ?: return emptyList()
+            val artUri = ApiClient.audiobookArtUrl(audiobookId)
+            response.chapters.map { chapter ->
+                val pseudoId = -(audiobookId * 100000 + chapter.id)
+                val streamUrl = ApiClient.audiobookChapterStreamUrl(audiobookId, chapter.id)
+                MediaItem.Builder()
+                    .setMediaId(pseudoId.toString())
+                    .setUri(streamUrl)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(chapter.title)
+                            .setArtist(book.author)
+                            .setAlbumTitle(book.title)
+                            .setArtworkUri(Uri.parse(artUri))
+                            .setIsBrowsable(false)
+                            .setIsPlayable(true)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Audiobook chapters API failed, using cache", e)
+            val book = db.audiobookDao().getAllAudiobooks().find { it.id == audiobookId }
+            val artUri = ApiClient.audiobookArtUrl(audiobookId)
+            db.audiobookDao().getChapters(audiobookId).map { entity ->
+                val chapter = entity.toModel()
+                val pseudoId = -(audiobookId * 100000 + chapter.id)
+                val streamUrl = ApiClient.audiobookChapterStreamUrl(audiobookId, chapter.id)
+                MediaItem.Builder()
+                    .setMediaId(pseudoId.toString())
+                    .setUri(streamUrl)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(chapter.title)
+                            .setArtist(book?.author)
+                            .setAlbumTitle(book?.title)
+                            .setArtworkUri(Uri.parse(artUri))
+                            .setIsBrowsable(false)
+                            .setIsPlayable(true)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                            .build()
+                    )
+                    .build()
+            }
         }
     }
 
