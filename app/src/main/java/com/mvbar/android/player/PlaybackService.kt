@@ -58,14 +58,17 @@ class PlaybackService : MediaLibraryService() {
 
         // Ensure API is configured (critical for Android Auto which may start service without Activity)
         if (ApiClient.getBaseUrl() == "http://localhost/") {
-            serviceScope.launch {
+            DebugLog.i("Player", "No API configured — restoring session synchronously")
+            kotlinx.coroutines.runBlocking {
                 try {
                     AuthRepository(this@PlaybackService).restoreSession()
-                    DebugLog.i("Player", "Restored API session in PlaybackService")
+                    DebugLog.i("Player", "Restored API session in PlaybackService (baseUrl=${ApiClient.getBaseUrl()}, hasToken=${ApiClient.getToken() != null})")
                 } catch (e: Exception) {
                     DebugLog.e("Player", "Failed to restore session in PlaybackService", e)
                 }
             }
+        } else {
+            DebugLog.i("Player", "API already configured (baseUrl=${ApiClient.getBaseUrl()}, hasToken=${ApiClient.getToken() != null})")
         }
 
         val okClient = OkHttpClient.Builder()
@@ -156,10 +159,11 @@ class PlaybackService : MediaLibraryService() {
             session: MediaSession,
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
+            DebugLog.i("Auto", "onConnect: package=${controller.packageName} uid=${controller.controllerVersion}")
             val playerCommands = Player.Commands.Builder()
                 .addAllCommands()
                 .build()
-            val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
+            val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailablePlayerCommands(playerCommands)
                 .setAvailableSessionCommands(sessionCommands)
@@ -171,6 +175,7 @@ class PlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<MediaItem>> {
+            DebugLog.i("Auto", "onGetLibraryRoot from ${browser.packageName}")
             val root = MediaItem.Builder()
                 .setMediaId(ROOT_ID)
                 .setMediaMetadata(
@@ -195,6 +200,7 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             return serviceScope.future {
                 try {
+                    DebugLog.i("Auto", "onGetChildren: parentId=$parentId page=$page")
                     val items = when {
                         parentId == ROOT_ID -> getRootChildren()
                         parentId == FOR_YOU_ID -> getForYouBuckets()
