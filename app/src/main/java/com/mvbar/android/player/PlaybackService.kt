@@ -273,6 +273,10 @@ class PlaybackService : MediaLibraryService() {
                     val p = mediaSession?.player ?: return
                     p.shuffleModeEnabled = true
                     DebugLog.i("Player", "Shuffle restored after track started")
+                    // Update the AA shuffle button icon
+                    mediaSession?.let { session ->
+                        libraryCallback.updateCustomLayout(session)
+                    }
                 }
             }
         })
