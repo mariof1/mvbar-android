@@ -16,6 +16,9 @@ object AaPreferences {
     private val KEY_CATEGORY_ORDER = stringPreferencesKey("category_order")
     private val KEY_SHUFFLE_ENABLED = booleanPreferencesKey("shuffle_enabled")
     private val KEY_REPEAT_MODE = intPreferencesKey("repeat_mode")
+    private val KEY_LAST_QUEUE = stringPreferencesKey("last_queue")
+    private val KEY_LAST_INDEX = intPreferencesKey("last_index")
+    private val KEY_LAST_POSITION = stringPreferencesKey("last_position_ms")
 
     val ALL_CATEGORIES = listOf(
         "foryou" to "For You",
@@ -77,5 +80,70 @@ object AaPreferences {
 
     suspend fun saveRepeatMode(context: Context, mode: Int) {
         context.aaDataStore.edit { it[KEY_REPEAT_MODE] = mode }
+    }
+
+    // Last playback state persistence (for AA reconnect auto-resume)
+
+    /**
+     * Save the current queue (media IDs + metadata), index, and position so playback
+     * can be restored after the service restarts or AA reconnects.
+     * Format per entry: mediaId\ttitle\tartist\talbum\tartUri
+     */
+    suspend fun savePlaybackState(
+        context: Context,
+        items: List<QueueEntry>,
+        index: Int,
+        positionMs: Long
+    ) {
+        context.aaDataStore.edit { prefs ->
+            prefs[KEY_LAST_QUEUE] = items.joinToString("\n") { entry ->
+                "${entry.mediaId}\t${entry.title.orEmpty()}\t${entry.artist.orEmpty()}\t${entry.album.orEmpty()}\t${entry.artUri.orEmpty()}"
+            }
+            prefs[KEY_LAST_INDEX] = index
+            prefs[KEY_LAST_POSITION] = positionMs.toString()
+        }
+    }
+
+    data class QueueEntry(
+        val mediaId: String,
+        val title: String? = null,
+        val artist: String? = null,
+        val album: String? = null,
+        val artUri: String? = null
+    )
+
+    data class SavedPlaybackState(
+        val entries: List<QueueEntry>,
+        val index: Int,
+        val positionMs: Long
+    )
+
+    suspend fun getSavedPlaybackState(context: Context): SavedPlaybackState? {
+        val prefs = context.aaDataStore.data.first()
+        val queueStr = prefs[KEY_LAST_QUEUE] ?: return null
+        if (queueStr.isBlank()) return null
+        val entries = queueStr.split("\n").mapNotNull { line ->
+            val parts = line.split("\t")
+            if (parts.isEmpty() || parts[0].isBlank()) return@mapNotNull null
+            QueueEntry(
+                mediaId = parts[0],
+                title = parts.getOrNull(1)?.takeIf { it.isNotBlank() },
+                artist = parts.getOrNull(2)?.takeIf { it.isNotBlank() },
+                album = parts.getOrNull(3)?.takeIf { it.isNotBlank() },
+                artUri = parts.getOrNull(4)?.takeIf { it.isNotBlank() }
+            )
+        }
+        if (entries.isEmpty()) return null
+        val index = prefs[KEY_LAST_INDEX] ?: 0
+        val posMs = prefs[KEY_LAST_POSITION]?.toLongOrNull() ?: 0L
+        return SavedPlaybackState(entries, index, posMs)
+    }
+
+    suspend fun clearPlaybackState(context: Context) {
+        context.aaDataStore.edit { prefs ->
+            prefs.remove(KEY_LAST_QUEUE)
+            prefs.remove(KEY_LAST_INDEX)
+            prefs.remove(KEY_LAST_POSITION)
+        }
     }
 }
