@@ -52,6 +52,8 @@ class PlaybackService : MediaLibraryService() {
     private var pendingResumePositionMs: Long = 0L
     /** Job for periodic episode progress saving */
     private var progressSaveJob: kotlinx.coroutines.Job? = null
+    /** Flag: re-enable shuffle after the tapped track starts playing */
+    private var pendingShuffleRestore = false
 
     companion object {
         private const val ROOT_ID = "[root]"
@@ -264,6 +266,13 @@ class PlaybackService : MediaLibraryService() {
                     val p = mediaSession?.player ?: return
                     DebugLog.i("Player", "Resuming at ${pos}ms (${p.currentMediaItem?.mediaId})")
                     p.seekTo(pos)
+                }
+                // Re-enable shuffle after the tapped track has started playing
+                if (state == Player.STATE_READY && pendingShuffleRestore) {
+                    pendingShuffleRestore = false
+                    val p = mediaSession?.player ?: return
+                    p.shuffleModeEnabled = true
+                    DebugLog.i("Player", "Shuffle restored after track started")
                 }
             }
         })
@@ -643,6 +652,11 @@ class PlaybackService : MediaLibraryService() {
                         DebugLog.i("Auto", "Queue all: tapped=$tappedId from $key, ${tracks.size} tracks idx=$idx")
                         if (isPodcastOrBook) {
                             mediaSession.player.shuffleModeEnabled = false
+                        } else if (mediaSession.player.shuffleModeEnabled) {
+                            // Temporarily disable shuffle so the tapped track plays first;
+                            // shuffle is re-enabled in onPlaybackStateChanged(STATE_READY)
+                            mediaSession.player.shuffleModeEnabled = false
+                            pendingShuffleRestore = true
                         }
                         val resolved = reordered.map { resolveStreamUri(it) }.toMutableList()
                         return Futures.immediateFuture(resolved)

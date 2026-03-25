@@ -204,9 +204,21 @@ class PlayerManager private constructor(private val context: Context) {
                 .build()
         }
 
+        // If shuffle is on, temporarily disable it so the tapped track plays first.
+        // ExoPlayer shuffle can randomize the start position; we re-enable after setMediaItems
+        // so that "next" tracks are shuffled but the tapped one always plays immediately.
+        val wasShuffling = ctrl.shuffleModeEnabled
+        if (wasShuffling) {
+            ctrl.shuffleModeEnabled = false
+        }
+
         ctrl.setMediaItems(items, startIndex, 0L)
         ctrl.prepare()
         ctrl.play()
+
+        if (wasShuffling) {
+            ctrl.shuffleModeEnabled = true
+        }
 
         _state.value = _state.value.copy(
             queue = tracks.toList(),
