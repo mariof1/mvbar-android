@@ -542,17 +542,6 @@ private fun PlaybackTab(
                         checked = autoCacheFavorites,
                         onCheckedChange = onAutoCacheChange
                     )
-
-                    Spacer(Modifier.height(8.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(8.dp))
-
-                    SettingsToggle(
-                        title = "Auto-Cache Podcasts",
-                        subtitle = "Keep unplayed episodes available offline",
-                        checked = autoCachePodcasts,
-                        onCheckedChange = onAutoCachePodcastsChange
-                    )
                 }
             }
         }

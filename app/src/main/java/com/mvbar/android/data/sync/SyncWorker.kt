@@ -131,23 +131,7 @@ class SyncWorker(
                     }
                 }
                 DebugLog.i("SyncWorker", "Synced ${pods.podcasts.size} podcasts")
-
-                // Auto-cache unplayed podcast episodes if enabled
-                if (AudioCacheManager.autoCachePodcasts) {
-                    val allEpisodes = mutableListOf<Pair<Int, String>>()
-                    for (pod in pods.podcasts) {
-                        try {
-                            val eps = db.podcastDao().getEpisodes(pod.id)
-                            eps.filter { !it.played }.forEach { ep ->
-                                allEpisodes.add(ep.id to ApiClient.episodeStreamUrl(ep.id))
-                            }
-                        } catch (_: Exception) {}
-                    }
-                    if (allEpisodes.isNotEmpty()) {
-                        DebugLog.i("SyncWorker", "Auto-caching ${allEpisodes.size} unplayed episodes")
-                        AudioCacheManager.cacheEpisodes(allEpisodes)
-                    }
-                }
+                // Episodes cache on-demand during playback via CacheDataSource
             } catch (e: Exception) {
                 DebugLog.e("SyncWorker", "Podcasts sync failed", e)
             }
