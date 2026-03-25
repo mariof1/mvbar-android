@@ -12,6 +12,7 @@ import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.*
@@ -113,6 +114,55 @@ object AudioCacheManager {
 
     fun setAutoCacheFavorites(enabled: Boolean) {
         prefs?.edit()?.putBoolean(KEY_AUTO_CACHE_FAVORITES, enabled)?.apply()
+        if (enabled) reCacheFavorites()
+    }
+
+    /**
+     * Re-cache all favorite tracks from Room DB.
+     * Called when toggle is enabled, after cache clear, and from SyncWorker.
+     */
+    fun reCacheFavorites() {
+        if (!autoCacheFavorites) return
+        val ctx = appContext ?: return
+        val c = cache ?: return
+        autoCacheJob?.cancel()
+        autoCacheJob = prefetchScope.launch {
+            try {
+                val db = MvbarDatabase.getInstance(ctx)
+                val favTracks = db.favoriteDao().getFavorites()
+                if (favTracks.isEmpty()) return@launch
+                var cached = 0
+                for (track in favTracks) {
+                    if (!isActive) break
+                    if (shouldSkipDownload()) break
+                    val url = ApiClient.streamUrl(track.id)
+                    if (cache?.isCached(url, 0, Long.MAX_VALUE) == true) continue
+                    try {
+                        cacheUrl(c, url)
+                        cached++
+                        DebugLog.d("Cache", "Auto-cached favorite: ${track.title}")
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { DebugLog.e("Cache", "Auto-cache failed: ${track.title}", e) }
+                }
+                if (cached > 0) DebugLog.i("Cache", "Auto-cached $cached favorite tracks")
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { DebugLog.e("Cache", "reCacheFavorites failed", e) }
+        }
+    }
+
+    /** Cache a single track by ID (used when adding a new favorite). */
+    fun cacheTrackById(trackId: Int) {
+        val c = cache ?: return
+        prefetchScope.launch {
+            if (shouldSkipDownload()) return@launch
+            val url = ApiClient.streamUrl(trackId)
+            if (cache?.isCached(url, 0, Long.MAX_VALUE) == true) return@launch
+            try {
+                cacheUrl(c, url)
+                DebugLog.d("Cache", "Auto-cached new favorite track $trackId")
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { DebugLog.e("Cache", "Cache track $trackId failed", e) }
+        }
     }
 
     fun setAutoCachePodcasts(enabled: Boolean) {
@@ -125,6 +175,8 @@ object AudioCacheManager {
                 cache?.removeResource(key)
             }
             DebugLog.i("Cache", "Audio cache cleared")
+            // Re-cache favorites if auto-cache is enabled
+            reCacheFavorites()
         } catch (e: Exception) {
             DebugLog.e("Cache", "Clear cache failed", e)
         }
@@ -216,25 +268,7 @@ object AudioCacheManager {
                 if (cache?.isCached(url, 0, Long.MAX_VALUE) == true) continue
 
                 try {
-                    val okClient = OkHttpClient.Builder()
-                        .addInterceptor { chain ->
-                            val builder = chain.request().newBuilder()
-                            ApiClient.getToken()?.let {
-                                builder.addHeader("Authorization", "Bearer $it")
-                            }
-                            chain.proceed(builder.build())
-                        }
-                        .build()
-                    val dataSourceFactory = OkHttpDataSource.Factory(okClient)
-                    val cacheDataSourceFactory = CacheDataSource.Factory()
-                        .setCache(c)
-                        .setUpstreamDataSourceFactory(dataSourceFactory)
-
-                    val dataSpec = DataSpec.Builder()
-                        .setUri(url)
-                        .setKey(url)
-                        .build()
-                    CacheWriter(cacheDataSourceFactory.createDataSource(), dataSpec, null, null).cache()
+                    cacheUrl(c, url)
                     cached++
                     DebugLog.d("Cache", "Auto-cached favorite: ${track.displayTitle}")
                 } catch (e: CancellationException) {
@@ -245,6 +279,28 @@ object AudioCacheManager {
             }
             if (cached > 0) DebugLog.i("Cache", "Auto-cached $cached favorite tracks")
         }
+    }
+
+    /** Download a URL into the cache. Must be called from a coroutine on IO. */
+    private fun cacheUrl(c: SimpleCache, url: String) {
+        val okClient = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val builder = chain.request().newBuilder()
+                ApiClient.getToken()?.let {
+                    builder.addHeader("Authorization", "Bearer $it")
+                }
+                chain.proceed(builder.build())
+            }
+            .build()
+        val dataSourceFactory = OkHttpDataSource.Factory(okClient)
+        val cacheDataSourceFactory = CacheDataSource.Factory()
+            .setCache(c)
+            .setUpstreamDataSourceFactory(dataSourceFactory)
+        val dataSpec = DataSpec.Builder()
+            .setUri(url)
+            .setKey(url)
+            .build()
+        CacheWriter(cacheDataSourceFactory.createDataSource(), dataSpec, null, null).cache()
     }
 
     /**
@@ -263,25 +319,7 @@ object AudioCacheManager {
                 if (cache?.isCached(url, 0, Long.MAX_VALUE) == true) continue
 
                 try {
-                    val okClient = OkHttpClient.Builder()
-                        .addInterceptor { chain ->
-                            val builder = chain.request().newBuilder()
-                            ApiClient.getToken()?.let {
-                                builder.addHeader("Authorization", "Bearer $it")
-                            }
-                            chain.proceed(builder.build())
-                        }
-                        .build()
-                    val dataSourceFactory = OkHttpDataSource.Factory(okClient)
-                    val cacheDataSourceFactory = CacheDataSource.Factory()
-                        .setCache(c)
-                        .setUpstreamDataSourceFactory(dataSourceFactory)
-
-                    val dataSpec = DataSpec.Builder()
-                        .setUri(url)
-                        .setKey(url)
-                        .build()
-                    CacheWriter(cacheDataSourceFactory.createDataSource(), dataSpec, null, null).cache()
+                    cacheUrl(c, url)
                     cached++
                     DebugLog.d("Cache", "Auto-cached episode $epId")
                 } catch (e: CancellationException) {

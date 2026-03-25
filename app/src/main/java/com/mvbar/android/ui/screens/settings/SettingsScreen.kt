@@ -55,7 +55,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     // Cache settings
     var cacheSizeMb by remember { mutableLongStateOf(AudioCacheManager.getCacheSizeMb()) }
     var cachedTrackCount by remember { mutableIntStateOf(AudioCacheManager.getCachedTrackCount()) }
-    val cacheLimitSteps = listOf(100, 250, 500, 1000, 2000, 5000)
+    val cacheLimitSteps = listOf(100, 250, 500, 1000, 2000, 5000, 10000, 20000, 30000)
     var cacheLimitIndex by remember {
         val current = AudioCacheManager.maxCacheMb
         mutableIntStateOf(cacheLimitSteps.indexOfFirst { it >= current }.coerceAtLeast(0))
@@ -462,8 +462,9 @@ private fun PlaybackTab(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Max Cache Size", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+                    val limitMb = cacheLimitSteps[cacheLimitIndex]
                     Text(
-                        "${cacheLimitSteps[cacheLimitIndex]} MB",
+                        if (limitMb >= 1000) "${limitMb / 1000} GB" else "$limitMb MB",
                         style = MaterialTheme.typography.bodySmall,
                         color = Cyan500
                     )

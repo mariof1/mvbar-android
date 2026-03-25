@@ -494,6 +494,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val action = if (isCurrentlyFav) ActivityQueue.ACTION_REMOVE_FAVORITE
                      else ActivityQueue.ACTION_ADD_FAVORITE
         ActivityQueue.enqueue(action, trackId)
+        // Auto-cache new favorite if enabled
+        if (!isCurrentlyFav && AudioCacheManager.autoCacheFavorites) {
+            AudioCacheManager.cacheTrackById(trackId)
+        }
     }
 
     private fun syncPlayerFavoriteState() {

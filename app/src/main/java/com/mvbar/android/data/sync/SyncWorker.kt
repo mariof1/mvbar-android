@@ -67,6 +67,8 @@ class SyncWorker(
                 val favs = api.getFavorites()
                 db.favoriteDao().replaceAll(favs.tracks.map { FavoriteTrackEntity(it.id) })
                 DebugLog.i("SyncWorker", "Synced ${favs.tracks.size} favorites")
+                // Re-cache favorites if auto-cache is enabled
+                AudioCacheManager.reCacheFavorites()
             } catch (e: Exception) {
                 DebugLog.e("SyncWorker", "Favorites sync failed", e)
             }
