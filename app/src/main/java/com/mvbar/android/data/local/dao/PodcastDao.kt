@@ -37,6 +37,9 @@ interface PodcastDao {
     @Query("UPDATE episodes SET positionMs = :positionMs WHERE id = :episodeId")
     suspend fun updateEpisodePosition(episodeId: Int, positionMs: Long)
 
+    @Query("SELECT * FROM episodes WHERE id IN (:ids)")
+    suspend fun getEpisodesByIds(ids: List<Int>): List<EpisodeEntity>
+
     @Transaction
     suspend fun replaceAllPodcasts(podcasts: List<PodcastEntity>) {
         deleteAllEpisodes()

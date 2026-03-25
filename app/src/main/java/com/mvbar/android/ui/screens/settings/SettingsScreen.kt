@@ -41,7 +41,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onLogout: () -> Unit) {
+fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableStateOf(SettingsTab.GENERAL) }
@@ -136,7 +136,8 @@ fun SettingsScreen(onLogout: () -> Unit) {
                 onPrefetchSet = { AudioCacheManager.setPrefetchCount(prefetchCount) },
                 onWifiOnlyChange = { wifiOnly = it; AudioCacheManager.setWifiOnlyDownload(it) },
                 onAutoCacheChange = { autoCacheFavorites = it; AudioCacheManager.setAutoCacheFavorites(it) },
-                onAutoCachePodcastsChange = { autoCachePodcasts = it; AudioCacheManager.setAutoCachePodcasts(it) }
+                onAutoCachePodcastsChange = { autoCachePodcasts = it; AudioCacheManager.setAutoCachePodcasts(it) },
+                onBrowseCache = onBrowseCache
             )
             SettingsTab.AUTO -> AndroidAutoTab()
             SettingsTab.DEBUG -> DebugTab(
@@ -394,7 +395,8 @@ private fun PlaybackTab(
     onPrefetchSet: () -> Unit,
     onWifiOnlyChange: (Boolean) -> Unit,
     onAutoCacheChange: (Boolean) -> Unit,
-    onAutoCachePodcastsChange: (Boolean) -> Unit
+    onAutoCachePodcastsChange: (Boolean) -> Unit,
+    onBrowseCache: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -423,6 +425,17 @@ private fun PlaybackTab(
                                 color = OnSurfaceDim
                             )
                         }
+                        OutlinedButton(
+                            onClick = onBrowseCache,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Browse", fontSize = 13.sp)
+                        }
+                        Spacer(Modifier.width(8.dp))
                         OutlinedButton(
                             onClick = onClearCache,
                             shape = RoundedCornerShape(10.dp),

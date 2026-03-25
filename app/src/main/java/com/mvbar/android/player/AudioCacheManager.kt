@@ -69,6 +69,35 @@ object AudioCacheManager {
         return cache?.keys?.size ?: 0
     }
 
+    /**
+     * Returns all cached content keys. Each key is a stream URL that can be
+     * parsed back to a track/episode/chapter ID.
+     */
+    fun getCachedKeys(): List<String> {
+        return cache?.keys?.toList() ?: emptyList()
+    }
+
+    /**
+     * Remove a single cached item by its stream URL key.
+     */
+    fun removeCachedItem(key: String) {
+        try {
+            cache?.removeResource(key)
+            DebugLog.d("Cache", "Removed cached item: $key")
+        } catch (e: Exception) {
+            DebugLog.e("Cache", "Failed to remove cached item", e)
+        }
+    }
+
+    /**
+     * Get the cached size in bytes for a specific key (stream URL).
+     */
+    fun getCachedSizeBytes(key: String): Long {
+        val contentMetadata = cache?.getContentMetadata(key) ?: return 0L
+        return androidx.media3.datasource.cache.ContentMetadata.getContentLength(contentMetadata)
+            .takeIf { it > 0 } ?: cache?.getCachedBytes(key, 0, Long.MAX_VALUE) ?: 0L
+    }
+
     fun setMaxCacheMb(mb: Int) {
         prefs?.edit()?.putInt(KEY_MAX_CACHE_MB, mb)?.apply()
         // Cache evictor will enforce on next write

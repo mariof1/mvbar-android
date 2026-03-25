@@ -847,7 +847,16 @@ fun MainScreen(
                 }
 
                 composable("settings") {
-                    SettingsScreen(onLogout = onLogout)
+                    SettingsScreen(
+                        onLogout = onLogout,
+                        onBrowseCache = { navController.navigate("cache-browser") }
+                    )
+                }
+
+                composable("cache-browser") {
+                    com.mvbar.android.ui.screens.cache.CacheBrowserScreen(
+                        onBack = { navController.popBackStack() }
+                    )
                 }
             }
         }
