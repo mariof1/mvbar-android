@@ -26,6 +26,7 @@ object AudioCacheManager {
     private const val KEY_PREFETCH_COUNT = "prefetch_count"
     private const val KEY_WIFI_ONLY = "wifi_only_download"
     private const val KEY_AUTO_CACHE_FAVORITES = "auto_cache_favorites"
+    private const val KEY_AUTO_CACHE_PODCASTS = "auto_cache_podcasts"
 
     private var cache: SimpleCache? = null
     private var prefs: SharedPreferences? = null
@@ -33,11 +34,13 @@ object AudioCacheManager {
     private var prefetchScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var prefetchJob: Job? = null
     private var autoCacheJob: Job? = null
+    private var podcastCacheJob: Job? = null
 
     val maxCacheMb: Int get() = prefs?.getInt(KEY_MAX_CACHE_MB, 500) ?: 500
     val prefetchCount: Int get() = prefs?.getInt(KEY_PREFETCH_COUNT, 3) ?: 3
     val wifiOnlyDownload: Boolean get() = prefs?.getBoolean(KEY_WIFI_ONLY, true) ?: true
     val autoCacheFavorites: Boolean get() = prefs?.getBoolean(KEY_AUTO_CACHE_FAVORITES, false) ?: false
+    val autoCachePodcasts: Boolean get() = prefs?.getBoolean(KEY_AUTO_CACHE_PODCASTS, false) ?: false
 
     fun init(context: Context) {
         if (cache != null) return
@@ -53,6 +56,12 @@ object AudioCacheManager {
     }
 
     fun getCache(): SimpleCache? = cache
+
+    /** Check whether a music track's audio is fully cached */
+    fun isTrackCached(trackId: Int): Boolean {
+        val url = ApiClient.streamUrl(trackId)
+        return cache?.isCached(url, 0, Long.MAX_VALUE) == true
+    }
 
     fun getCacheSizeMb(): Long = (cache?.cacheSpace ?: 0) / (1024 * 1024)
 
@@ -75,6 +84,10 @@ object AudioCacheManager {
 
     fun setAutoCacheFavorites(enabled: Boolean) {
         prefs?.edit()?.putBoolean(KEY_AUTO_CACHE_FAVORITES, enabled)?.apply()
+    }
+
+    fun setAutoCachePodcasts(enabled: Boolean) {
+        prefs?.edit()?.putBoolean(KEY_AUTO_CACHE_PODCASTS, enabled)?.apply()
     }
 
     fun clearCache() {
@@ -205,6 +218,59 @@ object AudioCacheManager {
         }
     }
 
+    /**
+     * Cache podcast episodes in the background (unplayed episodes from subscribed podcasts).
+     * Each entry is a pair of (episodeId, streamUrl).
+     */
+    fun cacheEpisodes(episodes: List<Pair<Int, String>>) {
+        val c = cache ?: return
+        podcastCacheJob?.cancel()
+        podcastCacheJob = prefetchScope.launch {
+            var cached = 0
+            for ((epId, url) in episodes) {
+                if (!isActive) break
+                if (shouldSkipDownload()) break
+
+                if (cache?.isCached(url, 0, Long.MAX_VALUE) == true) continue
+
+                try {
+                    val okClient = OkHttpClient.Builder()
+                        .addInterceptor { chain ->
+                            val builder = chain.request().newBuilder()
+                            ApiClient.getToken()?.let {
+                                builder.addHeader("Authorization", "Bearer $it")
+                            }
+                            chain.proceed(builder.build())
+                        }
+                        .build()
+                    val dataSourceFactory = OkHttpDataSource.Factory(okClient)
+                    val cacheDataSourceFactory = CacheDataSource.Factory()
+                        .setCache(c)
+                        .setUpstreamDataSourceFactory(dataSourceFactory)
+
+                    val dataSpec = DataSpec.Builder()
+                        .setUri(url)
+                        .setKey(url)
+                        .build()
+                    CacheWriter(cacheDataSourceFactory.createDataSource(), dataSpec, null, null).cache()
+                    cached++
+                    DebugLog.d("Cache", "Auto-cached episode $epId")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    DebugLog.e("Cache", "Episode cache failed: ep $epId", e)
+                }
+            }
+            if (cached > 0) DebugLog.i("Cache", "Auto-cached $cached podcast episodes")
+        }
+    }
+
+    /** Check whether a podcast episode is fully cached */
+    fun isEpisodeCached(episodeId: Int): Boolean {
+        val url = ApiClient.episodeStreamUrl(episodeId)
+        return cache?.isCached(url, 0, Long.MAX_VALUE) == true
+    }
+
     private fun shouldSkipDownload(): Boolean {
         if (!wifiOnlyDownload) return false
         val ctx = appContext ?: return false
@@ -216,6 +282,7 @@ object AudioCacheManager {
     fun release() {
         prefetchJob?.cancel()
         autoCacheJob?.cancel()
+        podcastCacheJob?.cancel()
         cache?.release()
         cache = null
     }

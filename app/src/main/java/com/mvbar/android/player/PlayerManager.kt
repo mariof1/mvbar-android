@@ -33,9 +33,11 @@ data class PlayerState(
     val playMode: PlayMode = PlayMode.NORMAL,
     val isFavorite: Boolean = false,
     val isAudiobookMode: Boolean = false,
+    val isPodcastModeOverride: Boolean = false,
     val artworkUrl: String? = null
 ) {
-    val isPodcastMode: Boolean get() = currentTrack != null && currentTrack.id < 0 && !isAudiobookMode
+    val isPodcastMode: Boolean get() = isPodcastModeOverride ||
+            (currentTrack != null && currentTrack.id < 0 && !isAudiobookMode)
 }
 
 class PlayerManager private constructor(private val context: Context) {
@@ -70,16 +72,24 @@ class PlayerManager private constructor(private val context: Context) {
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                val idx = controller?.currentMediaItemIndex ?: -1
+                val ctrl = controller ?: return
+                val idx = ctrl.currentMediaItemIndex
+                // If _queue is stale (e.g. AA started playback), rebuild from controller
+                if (_queue.isEmpty() || idx !in _queue.indices) {
+                    syncQueueFromController()
+                }
                 val track = if (idx in _queue.indices) _queue[idx] else null
+                val isPodcast = mediaItem?.mediaId?.startsWith("ep:") == true
+                val isAudiobook = mediaItem?.mediaId?.startsWith("ab:") == true
                 _state.value = _state.value.copy(
                     currentTrack = track,
                     queueIndex = idx,
-                    duration = controller?.duration?.coerceAtLeast(0L) ?: 0L,
-                    isAudiobookMode = _isAudiobookMode,
+                    duration = ctrl.duration.coerceAtLeast(0L),
+                    isAudiobookMode = isAudiobook || _isAudiobookMode,
+                    isPodcastModeOverride = isPodcast,
                     artworkUrl = track?.id?.let { _customArtUrls[it] }
+                        ?: mediaItem?.mediaMetadata?.artworkUri?.toString()
                 )
-                // Prefetch next tracks in background
                 if (_queue.isNotEmpty() && idx >= 0) {
                     AudioCacheManager.prefetchNext(_queue, idx)
                 }
@@ -92,7 +102,69 @@ class PlayerManager private constructor(private val context: Context) {
                     )
                 }
             }
+
+            override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+                // External queue changes (e.g. AA set new items)
+                if (_queue.isEmpty() && timeline.windowCount > 0) {
+                    syncQueueFromController()
+                }
+            }
         })
+        // Sync initial state if something is already playing (e.g. started from AA)
+        syncFromController()
+    }
+
+    /** Rebuild _queue from the controller's current media items */
+    private fun syncQueueFromController() {
+        val ctrl = controller ?: return
+        val count = ctrl.mediaItemCount
+        if (count == 0) return
+        val items = (0 until count).map { ctrl.getMediaItemAt(it) }
+        _queue.clear()
+        _queue.addAll(items.map { trackFromMediaItem(it) })
+        _state.value = _state.value.copy(queue = _queue.toList())
+    }
+
+    /** Sync full player state from controller (used on initial connect) */
+    private fun syncFromController() {
+        val ctrl = controller ?: return
+        if (ctrl.mediaItemCount == 0) return
+        syncQueueFromController()
+        val idx = ctrl.currentMediaItemIndex
+        val track = if (idx in _queue.indices) _queue[idx] else null
+        val mediaItem = ctrl.currentMediaItem
+        val isPodcast = mediaItem?.mediaId?.startsWith("ep:") == true
+        val isAudiobook = mediaItem?.mediaId?.startsWith("ab:") == true
+        _state.value = _state.value.copy(
+            currentTrack = track,
+            queueIndex = idx,
+            isPlaying = ctrl.isPlaying,
+            position = ctrl.currentPosition.coerceAtLeast(0L),
+            duration = ctrl.duration.coerceAtLeast(0L),
+            isAudiobookMode = isAudiobook,
+            isPodcastModeOverride = isPodcast,
+            artworkUrl = mediaItem?.mediaMetadata?.artworkUri?.toString()
+        )
+        if (ctrl.isPlaying) startProgressUpdates()
+    }
+
+    /** Create a Track from a MediaItem's metadata (for externally-started playback) */
+    private fun trackFromMediaItem(item: MediaItem): Track {
+        val meta = item.mediaMetadata
+        val mediaId = item.mediaId
+        // Parse ID: "ep:123" → 0 (podcast), "ab:1:2" → 0 (audiobook), "12345" → 12345
+        val trackId = when {
+            mediaId.startsWith("ep:") -> 0
+            mediaId.startsWith("ab:") -> 0
+            else -> mediaId.toIntOrNull() ?: 0
+        }
+        return Track(
+            id = trackId,
+            title = meta.title?.toString(),
+            artist = meta.artist?.toString(),
+            album = meta.albumTitle?.toString(),
+            artPath = null
+        )
     }
 
     fun playTracks(tracks: List<Track>, startIndex: Int = 0, customStreamUrls: Map<Int, String> = emptyMap(), customArtUrls: Map<Int, String> = emptyMap()) {
@@ -126,7 +198,7 @@ class PlayerManager private constructor(private val context: Context) {
                         .setTitle(track.displayTitle)
                         .setArtist(track.displayArtist)
                         .setAlbumTitle(track.displayAlbum)
-                        .setArtworkUri(Uri.parse(artUrl))
+                        .setArtworkUri(ArtworkProvider.buildUri(artUrl))
                         .build()
                 )
                 .build()
@@ -158,7 +230,7 @@ class PlayerManager private constructor(private val context: Context) {
                 MediaMetadata.Builder()
                     .setTitle(track.displayTitle)
                     .setArtist(track.displayArtist)
-                    .setArtworkUri(Uri.parse(artUrl))
+                    .setArtworkUri(ArtworkProvider.buildUri(artUrl))
                     .build()
             )
             .build()
@@ -179,7 +251,7 @@ class PlayerManager private constructor(private val context: Context) {
                 MediaMetadata.Builder()
                     .setTitle(track.displayTitle)
                     .setArtist(track.displayArtist)
-                    .setArtworkUri(Uri.parse(artUrl))
+                    .setArtworkUri(ArtworkProvider.buildUri(artUrl))
                     .build()
             )
             .build()

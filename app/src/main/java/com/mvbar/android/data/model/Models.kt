@@ -185,6 +185,8 @@ data class HistoryResponse(val ok: Boolean = false, val tracks: List<Track> = em
 @Serializable
 data class RecommendationsResponse(val ok: Boolean = false, val buckets: List<RecBucket> = emptyList())
 @Serializable
+data class SimilarTracksResponse(val ok: Boolean = false, val tracks: List<Track> = emptyList(), val message: String? = null)
+@Serializable
 data class RecBucket(
     val key: String = "",
     val name: String = "",

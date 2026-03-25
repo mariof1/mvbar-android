@@ -6,12 +6,20 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.mvbar.android.data.CountryFlags
 import com.mvbar.android.data.model.*
 import com.mvbar.android.ui.components.AlbumCard
 import com.mvbar.android.ui.components.ArtistCard
@@ -258,11 +266,6 @@ private fun CountriesGrid(
         }.collect { if (it) onLoadMore() }
     }
 
-    val gradients = listOf(
-        listOf(Color(0xFF2E7D32), Color(0xFF1B5E20)),
-        listOf(Color(0xFF1565C0), Color(0xFF0D47A1)),
-        listOf(Color(0xFFE65100), Color(0xFFBF360C)),
-    )
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(2),
@@ -272,8 +275,7 @@ private fun CountriesGrid(
         modifier = Modifier.fillMaxSize()
     ) {
         items(countries) { country ->
-            val colors = gradients[countries.indexOf(country) % gradients.size]
-            CategoryChip(name = country.name, trackCount = country.trackCount, colors = colors, onClick = { onClick(country) })
+            CountryCard(country = country, onClick = { onClick(country) })
         }
         if (isLoadingMore) {
             item {
@@ -355,6 +357,60 @@ private fun CategoryChip(name: String, trackCount: Int, colors: List<Color>, onC
                     "$trackCount tracks",
                     style = MaterialTheme.typography.bodySmall,
                     color = OnSurfaceDim
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CountryCard(country: Country, onClick: () -> Unit) {
+    val flagUrl = CountryFlags.flagUrl(country.name)
+    Card(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+    ) {
+        Column {
+            if (flagUrl != null) {
+                AsyncImage(
+                    model = flagUrl,
+                    contentDescription = country.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp)
+                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp)
+                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        country.name.take(2).uppercase(),
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = OnSurfaceDim
+                    )
+                }
+            }
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(
+                    country.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = OnSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    "${country.trackCount} tracks",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim,
+                    fontSize = 11.sp
                 )
             }
         }

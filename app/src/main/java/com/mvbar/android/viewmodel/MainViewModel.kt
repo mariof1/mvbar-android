@@ -3,6 +3,7 @@ package com.mvbar.android.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mvbar.android.data.ActivityQueue
 import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.model.*
@@ -475,9 +476,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         playerManager.playTracks(tracks, idx)
         // Sync favorite state for the new track
         playerManager.setFavorite(track.id in _favoriteIds.value)
-        viewModelScope.launch {
-            try { repo.recordPlay(track.id) } catch (_: Exception) {}
-        }
+        // Play recording is handled centrally by PlaybackService.onMediaItemTransition
         // Prefetch lyrics for the track
         prefetchLyrics(track.id)
     }
@@ -491,18 +490,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         playerManager.state.value.currentTrack?.let {
             if (it.id == trackId) playerManager.setFavorite(!isCurrentlyFav)
         }
-        viewModelScope.launch {
-            try {
-                repo.toggleFavorite(trackId)
-                loadFavorites()
-            } catch (e: Exception) {
-                // Revert on failure
-                _favoriteIds.value = currentIds
-                playerManager.state.value.currentTrack?.let {
-                    if (it.id == trackId) playerManager.setFavorite(isCurrentlyFav)
-                }
-            }
-        }
+        // Queue the action (persisted to Room, flushed when online)
+        val action = if (isCurrentlyFav) ActivityQueue.ACTION_REMOVE_FAVORITE
+                     else ActivityQueue.ACTION_ADD_FAVORITE
+        ActivityQueue.enqueue(action, trackId)
     }
 
     private fun syncPlayerFavoriteState() {

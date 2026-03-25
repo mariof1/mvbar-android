@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.*
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.sync.SyncManager
 import com.mvbar.android.debug.DebugLog
@@ -33,6 +35,7 @@ import kotlinx.coroutines.launch
 private enum class SettingsTab(val label: String, val icon: ImageVector) {
     GENERAL("General", Icons.Filled.Settings),
     PLAYBACK("Playback", Icons.Filled.MusicNote),
+    AUTO("Auto", Icons.Filled.DirectionsCar),
     DEBUG("Debug", Icons.Filled.BugReport)
 }
 
@@ -60,6 +63,7 @@ fun SettingsScreen(onLogout: () -> Unit) {
     var prefetchCount by remember { mutableIntStateOf(AudioCacheManager.prefetchCount) }
     var wifiOnly by remember { mutableStateOf(AudioCacheManager.wifiOnlyDownload) }
     var autoCacheFavorites by remember { mutableStateOf(AudioCacheManager.autoCacheFavorites) }
+    var autoCachePodcasts by remember { mutableStateOf(AudioCacheManager.autoCachePodcasts) }
 
     if (showLogViewer) {
         LogViewerScreen(
@@ -82,14 +86,18 @@ fun SettingsScreen(onLogout: () -> Unit) {
         )
 
         // Tab row
-        SecondaryTabRow(
+        ScrollableTabRow(
             selectedTabIndex = selectedTab.ordinal,
             containerColor = Color.Transparent,
             contentColor = Cyan500,
-            indicator = {
-                TabRowDefaults.SecondaryIndicator(
-                    color = Cyan500
-                )
+            edgePadding = 0.dp,
+            indicator = { tabPositions ->
+                if (selectedTab.ordinal < tabPositions.size) {
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab.ordinal]),
+                        color = Cyan500
+                    )
+                }
             },
             divider = { HorizontalDivider(color = SurfaceDark) }
         ) {
@@ -116,6 +124,7 @@ fun SettingsScreen(onLogout: () -> Unit) {
                 prefetchCount = prefetchCount,
                 wifiOnly = wifiOnly,
                 autoCacheFavorites = autoCacheFavorites,
+                autoCachePodcasts = autoCachePodcasts,
                 onClearCache = {
                     AudioCacheManager.clearCache()
                     cacheSizeMb = 0
@@ -126,8 +135,10 @@ fun SettingsScreen(onLogout: () -> Unit) {
                 onPrefetchChange = { prefetchCount = it },
                 onPrefetchSet = { AudioCacheManager.setPrefetchCount(prefetchCount) },
                 onWifiOnlyChange = { wifiOnly = it; AudioCacheManager.setWifiOnlyDownload(it) },
-                onAutoCacheChange = { autoCacheFavorites = it; AudioCacheManager.setAutoCacheFavorites(it) }
+                onAutoCacheChange = { autoCacheFavorites = it; AudioCacheManager.setAutoCacheFavorites(it) },
+                onAutoCachePodcastsChange = { autoCachePodcasts = it; AudioCacheManager.setAutoCachePodcasts(it) }
             )
+            SettingsTab.AUTO -> AndroidAutoTab()
             SettingsTab.DEBUG -> DebugTab(
                 context = context,
                 scope = scope,
@@ -375,13 +386,15 @@ private fun PlaybackTab(
     prefetchCount: Int,
     wifiOnly: Boolean,
     autoCacheFavorites: Boolean,
+    autoCachePodcasts: Boolean,
     onClearCache: () -> Unit,
     onCacheLimitChange: (Int) -> Unit,
     onCacheLimitSet: () -> Unit,
     onPrefetchChange: (Int) -> Unit,
     onPrefetchSet: () -> Unit,
     onWifiOnlyChange: (Boolean) -> Unit,
-    onAutoCacheChange: (Boolean) -> Unit
+    onAutoCacheChange: (Boolean) -> Unit,
+    onAutoCachePodcastsChange: (Boolean) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -515,6 +528,17 @@ private fun PlaybackTab(
                         subtitle = "Keep favorited tracks available offline",
                         checked = autoCacheFavorites,
                         onCheckedChange = onAutoCacheChange
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider(color = SurfaceDark)
+                    Spacer(Modifier.height(8.dp))
+
+                    SettingsToggle(
+                        title = "Auto-Cache Podcasts",
+                        subtitle = "Keep unplayed episodes available offline",
+                        checked = autoCachePodcasts,
+                        onCheckedChange = onAutoCachePodcastsChange
                     )
                 }
             }
@@ -832,6 +856,106 @@ private fun LogViewerScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AndroidAutoTab() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var categories by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        categories = AaPreferences.getCategoryOrder(context)
+    }
+
+    fun move(index: Int, direction: Int) {
+        val target = index + direction
+        if (target < 0 || target >= categories.size) return
+        val mutable = categories.toMutableList()
+        val item = mutable.removeAt(index)
+        mutable.add(target, item)
+        categories = mutable
+        scope.launch { AaPreferences.saveCategoryOrder(context, mutable) }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            Text(
+                "Category Order",
+                style = MaterialTheme.typography.titleMedium,
+                color = Cyan500,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            Text(
+                "Reorder categories shown in Android Auto. Top items appear on the main screen.",
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceDim,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+        items(categories.size) { index ->
+            val key = categories[index]
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${index + 1}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Cyan500,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.width(28.dp)
+                    )
+                    Text(
+                        AaPreferences.displayName(key),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = OnSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = { move(index, -1) },
+                        enabled = index > 0
+                    ) {
+                        Icon(
+                            Icons.Filled.KeyboardArrowUp,
+                            contentDescription = "Move up",
+                            tint = if (index > 0) Cyan500 else OnSurfaceDim
+                        )
+                    }
+                    IconButton(
+                        onClick = { move(index, 1) },
+                        enabled = index < categories.size - 1
+                    ) {
+                        Icon(
+                            Icons.Filled.KeyboardArrowDown,
+                            contentDescription = "Move down",
+                            tint = if (index < categories.size - 1) Cyan500 else OnSurfaceDim
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Text(
+                "Changes take effect on next Android Auto connection",
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceDim,
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
     }
 }

@@ -40,5 +40,11 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+
+        <provider
+            android:name=".player.ArtworkProvider"
+            android:authorities="com.mvbar.android.artwork"
+            android:exported="true"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

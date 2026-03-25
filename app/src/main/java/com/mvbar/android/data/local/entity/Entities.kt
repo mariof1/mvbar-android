@@ -188,3 +188,12 @@ data class AudiobookChapterEntity(
     val sizeBytes: Long?,
     val createdAt: String?
 )
+
+@Entity(tableName = "pending_actions")
+data class PendingActionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val actionType: String,  // PLAY, SKIP, ADD_FAVORITE, REMOVE_FAVORITE
+    val trackId: Int,
+    val payload: String? = null,  // JSON for extra data (e.g. skip percentage)
+    val createdAt: Long = System.currentTimeMillis()
+)

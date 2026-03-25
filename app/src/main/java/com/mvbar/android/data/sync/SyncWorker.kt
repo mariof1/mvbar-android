@@ -8,6 +8,7 @@ import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.local.entity.*
 import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.debug.DebugLog
+import com.mvbar.android.player.AudioCacheManager
 
 class SyncWorker(
     context: Context,
@@ -35,6 +36,15 @@ class SyncWorker(
         DebugLog.i("SyncWorker", "Starting sync...")
 
         return try {
+            // 0. Flush pending offline actions first (plays, skips, favorites)
+            SyncManager.setSyncStatus("Flushing activity queue...")
+            try {
+                com.mvbar.android.data.ActivityQueue.init(applicationContext)
+                com.mvbar.android.data.ActivityQueue.flush()
+            } catch (e: Exception) {
+                DebugLog.e("SyncWorker", "Activity queue flush failed", e)
+            }
+
             // 1. Sync all tracks (paginated)
             SyncManager.setSyncStatus("Syncing tracks...")
             syncTracks(db)
@@ -121,6 +131,23 @@ class SyncWorker(
                     }
                 }
                 DebugLog.i("SyncWorker", "Synced ${pods.podcasts.size} podcasts")
+
+                // Auto-cache unplayed podcast episodes if enabled
+                if (AudioCacheManager.autoCachePodcasts) {
+                    val allEpisodes = mutableListOf<Pair<Int, String>>()
+                    for (pod in pods.podcasts) {
+                        try {
+                            val eps = db.podcastDao().getEpisodes(pod.id)
+                            eps.filter { !it.played }.forEach { ep ->
+                                allEpisodes.add(ep.id to ApiClient.episodeStreamUrl(ep.id))
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    if (allEpisodes.isNotEmpty()) {
+                        DebugLog.i("SyncWorker", "Auto-caching ${allEpisodes.size} unplayed episodes")
+                        AudioCacheManager.cacheEpisodes(allEpisodes)
+                    }
+                }
             } catch (e: Exception) {
                 DebugLog.e("SyncWorker", "Podcasts sync failed", e)
             }

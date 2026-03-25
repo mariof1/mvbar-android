@@ -98,7 +98,10 @@ interface MvbarApi {
     suspend fun getFavorites(): FavoritesResponse
 
     @POST("api/favorites/{id}")
-    suspend fun toggleFavorite(@Path("id") trackId: Int): Response<Unit>
+    suspend fun addFavorite(@Path("id") trackId: Int): Response<Unit>
+
+    @DELETE("api/favorites/{id}")
+    suspend fun removeFavorite(@Path("id") trackId: Int): Response<Unit>
 
     // History
     @GET("api/history")
@@ -109,6 +112,13 @@ interface MvbarApi {
 
     @POST("api/history/{trackId}")
     suspend fun recordPlay(@Path("trackId") trackId: Int): Response<Unit>
+
+    // Stats
+    @POST("api/stats/skip/{trackId}")
+    suspend fun recordSkip(
+        @Path("trackId") trackId: Int,
+        @Body body: Map<String, Int>? = null
+    ): Response<Unit>
 
     // Playlists
     @GET("api/playlists")
@@ -144,6 +154,13 @@ interface MvbarApi {
     // Recommendations
     @GET("api/recommendations")
     suspend fun getRecommendations(): RecommendationsResponse
+
+    // Similar tracks (Last.fm-based auto-continue)
+    @GET("api/similar-tracks/{trackId}")
+    suspend fun getSimilarTracks(
+        @Path("trackId") trackId: Int,
+        @Query("exclude") exclude: String? = null
+    ): SimilarTracksResponse
 
     // Recently added
     @GET("api/library/tracks")

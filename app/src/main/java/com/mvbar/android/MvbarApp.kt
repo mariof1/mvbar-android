@@ -5,6 +5,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.mvbar.android.data.ActivityQueue
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.NetworkMonitor
@@ -40,6 +41,9 @@ class MvbarApp : Application(), ImageLoaderFactory {
 
         // Initialize Room database
         MvbarDatabase.getInstance(this)
+
+        // Initialize offline-resilient activity queue (flushes on reconnect)
+        ActivityQueue.init(this)
 
         // Initialize sync manager and schedule periodic sync
         SyncManager.init(this)

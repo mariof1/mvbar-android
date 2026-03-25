@@ -3,6 +3,7 @@ package com.mvbar.android.player
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -11,14 +12,19 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.mvbar.android.MainActivity
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.ActivityQueue
+import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.local.entity.toModel
 import com.mvbar.android.data.NetworkMonitor
@@ -37,6 +43,15 @@ class PlaybackService : MediaLibraryService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val db by lazy { MvbarDatabase.getInstance(this) }
     private var reconnectListener: (() -> Unit)? = null
+    /** Cache of track lists by parentId so tapping a track queues all siblings */
+    private val browsedTrackCache = mutableMapOf<String, List<MediaItem>>()
+    /** Track the previous media item for skip detection */
+    private var previousTrackId: Int? = null
+    private var previousTrackDurationMs: Long = 0L
+    /** Pending resume position for podcast/audiobook episodes */
+    private var pendingResumePositionMs: Long = 0L
+    /** Job for periodic episode progress saving */
+    private var progressSaveJob: kotlinx.coroutines.Job? = null
 
     companion object {
         private const val ROOT_ID = "[root]"
@@ -47,8 +62,27 @@ class PlaybackService : MediaLibraryService() {
         private const val PLAYLISTS_ID = "[playlists]"
         private const val GENRES_ID = "[genres]"
         private const val FAVORITES_ID = "[favorites]"
+        private const val LANGUAGES_ID = "[languages]"
         private const val PODCASTS_ID = "[podcasts]"
         private const val AUDIOBOOKS_ID = "[audiobooks]"
+        private const val COUNTRIES_ID = "[countries]"
+        private const val SUGGESTED_ROOT_ID = "[suggested]"
+        private const val RECENT_ROOT_ID = "[recent_root]"
+
+        private fun categoryIdToConstant(key: String): String = when (key) {
+            "foryou" -> FOR_YOU_ID
+            "recent" -> RECENT_ID
+            "favorites" -> FAVORITES_ID
+            "albums" -> ALBUMS_ID
+            "artists" -> ARTISTS_ID
+            "playlists" -> PLAYLISTS_ID
+            "genres" -> GENRES_ID
+            "languages" -> LANGUAGES_ID
+            "podcasts" -> PODCASTS_ID
+            "audiobooks" -> AUDIOBOOKS_ID
+            "countries" -> COUNTRIES_ID
+            else -> key
+        }
     }
 
     override fun onCreate() {
@@ -95,13 +129,54 @@ class PlaybackService : MediaLibraryService() {
                 true
             )
             .setHandleAudioBecomingNoisy(true)
+            .setSeekForwardIncrementMs(15_000)
+            .setSeekBackIncrementMs(15_000)
             .build()
 
         player.pauseAtEndOfMediaItems = false
 
+        // Restore saved shuffle/repeat state
+        kotlinx.coroutines.runBlocking {
+            try {
+                player.shuffleModeEnabled = AaPreferences.getShuffleEnabled(this@PlaybackService)
+                player.repeatMode = AaPreferences.getRepeatMode(this@PlaybackService)
+            } catch (_: Exception) { }
+        }
+
         player.addListener(object : Player.Listener {
+            private var consecutiveErrors = 0
+
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 DebugLog.e("Player", "Playback error: ${error.errorCodeName}", error)
+
+                // If the error is a network/HTTP issue, try to skip to the next cached track
+                val errorCode = error.errorCode
+                val isNetworkError = errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                    errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                    errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                    errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+
+                if (isNetworkError && player.mediaItemCount > 1) {
+                    consecutiveErrors++
+                    if (consecutiveErrors > player.mediaItemCount) {
+                        // Tried all items — stop to avoid infinite loop
+                        DebugLog.w("Player", "All tracks failed, stopping playback")
+                        consecutiveErrors = 0
+                        return
+                    }
+                    DebugLog.i("Player", "Skipping uncached track (error $consecutiveErrors)")
+                    player.seekToNextMediaItem()
+                    player.prepare()
+                }
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // Reset error counter on successful track transition
+                consecutiveErrors = 0
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) consecutiveErrors = 0
             }
         })
 
@@ -111,24 +186,113 @@ class PlaybackService : MediaLibraryService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        mediaSession = MediaLibrarySession.Builder(this, player, LibraryCallback())
+        val libraryCallback = LibraryCallback()
+
+        mediaSession = MediaLibrarySession.Builder(this, player, libraryCallback)
             .setSessionActivity(pendingIntent)
             .setBitmapLoader(AuthBitmapLoader())
             .build()
 
-        // Monitor network: refresh browse tree when connectivity is restored
+        // Switch custom layout (shuffle/repeat/love vs ±15s) on track change
+        // and record play/skip activity via offline-resilient queue
+        player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
+                val session = mediaSession ?: return
+                val p = session.player
+
+                // --- Save progress for the episode we're leaving ---
+                progressSaveJob?.cancel()
+                saveEpisodeProgress(p)
+
+                // --- Activity tracking via ActivityQueue ---
+                // Record skip for the previous track if user pressed next/prev
+                val prevId = previousTrackId
+                if (prevId != null && prevId > 0 &&
+                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK
+                ) {
+                    val posMs = p.currentPosition
+                    val durMs = previousTrackDurationMs
+                    val pct = if (durMs > 0) (posMs.toDouble() / durMs * 100).toInt() else 0
+                    ActivityQueue.enqueue(
+                        ActivityQueue.ACTION_SKIP, prevId,
+                        """{"pct":$pct}"""
+                    )
+                }
+
+                // Record play for the new track (covers both phone and AA playback)
+                val newTrackId = item?.mediaId?.toIntOrNull()
+                if (newTrackId != null && newTrackId > 0) {
+                    ActivityQueue.enqueue(ActivityQueue.ACTION_PLAY, newTrackId)
+                }
+
+                // Update previous track reference
+                previousTrackId = newTrackId
+                previousTrackDurationMs = item?.mediaMetadata?.extras?.getLong("duration_ms", 0L)
+                    ?: p.duration.takeIf { it > 0 } ?: 0L
+
+                // --- Episode resume: set pending seek position ---
+                val resumeMs = item?.mediaMetadata?.extras?.getLong("resume_position_ms", 0L) ?: 0L
+                pendingResumePositionMs = if (resumeMs > 0L) resumeMs else 0L
+                if (resumeMs > 0L) {
+                    DebugLog.i("Player", "Will resume ${item?.mediaId} at ${resumeMs}ms")
+                }
+
+                // --- Start periodic progress saving for episodes ---
+                val mediaId = item?.mediaId
+                if (mediaId != null && (mediaId.startsWith("ep:") || mediaId.startsWith("ab:"))) {
+                    startProgressSaving(p)
+                }
+
+                // Check favorite status for the new track
+                if (newTrackId != null && newTrackId > 0) {
+                    serviceScope.launch {
+                        libraryCallback.currentTrackFavorite = try {
+                            db.favoriteDao().getFavorites().any { it.id == newTrackId }
+                        } catch (_: Exception) { false }
+                        libraryCallback.updateCustomLayout(session)
+                    }
+                } else {
+                    libraryCallback.currentTrackFavorite = false
+                    libraryCallback.updateCustomLayout(session)
+                }
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY && pendingResumePositionMs > 0L) {
+                    val pos = pendingResumePositionMs
+                    pendingResumePositionMs = 0L
+                    val p = mediaSession?.player ?: return
+                    DebugLog.i("Player", "Resuming at ${pos}ms (${p.currentMediaItem?.mediaId})")
+                    p.seekTo(pos)
+                }
+            }
+        })
+
+        // Watch for category order changes and refresh AA browse tree
+        serviceScope.launch {
+            AaPreferences.categoryOrderFlow(this@PlaybackService)
+                .collect {
+                    mediaSession?.let { session ->
+                        session.connectedControllers.forEach { ctrl ->
+                            session.notifyChildrenChanged(ctrl, ROOT_ID, 0, null)
+                        }
+                    }
+                }
+        }
+
+        // Monitor network: refresh browse tree root when connectivity is restored
         NetworkMonitor.init(this)
+        ActivityQueue.init(this)
+        var reconnectJob: kotlinx.coroutines.Job? = null
         val listener: () -> Unit = {
-            DebugLog.i("Player", "Network restored — refreshing Android Auto browse tree")
-            mediaSession?.let { session ->
-                val topLevelIds = listOf(
-                    ROOT_ID, FOR_YOU_ID, RECENT_ID, FAVORITES_ID,
-                    ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID,
-                    PODCASTS_ID, AUDIOBOOKS_ID
-                )
-                for (id in topLevelIds) {
+            // Debounce: only refresh once if network flickers
+            reconnectJob?.cancel()
+            reconnectJob = serviceScope.launch {
+                kotlinx.coroutines.delay(2000)
+                DebugLog.i("Player", "Network restored — refreshing Android Auto root")
+                mediaSession?.let { session ->
                     session.connectedControllers.forEach { ctrl ->
-                        session.notifyChildrenChanged(ctrl, id, 0, null)
+                        session.notifyChildrenChanged(ctrl, ROOT_ID, 0, null)
                     }
                 }
             }
@@ -143,6 +307,9 @@ class PlaybackService : MediaLibraryService() {
         mediaSession
 
     override fun onDestroy() {
+        // Save episode progress before shutting down
+        progressSaveJob?.cancel()
+        mediaSession?.player?.let { saveEpisodeProgress(it) }
         reconnectListener?.let { NetworkMonitor.removeReconnectListener(it) }
         reconnectListener = null
         mediaSession?.run {
@@ -155,6 +322,65 @@ class PlaybackService : MediaLibraryService() {
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
 
+        private val SEEK_BACK_15 = SessionCommand("SEEK_BACK_15", Bundle.EMPTY)
+        private val SEEK_FORWARD_15 = SessionCommand("SEEK_FORWARD_15", Bundle.EMPTY)
+        private val TOGGLE_SHUFFLE = SessionCommand("TOGGLE_SHUFFLE", Bundle.EMPTY)
+        private val TOGGLE_REPEAT = SessionCommand("TOGGLE_REPEAT", Bundle.EMPTY)
+        private val TOGGLE_FAVORITE = SessionCommand("TOGGLE_FAVORITE", Bundle.EMPTY)
+
+        var currentTrackFavorite = false
+
+        private fun isPodcastOrAudiobook(item: MediaItem?): Boolean {
+            val id = item?.mediaId ?: return false
+            return id.startsWith("ep:") || id.startsWith("ab:")
+        }
+
+        private fun buildPodcastLayout(): List<CommandButton> = listOf(
+            CommandButton.Builder()
+                .setSessionCommand(SEEK_BACK_15)
+                .setIconResId(androidx.media3.session.R.drawable.media3_icon_skip_back_15)
+                .setDisplayName("Back 15s")
+                .build(),
+            CommandButton.Builder()
+                .setSessionCommand(SEEK_FORWARD_15)
+                .setIconResId(androidx.media3.session.R.drawable.media3_icon_skip_forward_15)
+                .setDisplayName("Forward 15s")
+                .build()
+        )
+
+        private fun buildMusicLayout(player: Player): List<CommandButton> {
+            val shuffleIcon = if (player.shuffleModeEnabled)
+                androidx.media3.session.R.drawable.media3_icon_shuffle_on
+            else
+                androidx.media3.session.R.drawable.media3_icon_shuffle_off
+            val repeatIcon = when (player.repeatMode) {
+                Player.REPEAT_MODE_ONE -> androidx.media3.session.R.drawable.media3_icon_repeat_one
+                Player.REPEAT_MODE_ALL -> androidx.media3.session.R.drawable.media3_icon_repeat_all
+                else -> androidx.media3.session.R.drawable.media3_icon_repeat_off
+            }
+            val favoriteIcon = if (currentTrackFavorite)
+                androidx.media3.session.R.drawable.media3_icon_heart_filled
+            else
+                androidx.media3.session.R.drawable.media3_icon_heart_unfilled
+            return listOf(
+                CommandButton.Builder()
+                    .setSessionCommand(TOGGLE_FAVORITE)
+                    .setIconResId(favoriteIcon)
+                    .setDisplayName("Love")
+                    .build(),
+                CommandButton.Builder()
+                    .setSessionCommand(TOGGLE_SHUFFLE)
+                    .setIconResId(shuffleIcon)
+                    .setDisplayName("Shuffle")
+                    .build(),
+                CommandButton.Builder()
+                    .setSessionCommand(TOGGLE_REPEAT)
+                    .setIconResId(repeatIcon)
+                    .setDisplayName("Repeat")
+                    .build()
+            )
+        }
+
         override fun onConnect(
             session: MediaSession,
             controller: MediaSession.ControllerInfo
@@ -164,10 +390,72 @@ class PlaybackService : MediaLibraryService() {
                 .addAllCommands()
                 .build()
             val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+                .buildUpon()
+                .add(SEEK_BACK_15)
+                .add(SEEK_FORWARD_15)
+                .add(TOGGLE_SHUFFLE)
+                .add(TOGGLE_REPEAT)
+                .add(TOGGLE_FAVORITE)
+                .build()
+
+            val layout = if (isPodcastOrAudiobook(session.player.currentMediaItem))
+                buildPodcastLayout() else buildMusicLayout(session.player)
+
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailablePlayerCommands(playerCommands)
                 .setAvailableSessionCommands(sessionCommands)
+                .setCustomLayout(layout)
                 .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle
+        ): ListenableFuture<SessionResult> {
+            when (customCommand.customAction) {
+                "SEEK_BACK_15" -> session.player.seekBack()
+                "SEEK_FORWARD_15" -> session.player.seekForward()
+                "TOGGLE_SHUFFLE" -> {
+                    session.player.shuffleModeEnabled = !session.player.shuffleModeEnabled
+                    serviceScope.launch {
+                        AaPreferences.saveShuffleEnabled(this@PlaybackService, session.player.shuffleModeEnabled)
+                    }
+                    updateCustomLayout(session)
+                }
+                "TOGGLE_REPEAT" -> {
+                    session.player.repeatMode = when (session.player.repeatMode) {
+                        Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                        Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                        else -> Player.REPEAT_MODE_OFF
+                    }
+                    serviceScope.launch {
+                        AaPreferences.saveRepeatMode(this@PlaybackService, session.player.repeatMode)
+                    }
+                    updateCustomLayout(session)
+                }
+                "TOGGLE_FAVORITE" -> {
+                    val trackId = session.player.currentMediaItem?.mediaId?.toIntOrNull()
+                    if (trackId != null && trackId > 0) {
+                        val action = if (currentTrackFavorite)
+                            ActivityQueue.ACTION_REMOVE_FAVORITE
+                        else
+                            ActivityQueue.ACTION_ADD_FAVORITE
+                        ActivityQueue.enqueue(action, trackId)
+                        currentTrackFavorite = !currentTrackFavorite
+                        updateCustomLayout(session)
+                    }
+                }
+                else -> return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+            }
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+
+        fun updateCustomLayout(session: MediaSession) {
+            val layout = if (isPodcastOrAudiobook(session.player.currentMediaItem))
+                buildPodcastLayout() else buildMusicLayout(session.player)
+            session.setCustomLayout(layout)
         }
 
         override fun onGetLibraryRoot(
@@ -175,9 +463,16 @@ class PlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<MediaItem>> {
-            DebugLog.i("Auto", "onGetLibraryRoot from ${browser.packageName}")
+            val extrasKeys = params?.extras?.keySet()?.joinToString() ?: "none"
+            DebugLog.i("Auto", "onGetLibraryRoot from ${browser.packageName} isRecent=${params?.isRecent} isSuggested=${params?.isSuggested} extras=[$extrasKeys]")
+
+            val rootId = when {
+                params?.isSuggested == true -> SUGGESTED_ROOT_ID
+                params?.isRecent == true -> RECENT_ROOT_ID
+                else -> ROOT_ID
+            }
             val root = MediaItem.Builder()
-                .setMediaId(ROOT_ID)
+                .setMediaId(rootId)
                 .setMediaMetadata(
                     MediaMetadata.Builder()
                         .setIsBrowsable(true)
@@ -187,7 +482,19 @@ class PlaybackService : MediaLibraryService() {
                         .build()
                 )
                 .build()
-            return Futures.immediateFuture(LibraryResult.ofItem(root, params))
+            // Return content style hints so AA knows how to display children
+            val resultExtras = Bundle().apply {
+                putBoolean("android.media.browse.CONTENT_STYLE_SUPPORTED", true)
+                putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 1)
+                putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1)
+                putBoolean("android.media.browse.SEARCH_SUPPORTED", true)
+            }
+            val resultParams = LibraryParams.Builder()
+                .setRecent(params?.isRecent == true)
+                .setSuggested(params?.isSuggested == true)
+                .setExtras(resultExtras)
+                .build()
+            return Futures.immediateFuture(LibraryResult.ofItem(root, resultParams))
         }
 
         override fun onGetChildren(
@@ -200,28 +507,41 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             return serviceScope.future {
                 try {
-                    DebugLog.i("Auto", "onGetChildren: parentId=$parentId page=$page")
                     val items = when {
                         parentId == ROOT_ID -> getRootChildren()
+                        parentId == SUGGESTED_ROOT_ID -> getForYouBuckets()
+                        parentId == RECENT_ROOT_ID -> getRecentTracks()
                         parentId == FOR_YOU_ID -> getForYouBuckets()
-                        parentId == RECENT_ID -> getRecentTracks()
-                        parentId == FAVORITES_ID -> getFavoriteTracks()
+                        parentId == RECENT_ID -> withShuffle(RECENT_ID, getRecentTracks())
+                        parentId == FAVORITES_ID -> withShuffle(FAVORITES_ID, getFavoriteTracks())
                         parentId == ALBUMS_ID -> getAlbumsList()
                         parentId == ARTISTS_ID -> getArtistsList()
                         parentId == PLAYLISTS_ID -> getPlaylistsList()
                         parentId == GENRES_ID -> getGenresList()
+                        parentId == LANGUAGES_ID -> getLanguagesList()
                         parentId == PODCASTS_ID -> getPodcastsList()
                         parentId == AUDIOBOOKS_ID -> getAudiobooksList()
-                        parentId.startsWith("bucket:") -> getBucketTracks(parentId.removePrefix("bucket:"))
-                        parentId.startsWith("album:") -> getAlbumTracks(parentId.removePrefix("album:"))
-                        parentId.startsWith("artist:") -> getArtistTracks(parentId.removePrefix("artist:").toInt())
-                        parentId.startsWith("playlist:") -> getPlaylistTracks(parentId.removePrefix("playlist:").toInt())
-                        parentId.startsWith("smartpl:") -> getSmartPlaylistTracks(parentId.removePrefix("smartpl:").toInt())
-                        parentId.startsWith("genre:") -> getGenreTracks(parentId.removePrefix("genre:"))
-                        parentId.startsWith("podcast:") -> getPodcastEpisodes(parentId.removePrefix("podcast:").toInt())
-                        parentId.startsWith("audiobook:") -> getAudiobookChapters(parentId.removePrefix("audiobook:").toInt())
+                        parentId == COUNTRIES_ID -> getCountriesList()
+                        parentId.startsWith("album:") -> withShuffle(parentId, getAlbumTracks(parentId.removePrefix("album:")))
+                        parentId.startsWith("artist:") -> withShuffle(parentId, getArtistTracks(parentId.removePrefix("artist:").toInt()))
+                        parentId.startsWith("playlist:") -> withShuffle(parentId, getPlaylistTracks(parentId.removePrefix("playlist:").toInt()))
+                        parentId.startsWith("smartpl:") -> withShuffle(parentId, getSmartPlaylistTracks(parentId.removePrefix("smartpl:").toInt()))
+                        parentId.startsWith("genre:") -> withShuffle(parentId, getGenreTracks(parentId.removePrefix("genre:")))
+                        parentId.startsWith("language:") -> withShuffle(parentId, getLanguageTracks(parentId.removePrefix("language:")))
+                        parentId.startsWith("country:") -> withShuffle(parentId, getCountryTracks(parentId.removePrefix("country:")))
+                        parentId.startsWith("podcast:") -> {
+                            val eps = getPodcastEpisodes(parentId.removePrefix("podcast:").toInt())
+                            browsedTrackCache[parentId] = eps
+                            eps
+                        }
+                        parentId.startsWith("audiobook:") -> {
+                            val chs = getAudiobookChapters(parentId.removePrefix("audiobook:").toInt())
+                            browsedTrackCache[parentId] = chs
+                            chs
+                        }
                         else -> emptyList()
                     }
+                    DebugLog.i("Auto", "onGetChildren: parentId=$parentId → ${items.size} items")
                     LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
                 } catch (e: Exception) {
                     DebugLog.e("Auto", "Browse error for $parentId", e)
@@ -238,9 +558,10 @@ class PlaybackService : MediaLibraryService() {
             // Determine if this is a browsable folder or a playable track
             val isBrowsable = mediaId.startsWith("album:") || mediaId.startsWith("artist:") ||
                     mediaId.startsWith("playlist:") || mediaId.startsWith("smartpl:") ||
-                    mediaId.startsWith("genre:") || mediaId.startsWith("bucket:") ||
+                    mediaId.startsWith("genre:") || mediaId.startsWith("language:") ||
+                    mediaId.startsWith("country:") ||
                     mediaId.startsWith("podcast:") || mediaId.startsWith("audiobook:") ||
-                    mediaId in listOf(ROOT_ID, FOR_YOU_ID, RECENT_ID, FAVORITES_ID, ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID, PODCASTS_ID, AUDIOBOOKS_ID)
+                    mediaId in listOf(ROOT_ID, SUGGESTED_ROOT_ID, RECENT_ROOT_ID, FOR_YOU_ID, RECENT_ID, FAVORITES_ID, ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID, LANGUAGES_ID, COUNTRIES_ID, PODCASTS_ID, AUDIOBOOKS_ID)
             val item = MediaItem.Builder()
                 .setMediaId(mediaId)
                 .setMediaMetadata(
@@ -258,23 +579,78 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>
         ): ListenableFuture<MutableList<MediaItem>> {
-            // Resolve media items: keep existing URI if present, otherwise build from track ID
-            val resolved = mediaItems.map { item ->
-                if (item.localConfiguration?.uri != null) {
-                    // Already has a stream URI (e.g. audiobook chapter, podcast episode)
-                    item
-                } else {
-                    val trackId = item.mediaId.toIntOrNull()
-                    if (trackId != null) {
-                        val streamUrl = ApiClient.streamUrl(trackId)
-                        item.buildUpon()
-                            .setUri(streamUrl)
-                            .build()
-                    } else {
-                        item
+            // Handle shuffle: load all tracks for the category, shuffle, and play
+            val first = mediaItems.firstOrNull()
+            if (first != null && first.mediaId.startsWith("shuffle:")) {
+                val parentId = first.mediaId.removePrefix("shuffle:")
+                return serviceScope.future {
+                    val tracks = loadTracksForParent(parentId).shuffled()
+                    DebugLog.i("Auto", "Shuffle play: $parentId → ${tracks.size} tracks")
+                    tracks.map { resolveStreamUri(it) }.toMutableList()
+                }
+            }
+            // Handle bucket tap: load all tracks, shuffle, and play
+            if (first != null && first.mediaId.startsWith("bucket:")) {
+                return serviceScope.future {
+                    val tracks = getBucketTracks(first.mediaId.removePrefix("bucket:")).shuffled()
+                    DebugLog.i("Auto", "Bucket play: ${first.mediaId} → ${tracks.size} tracks")
+                    tracks.map { resolveStreamUri(it) }.toMutableList()
+                }
+            }
+            // Single track tap: queue all tracks from the same list, starting from tapped
+            if (mediaItems.size == 1 && first != null) {
+                val tappedId = first.mediaId
+                val isPodcastOrBook = tappedId.startsWith("ep:") || tappedId.startsWith("ab:")
+
+                // Search result tap: play just the tapped track + fetch similar from server
+                val isFromSearch = browsedTrackCache.entries
+                    .any { it.key.startsWith("search:") && it.value.any { t -> t.mediaId == tappedId } }
+                if (isFromSearch && !isPodcastOrBook) {
+                    return serviceScope.future {
+                        mediaSession.player.shuffleModeEnabled = false
+                        val tapped = resolveStreamUri(first)
+                        val queue = mutableListOf(tapped)
+                        // Fetch similar tracks from server (Last.fm auto-continue)
+                        val trackId = tappedId.toIntOrNull()
+                        if (trackId != null) {
+                            try {
+                                val resp = ApiClient.api.getSimilarTracks(trackId)
+                                if (resp.tracks.isNotEmpty()) {
+                                    val similar = resp.tracks.map { resolveStreamUri(trackToMediaItem(it)) }
+                                    queue.addAll(similar)
+                                    DebugLog.i("Auto", "Search play: track $trackId + ${similar.size} similar tracks")
+                                } else {
+                                    DebugLog.i("Auto", "Search play: track $trackId only (no similar: ${resp.message ?: "none available"})")
+                                }
+                            } catch (e: Exception) {
+                                DebugLog.w("Auto", "Similar tracks fetch failed", e)
+                            }
+                        }
+                        queue
                     }
                 }
-            }.toMutableList()
+
+                // Browse list tap: queue all tracks from the same list, starting from tapped
+                val otherEntries = browsedTrackCache.entries.filter { !it.key.startsWith("search:") }
+                for ((key, tracks) in otherEntries) {
+                    val idx = tracks.indexOfFirst { it.mediaId == tappedId }
+                    if (idx >= 0) {
+                        val reordered = if (isPodcastOrBook) {
+                            tracks.subList(idx, tracks.size)
+                        } else {
+                            tracks.subList(idx, tracks.size) + tracks.subList(0, idx)
+                        }
+                        DebugLog.i("Auto", "Queue all: tapped=$tappedId from $key, ${tracks.size} tracks idx=$idx")
+                        if (isPodcastOrBook) {
+                            mediaSession.player.shuffleModeEnabled = false
+                        }
+                        val resolved = reordered.map { resolveStreamUri(it) }.toMutableList()
+                        return Futures.immediateFuture(resolved)
+                    }
+                }
+            }
+            // Fallback: resolve URIs as-is
+            val resolved = mediaItems.map { resolveStreamUri(it) }.toMutableList()
             return Futures.immediateFuture(resolved)
         }
 
@@ -308,8 +684,11 @@ class PlaybackService : MediaLibraryService() {
             return serviceScope.future {
                 try {
                     val api = ApiClient.api
-                    val results = api.search(query, limit = pageSize)
+                    val results = api.search(query, limit = pageSize.coerceAtMost(100))
                     val items = results.hits.map { trackToMediaItem(it) }
+                    // Clear previous search caches to avoid stale matches
+                    browsedTrackCache.keys.removeAll { it.startsWith("search:") }
+                    browsedTrackCache["search:$query"] = items
                     LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
                 } catch (e: Exception) {
                     DebugLog.e("Auto", "Search results error", e)
@@ -321,17 +700,46 @@ class PlaybackService : MediaLibraryService() {
 
     // Browse tree builders
 
-    private fun getRootChildren(): List<MediaItem> = listOf(
-        browseFolderItem(FOR_YOU_ID, "For You", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
-        browseFolderItem(RECENT_ID, "Recently Added", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
-        browseFolderItem(FAVORITES_ID, "Favorites", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
-        browseFolderItem(ALBUMS_ID, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS),
-        browseFolderItem(ARTISTS_ID, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS),
-        browseFolderItem(PLAYLISTS_ID, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS),
-        browseFolderItem(GENRES_ID, "Genres", MediaMetadata.MEDIA_TYPE_FOLDER_GENRES),
-        browseFolderItem(PODCASTS_ID, "Podcasts", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
-        browseFolderItem(AUDIOBOOKS_ID, "Audiobooks", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
-    )
+    private suspend fun getRootChildren(): List<MediaItem> {
+        val forYouExtras = Bundle().apply {
+            putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 2) // grid
+        }
+        val listExtras = Bundle().apply {
+            putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1) // list
+        }
+        val gridExtras = Bundle().apply {
+            putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 2) // grid
+        }
+        val order = AaPreferences.getCategoryOrder(this@PlaybackService)
+        return order.map { key ->
+            val id = categoryIdToConstant(key)
+            when (id) {
+                FOR_YOU_ID -> MediaItem.Builder()
+                    .setMediaId(FOR_YOU_ID)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle("For You")
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                            .setExtras(forYouExtras)
+                            .build()
+                    )
+                    .build()
+                RECENT_ID -> browseFolderItem(RECENT_ID, "Recently Added", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED, listExtras)
+                FAVORITES_ID -> browseFolderItem(FAVORITES_ID, "Favorites", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED, listExtras)
+                ALBUMS_ID -> browseFolderItem(ALBUMS_ID, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS)
+                ARTISTS_ID -> browseFolderItem(ARTISTS_ID, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS)
+                PLAYLISTS_ID -> browseFolderItem(PLAYLISTS_ID, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS, listExtras)
+                GENRES_ID -> browseFolderItem(GENRES_ID, "Genres", MediaMetadata.MEDIA_TYPE_FOLDER_GENRES)
+                LANGUAGES_ID -> browseFolderItem(LANGUAGES_ID, "Languages", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                PODCASTS_ID -> browseFolderItem(PODCASTS_ID, "Podcasts", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                AUDIOBOOKS_ID -> browseFolderItem(AUDIOBOOKS_ID, "Audiobooks", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                COUNTRIES_ID -> browseFolderItem(COUNTRIES_ID, "Countries", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED, gridExtras)
+                else -> browseFolderItem(id, AaPreferences.displayName(key), MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+            }
+        }
+    }
 
     /** Try API call if online, otherwise skip straight to DB fallback (avoids 30s timeout) */
     private suspend fun <T> apiOrCache(
@@ -379,10 +787,10 @@ class PlaybackService : MediaLibraryService() {
                         MediaMetadata.Builder()
                             .setTitle(bucket.name)
                             .setSubtitle(bucket.subtitle ?: "${bucket.count} tracks")
-                            .setIsBrowsable(true)
-                            .setIsPlayable(false)
+                            .setIsBrowsable(false)
+                            .setIsPlayable(true)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
-                            .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
+                            .apply { artUri?.let { setArtworkUri(ArtworkProvider.buildUri(it)) } }
                             .build()
                     )
                     .build()
@@ -399,10 +807,10 @@ class PlaybackService : MediaLibraryService() {
                         MediaMetadata.Builder()
                             .setTitle(bucket.name)
                             .setSubtitle(bucket.subtitle ?: "${bucket.count} tracks")
-                            .setIsBrowsable(true)
-                            .setIsPlayable(false)
+                            .setIsBrowsable(false)
+                            .setIsPlayable(true)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
-                            .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
+                            .apply { artUri?.let { setArtworkUri(ArtworkProvider.buildUri(it)) } }
                             .build()
                     )
                     .build()
@@ -456,7 +864,7 @@ class PlaybackService : MediaLibraryService() {
                             .setIsBrowsable(true)
                             .setIsPlayable(false)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_ALBUM)
-                            .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
+                            .apply { artUri?.let { setArtworkUri(ArtworkProvider.buildUri(it)) } }
                             .build()
                     )
                     .build()
@@ -475,7 +883,7 @@ class PlaybackService : MediaLibraryService() {
                             .setIsBrowsable(true)
                             .setIsPlayable(false)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_ALBUM)
-                            .apply { artUri?.let { setArtworkUri(Uri.parse(it)) } }
+                            .apply { artUri?.let { setArtworkUri(ArtworkProvider.buildUri(it)) } }
                             .build()
                     )
                     .build()
@@ -682,6 +1090,116 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    // Language browse
+
+    private suspend fun getLanguagesList(): List<MediaItem> {
+        return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
+            val api = ApiClient.api
+            val response = api.getLanguages(limit = 100)
+            response.languages.map { lang ->
+                MediaItem.Builder()
+                    .setMediaId("language:${lang.name}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(lang.name)
+                            .setSubtitle("${lang.trackCount} tracks")
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Languages API failed, using cache", e)
+            db.browseDao().getLanguages(100, 0).map { entity ->
+                MediaItem.Builder()
+                    .setMediaId("language:${entity.name}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(entity.name)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                            .build()
+                    )
+                    .build()
+            }
+        }
+    }
+
+    private suspend fun getLanguageTracks(langName: String): List<MediaItem> {
+        return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
+            val api = ApiClient.api
+            val response = api.getLanguageTracks(langName, limit = 100)
+            response.tracks.map { trackToMediaItem(it) }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Language tracks API failed", e)
+            emptyList()
+        }
+    }
+
+    // Country browse
+
+    private suspend fun getCountriesList(): List<MediaItem> {
+        return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
+            val api = ApiClient.api
+            val response = api.getCountries(limit = 100)
+            response.countries.map { country ->
+                val flagUrl = com.mvbar.android.data.CountryFlags.flagUrl(country.name)
+                MediaItem.Builder()
+                    .setMediaId("country:${country.name}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(country.name)
+                            .setSubtitle("${country.trackCount} tracks")
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                            .apply {
+                                if (flagUrl != null) setArtworkUri(Uri.parse(flagUrl))
+                            }
+                            .build()
+                    )
+                    .build()
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Countries API failed, using cache", e)
+            db.browseDao().getCountries(100, 0).map { entity ->
+                val flagUrl = com.mvbar.android.data.CountryFlags.flagUrl(entity.name)
+                MediaItem.Builder()
+                    .setMediaId("country:${entity.name}")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(entity.name)
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                            .apply {
+                                if (flagUrl != null) setArtworkUri(Uri.parse(flagUrl))
+                            }
+                            .build()
+                    )
+                    .build()
+            }
+        }
+    }
+
+    private suspend fun getCountryTracks(countryName: String): List<MediaItem> {
+        return try {
+            if (!NetworkMonitor.isOnline.value) throw java.io.IOException("offline")
+            val api = ApiClient.api
+            val response = api.getCountryTracks(countryName, limit = 100)
+            response.tracks.map { trackToMediaItem(it) }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Country tracks API failed", e)
+            emptyList()
+        }
+    }
+
     // Podcast browse
 
     private suspend fun getPodcastsList(): List<MediaItem> {
@@ -701,7 +1219,7 @@ class PlaybackService : MediaLibraryService() {
                             .setIsBrowsable(true)
                             .setIsPlayable(false)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST)
-                            .setArtworkUri(Uri.parse(artUri))
+                            .setArtworkUri(ArtworkProvider.buildUri(artUri))
                             .build()
                     )
                     .build()
@@ -721,7 +1239,7 @@ class PlaybackService : MediaLibraryService() {
                             .setIsBrowsable(true)
                             .setIsPlayable(false)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST)
-                            .setArtworkUri(Uri.parse(artUri))
+                            .setArtworkUri(ArtworkProvider.buildUri(artUri))
                             .build()
                     )
                     .build()
@@ -739,18 +1257,22 @@ class PlaybackService : MediaLibraryService() {
                     ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
                     ?: ApiClient.episodeArtUrl(episode.id)
                 val streamUrl = ApiClient.episodeStreamUrl(episode.id)
-                val pseudoId = -episode.id
+                val extras = Bundle().apply {
+                    putLong("resume_position_ms", episode.positionMs)
+                    putLong("duration_ms", episode.durationMs ?: 0L)
+                }
                 MediaItem.Builder()
-                    .setMediaId(pseudoId.toString())
+                    .setMediaId("ep:${episode.id}")
                     .setUri(streamUrl)
                     .setMediaMetadata(
                         MediaMetadata.Builder()
                             .setTitle(episode.title)
                             .setArtist(episode.podcastTitle ?: response.podcast?.title)
-                            .setArtworkUri(Uri.parse(artUri))
+                            .setArtworkUri(ArtworkProvider.buildUri(artUri))
                             .setIsBrowsable(false)
                             .setIsPlayable(true)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
+                            .setExtras(extras)
                             .build()
                     )
                     .build()
@@ -763,17 +1285,21 @@ class PlaybackService : MediaLibraryService() {
                     ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
                     ?: ApiClient.episodeArtUrl(episode.id)
                 val streamUrl = ApiClient.episodeStreamUrl(episode.id)
-                val pseudoId = -episode.id
+                val extras = Bundle().apply {
+                    putLong("resume_position_ms", episode.positionMs)
+                    putLong("duration_ms", episode.durationMs ?: 0L)
+                }
                 MediaItem.Builder()
-                    .setMediaId(pseudoId.toString())
+                    .setMediaId("ep:${episode.id}")
                     .setUri(streamUrl)
                     .setMediaMetadata(
                         MediaMetadata.Builder()
                             .setTitle(episode.title)
-                            .setArtworkUri(Uri.parse(artUri))
+                            .setArtworkUri(ArtworkProvider.buildUri(artUri))
                             .setIsBrowsable(false)
                             .setIsPlayable(true)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
+                            .setExtras(extras)
                             .build()
                     )
                     .build()
@@ -799,7 +1325,7 @@ class PlaybackService : MediaLibraryService() {
                             .setIsBrowsable(true)
                             .setIsPlayable(false)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-                            .setArtworkUri(Uri.parse(artUri))
+                            .setArtworkUri(ArtworkProvider.buildUri(artUri))
                             .build()
                     )
                     .build()
@@ -818,7 +1344,7 @@ class PlaybackService : MediaLibraryService() {
                             .setIsBrowsable(true)
                             .setIsPlayable(false)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-                            .setArtworkUri(Uri.parse(artUri))
+                            .setArtworkUri(ArtworkProvider.buildUri(artUri))
                             .build()
                     )
                     .build()
@@ -834,17 +1360,16 @@ class PlaybackService : MediaLibraryService() {
             val book = response.audiobook ?: return emptyList()
             val artUri = ApiClient.audiobookArtUrl(audiobookId)
             response.chapters.map { chapter ->
-                val pseudoId = -(audiobookId * 100000 + chapter.id)
                 val streamUrl = ApiClient.audiobookChapterStreamUrl(audiobookId, chapter.id)
                 MediaItem.Builder()
-                    .setMediaId(pseudoId.toString())
+                    .setMediaId("ab:${audiobookId}:${chapter.id}")
                     .setUri(streamUrl)
                     .setMediaMetadata(
                         MediaMetadata.Builder()
                             .setTitle(chapter.title)
                             .setArtist(book.author)
                             .setAlbumTitle(book.title)
-                            .setArtworkUri(Uri.parse(artUri))
+                            .setArtworkUri(ArtworkProvider.buildUri(artUri))
                             .setIsBrowsable(false)
                             .setIsPlayable(true)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
@@ -858,17 +1383,16 @@ class PlaybackService : MediaLibraryService() {
             val artUri = ApiClient.audiobookArtUrl(audiobookId)
             db.audiobookDao().getChapters(audiobookId).map { entity ->
                 val chapter = entity.toModel()
-                val pseudoId = -(audiobookId * 100000 + chapter.id)
                 val streamUrl = ApiClient.audiobookChapterStreamUrl(audiobookId, chapter.id)
                 MediaItem.Builder()
-                    .setMediaId(pseudoId.toString())
+                    .setMediaId("ab:${audiobookId}:${chapter.id}")
                     .setUri(streamUrl)
                     .setMediaMetadata(
                         MediaMetadata.Builder()
                             .setTitle(chapter.title)
                             .setArtist(book?.author)
                             .setAlbumTitle(book?.title)
-                            .setArtworkUri(Uri.parse(artUri))
+                            .setArtworkUri(ArtworkProvider.buildUri(artUri))
                             .setIsBrowsable(false)
                             .setIsPlayable(true)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
@@ -880,6 +1404,66 @@ class PlaybackService : MediaLibraryService() {
     }
 
     // Helpers
+
+    private fun resolveStreamUri(item: MediaItem): MediaItem {
+        if (item.localConfiguration?.uri != null) return item
+        val mediaId = item.mediaId
+        val uri = when {
+            mediaId.startsWith("ep:") -> {
+                val episodeId = mediaId.removePrefix("ep:").toIntOrNull() ?: return item
+                ApiClient.episodeStreamUrl(episodeId)
+            }
+            mediaId.startsWith("ab:") -> {
+                val parts = mediaId.removePrefix("ab:").split(":")
+                if (parts.size != 2) return item
+                val bookId = parts[0].toIntOrNull() ?: return item
+                val chapterId = parts[1].toIntOrNull() ?: return item
+                ApiClient.audiobookChapterStreamUrl(bookId, chapterId)
+            }
+            else -> {
+                val trackId = mediaId.toIntOrNull() ?: return item
+                ApiClient.streamUrl(trackId)
+            }
+        }
+        DebugLog.i("Player", "resolveStreamUri: mediaId=$mediaId → $uri")
+        return item.buildUpon().setUri(uri).build()
+    }
+
+    /** Prepend a "Shuffle All" item and cache tracks for queue-all on tap */
+    private fun withShuffle(parentId: String, tracks: List<MediaItem>): List<MediaItem> {
+        if (tracks.isEmpty()) return tracks
+        browsedTrackCache[parentId] = tracks
+        val shuffleItem = MediaItem.Builder()
+            .setMediaId("shuffle:$parentId")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle("\uD83D\uDD00 Shuffle All")
+                    .setSubtitle("${tracks.size} tracks")
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    .build()
+            )
+            .build()
+        return listOf(shuffleItem) + tracks
+    }
+
+    /** Load tracks for a given parent ID (used by shuffle) */
+    private suspend fun loadTracksForParent(parentId: String): List<MediaItem> {
+        return when {
+            parentId == RECENT_ID -> getRecentTracks()
+            parentId == FAVORITES_ID -> getFavoriteTracks()
+            parentId.startsWith("bucket:") -> getBucketTracks(parentId.removePrefix("bucket:"))
+            parentId.startsWith("album:") -> getAlbumTracks(parentId.removePrefix("album:"))
+            parentId.startsWith("artist:") -> getArtistTracks(parentId.removePrefix("artist:").toInt())
+            parentId.startsWith("playlist:") -> getPlaylistTracks(parentId.removePrefix("playlist:").toInt())
+            parentId.startsWith("smartpl:") -> getSmartPlaylistTracks(parentId.removePrefix("smartpl:").toInt())
+            parentId.startsWith("genre:") -> getGenreTracks(parentId.removePrefix("genre:"))
+            parentId.startsWith("language:") -> getLanguageTracks(parentId.removePrefix("language:"))
+            parentId.startsWith("country:") -> getCountryTracks(parentId.removePrefix("country:"))
+            else -> emptyList()
+        }
+    }
 
     private fun trackToMediaItem(track: com.mvbar.android.data.model.Track): MediaItem {
         val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) }
@@ -893,7 +1477,7 @@ class PlaybackService : MediaLibraryService() {
                     .setTitle(track.displayTitle)
                     .setArtist(track.displayArtist)
                     .setAlbumTitle(track.displayAlbum)
-                    .setArtworkUri(Uri.parse(artUrl))
+                    .setArtworkUri(ArtworkProvider.buildUri(artUrl))
                     .setIsBrowsable(false)
                     .setIsPlayable(true)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
@@ -902,10 +1486,74 @@ class PlaybackService : MediaLibraryService() {
             .build()
     }
 
+    /** Save current episode progress to server and local DB */
+    private fun saveEpisodeProgress(player: Player) {
+        val mediaId = player.currentMediaItem?.mediaId ?: return
+        val posMs = player.currentPosition
+        if (posMs <= 0L) return
+        when {
+            mediaId.startsWith("ep:") -> {
+                val epId = mediaId.removePrefix("ep:").toIntOrNull() ?: return
+                serviceScope.launch {
+                    try {
+                        db.podcastDao().updateEpisodePosition(epId, posMs)
+                    } catch (_: Exception) {}
+                    try {
+                        if (NetworkMonitor.isOnline.value) {
+                            ApiClient.api.updateEpisodeProgress(
+                                epId,
+                                com.mvbar.android.data.model.EpisodeProgressRequest(positionMs = posMs)
+                            )
+                        }
+                    } catch (e: Exception) {
+                        DebugLog.w("Player", "Failed to save episode progress", e)
+                    }
+                }
+            }
+            mediaId.startsWith("ab:") -> {
+                val parts = mediaId.removePrefix("ab:").split(":")
+                if (parts.size == 2) {
+                    val bookId = parts[0].toIntOrNull()
+                    val chapterId = parts[1].toIntOrNull()
+                    if (bookId != null && chapterId != null) {
+                        serviceScope.launch {
+                            try {
+                                if (NetworkMonitor.isOnline.value) {
+                                    ApiClient.api.updateAudiobookProgress(
+                                        bookId,
+                                        com.mvbar.android.data.model.AudiobookProgressRequest(
+                                            chapterId = chapterId, positionMs = posMs
+                                        )
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                DebugLog.w("Player", "Failed to save audiobook progress", e)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Periodically save episode/audiobook progress every 30 seconds */
+    private fun startProgressSaving(player: Player) {
+        progressSaveJob?.cancel()
+        progressSaveJob = serviceScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(30_000)
+                if (player.isPlaying) {
+                    saveEpisodeProgress(player)
+                }
+            }
+        }
+    }
+
     private fun browseFolderItem(
         id: String,
         title: String,
-        mediaType: Int
+        mediaType: Int,
+        extras: Bundle? = null
     ): MediaItem = MediaItem.Builder()
         .setMediaId(id)
         .setMediaMetadata(
@@ -914,6 +1562,7 @@ class PlaybackService : MediaLibraryService() {
                 .setIsBrowsable(true)
                 .setIsPlayable(false)
                 .setMediaType(mediaType)
+                .apply { extras?.let { setExtras(it) } }
                 .build()
         )
         .build()

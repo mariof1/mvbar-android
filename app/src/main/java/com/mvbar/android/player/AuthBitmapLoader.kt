@@ -88,8 +88,23 @@ class AuthBitmapLoader : BitmapLoader {
         val future = SettableFuture.create<Bitmap>()
         inFlight[url] = future
 
-        DebugLog.d("BitmapLoader", "Loading artwork: $url")
-        val request = Request.Builder().url(url).build()
+        // For content:// URIs with our ArtworkProvider, extract the real URL
+        val httpUrl = if (uri.scheme == "content" && uri.authority == ArtworkProvider.AUTHORITY) {
+            uri.getQueryParameter("url")
+        } else if (uri.scheme == "https" || uri.scheme == "http") {
+            url
+        } else {
+            null
+        }
+
+        if (httpUrl == null) {
+            inFlight.remove(url)
+            future.setException(IOException("Unsupported URI scheme: ${uri.scheme}"))
+            return future
+        }
+
+        DebugLog.d("BitmapLoader", "Loading artwork: $httpUrl")
+        val request = Request.Builder().url(httpUrl).build()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 DebugLog.e("BitmapLoader", "Failed to load artwork: $url", e)
