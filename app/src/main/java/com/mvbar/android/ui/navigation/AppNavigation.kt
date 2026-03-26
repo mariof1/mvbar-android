@@ -996,6 +996,15 @@ fun MainScreen(
             } // Row
         }
 
+        // Load playlists/favorites data when player opens
+        LaunchedEffect(showNowPlaying) {
+            if (showNowPlaying) {
+                mainVm.loadPlaylists()
+                mainVm.loadSmartPlaylists()
+                mainVm.loadFavorites()
+            }
+        }
+
         // Full-screen Now Playing overlay (slide up/down)
         AnimatedVisibility(
             visible = showNowPlaying && playerState.currentTrack != null,
