@@ -68,65 +68,49 @@ fun ArtistDetailScreen(
         contentPadding = PaddingValues(bottom = 140.dp)
     ) {
         item {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 artist.id?.let { id ->
                     AsyncImage(
                         model = ApiClient.artistArtUrl(id),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(SurfaceElevated)
                     )
                 }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, BackgroundDark),
-                                startY = 100f
-                            )
-                        )
-                )
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .statusBarsPadding()
-                        .padding(8.dp)
-                        .size(40.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
-                }
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(20.dp)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         artist.name,
-                        style = MaterialTheme.typography.headlineLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = OnSurface
+                        color = OnSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         "${artist.trackCount} tracks • ${artist.albumCount} albums",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = OnSurfaceDim
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = onPlayAll,
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
-                    ) {
-                        Icon(Icons.Filled.PlayArrow, null, tint = Color.Black)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Play All", color = Color.Black, fontWeight = FontWeight.SemiBold)
-                    }
+                }
+                Button(
+                    onClick = onPlayAll,
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Cyan500),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Icon(Icons.Filled.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("Play All", color = Color.Black, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }

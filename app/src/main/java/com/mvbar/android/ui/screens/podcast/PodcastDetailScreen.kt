@@ -49,91 +49,52 @@ fun PodcastDetailScreen(
     ) {
         // Header
         item {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Orange900.copy(alpha = 0.5f), BackgroundDark)
-                        )
-                    )
-                    .padding(top = 8.dp, bottom = 16.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    // Back button
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.padding(start = 4.dp)
-                            .size(40.dp)
-                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
+                val artUrl = podcast?.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+                    ?: podcast?.let { ApiClient.podcastArtUrl(it.id) }
+
+                AsyncImage(
+                    model = artUrl,
+                    contentDescription = podcast?.title,
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(SurfaceElevated),
+                    contentScale = ContentScale.Crop
+                )
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        podcast?.title ?: "",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = OnSurface,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    podcast?.author?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-
-                    Row(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // Podcast art
-                        val artUrl = podcast?.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
-                            ?: podcast?.let { ApiClient.podcastArtUrl(it.id) }
-
-                        AsyncImage(
-                            model = artUrl,
-                            contentDescription = podcast?.title,
-                            modifier = Modifier
-                                .size(120.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(SurfaceElevated),
-                            contentScale = ContentScale.Crop
-                        )
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                podcast?.title ?: "",
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = OnSurface,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            podcast?.author?.let {
-                                Text(
-                                    it,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = OnSurfaceDim
-                                )
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilledTonalButton(
-                                    onClick = onRefresh,
-                                    colors = ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = SurfaceElevated,
-                                        contentColor = OnSurface
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 12.dp),
-                                    modifier = Modifier.height(32.dp)
-                                ) {
-                                    Icon(Icons.Filled.Refresh, null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Refresh", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            TextButton(
-                                onClick = onUnsubscribe,
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Text(
-                                    "Unsubscribe",
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.labelSmall
-                                )
-                            }
-                        }
-                    }
+                }
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Filled.Refresh, "Refresh", tint = OnSurfaceDim, modifier = Modifier.size(20.dp))
+                }
+                TextButton(
+                    onClick = onUnsubscribe,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Text("Unsub", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }

@@ -7,6 +7,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -387,7 +388,29 @@ fun MainScreen(
                     currentTab == "cache-browser" -> "Cache"
                     else -> ""
                 }
+                val isDetailScreen = currentTab?.startsWith("artist/") == true ||
+                    currentTab?.startsWith("album") == true ||
+                    currentTab?.startsWith("genre/") == true ||
+                    currentTab?.startsWith("country/") == true ||
+                    currentTab?.startsWith("language/") == true ||
+                    currentTab?.startsWith("playlist/") == true ||
+                    currentTab?.startsWith("smart-playlist/") == true ||
+                    currentTab?.startsWith("podcast/") == true ||
+                    currentTab?.startsWith("audiobook/") == true ||
+                    currentTab == "history" ||
+                    currentTab == "cache-browser"
                 TopAppBar(
+                    navigationIcon = {
+                        if (isDetailScreen) {
+                            IconButton(onClick = { navController.popBackStack() }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = OnSurface
+                                )
+                            }
+                        }
+                    },
                     title = {
                         Text(
                             screenTitle,

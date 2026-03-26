@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
@@ -49,62 +50,51 @@ fun AlbumDetailScreen(
         contentPadding = PaddingValues(bottom = 140.dp)
     ) {
         item {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(300.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                artUrl?.let {
-                    AsyncImage(
-                        model = it,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-                Box(
+                AsyncImage(
+                    model = artUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, BackgroundDark),
-                                startY = 80f
-                            )
-                        )
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(SurfaceElevated)
                 )
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.statusBarsPadding().padding(8.dp)
-                        .size(40.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
-                }
-                Column(
-                    modifier = Modifier.align(Alignment.BottomStart).padding(20.dp)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         albumName,
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = OnSurface
+                        color = OnSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (albumArtist.isNotEmpty()) {
-                        Text(albumArtist, style = MaterialTheme.typography.bodyLarge, color = OnSurfaceDim)
+                        Text(albumArtist, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Text(
                         "${tracks.size} tracks",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.labelSmall,
                         color = OnSurfaceSubtle
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = onPlayAll,
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
-                    ) {
-                        Icon(Icons.Filled.PlayArrow, null, tint = Color.Black)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Play All", color = Color.Black, fontWeight = FontWeight.SemiBold)
-                    }
+                }
+                Button(
+                    onClick = onPlayAll,
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Cyan500),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Icon(Icons.Filled.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("Play All", color = Color.Black, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }

@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.ui.components.TrackListItem
@@ -53,53 +54,47 @@ fun LanguageDetailScreen(
         contentPadding = PaddingValues(bottom = 140.dp)
     ) {
         item {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xFF6A1B9A).copy(alpha = 0.6f), BackgroundDark)
-                        )
-                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = onBack,
+                Box(
                     modifier = Modifier
-                        .statusBarsPadding()
-                        .padding(8.dp)
-                        .size(40.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        .size(48.dp)
+                        .background(Color(0xFF6A1B9A).copy(alpha = 0.4f), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
+                    Text("🗣", style = MaterialTheme.typography.titleLarge)
                 }
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(20.dp)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         languageName,
-                        style = MaterialTheme.typography.headlineLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = OnSurface
+                        color = OnSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         "${tracks.size} tracks",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = OnSurfaceDim
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = onPlayAll,
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500),
-                        enabled = tracks.isNotEmpty()
-                    ) {
-                        Icon(Icons.Filled.PlayArrow, null, tint = Color.Black)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Play All", color = Color.Black, fontWeight = FontWeight.SemiBold)
-                    }
+                }
+                Button(
+                    onClick = onPlayAll,
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Cyan500),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.height(32.dp),
+                    enabled = tracks.isNotEmpty()
+                ) {
+                    Icon(Icons.Filled.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("Play All", color = Color.Black, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }

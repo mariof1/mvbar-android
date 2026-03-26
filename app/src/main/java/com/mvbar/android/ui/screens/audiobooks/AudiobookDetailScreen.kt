@@ -58,120 +58,79 @@ fun AudiobookDetailScreen(
     ) {
         // Header
         item {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Cyan900.copy(alpha = 0.5f), BackgroundDark)
-                        )
-                    )
-                    .padding(top = 8.dp, bottom = 16.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                Column {
-                    // Back button
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.padding(start = 4.dp)
-                            .size(40.dp)
-                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
-                    }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val artUrl = audiobook?.let { ApiClient.audiobookArtUrl(it.id) }
 
-                    Row(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // Cover art
-                        val artUrl = audiobook?.let { ApiClient.audiobookArtUrl(it.id) }
+                    AsyncImage(
+                        model = artUrl,
+                        contentDescription = audiobook?.title,
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(SurfaceElevated),
+                        contentScale = ContentScale.Crop
+                    )
 
-                        AsyncImage(
-                            model = artUrl,
-                            contentDescription = audiobook?.title,
-                            modifier = Modifier
-                                .size(120.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(SurfaceElevated),
-                            contentScale = ContentScale.Crop
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            audiobook?.title ?: "",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = OnSurface,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                audiobook?.title ?: "",
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = OnSurface,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            audiobook?.author?.let {
-                                Text(
-                                    it,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = OnSurfaceDim
-                                )
+                        audiobook?.author?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            audiobook?.let {
+                                Text(it.durationFormatted, style = MaterialTheme.typography.labelSmall, color = OnSurfaceSubtle)
+                                Text("${it.chapterCount} ch", style = MaterialTheme.typography.labelSmall, color = OnSurfaceSubtle)
                             }
                             audiobook?.narrator?.let {
-                                Text(
-                                    "Narrated by $it",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = OnSurfaceSubtle
-                                )
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                audiobook?.let {
-                                    Text(
-                                        it.durationFormatted,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = OnSurfaceSubtle
-                                    )
-                                    Text(
-                                        "${it.chapterCount} chapters",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = OnSurfaceSubtle
-                                    )
-                                }
+                                Text("• $it", style = MaterialTheme.typography.labelSmall, color = OnSurfaceSubtle,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    // Action buttons
-                    Row(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val hasProgress = progress != null && !progress.finished
+                    Button(
+                        onClick = onContinueListening,
+                        colors = ButtonDefaults.buttonColors(containerColor = Cyan600, contentColor = OnSurface),
+                        shape = RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                        modifier = Modifier.height(32.dp)
                     ) {
-                        val hasProgress = progress != null && !progress.finished
-                        Button(
-                            onClick = onContinueListening,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Cyan600,
-                                contentColor = OnSurface
-                            ),
-                            shape = RoundedCornerShape(50),
-                            modifier = Modifier.weight(1f)
+                        Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (hasProgress) "Continue" else "Play", style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (audiobook?.isFinished != true) {
+                        FilledTonalButton(
+                            onClick = onMarkFinished,
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceElevated, contentColor = OnSurface),
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.height(32.dp)
                         ) {
-                            Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Filled.CheckCircle, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text(if (hasProgress) "Continue Listening" else "Play")
-                        }
-
-                        if (audiobook?.isFinished != true) {
-                            FilledTonalButton(
-                                onClick = onMarkFinished,
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = SurfaceElevated,
-                                    contentColor = OnSurface
-                                ),
-                                shape = RoundedCornerShape(50)
-                            ) {
-                                Icon(Icons.Filled.CheckCircle, null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Finished", style = MaterialTheme.typography.labelSmall)
-                            }
+                            Text("Finished", style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }

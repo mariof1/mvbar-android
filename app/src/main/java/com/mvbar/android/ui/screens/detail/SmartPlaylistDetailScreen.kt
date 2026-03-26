@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.model.SmartPlaylistResponse
 import com.mvbar.android.data.model.Track
@@ -48,90 +49,55 @@ fun SmartPlaylistDetailScreen(
         contentPadding = PaddingValues(bottom = 140.dp)
     ) {
         item {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Pink500.copy(alpha = 0.3f), BackgroundDark)
-                        )
-                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.statusBarsPadding().padding(8.dp)
-                        .size(40.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
-                }
-                Column(
+                Box(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(20.dp)
+                        .size(48.dp)
+                        .background(Pink500.copy(alpha = 0.2f), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Filled.AutoAwesome,
-                            null,
-                            tint = Pink500,
-                            modifier = Modifier.size(36.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Smart Playlist",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Pink400
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
+                    Icon(Icons.Filled.AutoAwesome, null, tint = Pink500, modifier = Modifier.size(28.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         detail?.name ?: "Smart Playlist",
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = OnSurface
+                        color = OnSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        "${detail?.trackCount ?: 0} tracks • Sort: ${detail?.sort ?: "random"}",
+                        "${detail?.trackCount ?: 0} tracks • ${detail?.sort ?: "random"}",
                         style = MaterialTheme.typography.bodySmall,
                         color = OnSurfaceSubtle
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                }
+                if (tracks.isNotEmpty()) {
+                    IconButton(
+                        onClick = onPlayAll,
+                        modifier = Modifier.size(32.dp)
                     ) {
-                        if (tracks.isNotEmpty()) {
-                            Button(
-                                onClick = onPlayAll,
-                                shape = RoundedCornerShape(24.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
-                            ) {
-                                Icon(Icons.Filled.PlayArrow, null, tint = Color.Black)
-                                Spacer(Modifier.width(4.dp))
-                                Text("Play All", color = Color.Black, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                        OutlinedButton(
-                            onClick = onEdit,
-                            shape = RoundedCornerShape(24.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan400)
-                        ) {
-                            Icon(Icons.Filled.Edit, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Edit")
-                        }
-                        OutlinedButton(
-                            onClick = onDelete,
-                            shape = RoundedCornerShape(24.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Pink500)
-                        ) {
-                            Icon(Icons.Filled.Delete, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Delete")
-                        }
+                        Icon(Icons.Filled.PlayArrow, "Play All", tint = Cyan500, modifier = Modifier.size(24.dp))
                     }
+                }
+                IconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Filled.Edit, "Edit", tint = Cyan400, modifier = Modifier.size(20.dp))
+                }
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Filled.Delete, "Delete", tint = Pink500, modifier = Modifier.size(20.dp))
                 }
             }
         }
