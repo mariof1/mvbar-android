@@ -707,8 +707,19 @@ fun MainScreen(
                         onRefresh = {
                             mainVm.loadPlaylists()
                             mainVm.loadSmartPlaylists()
+                            mainVm.loadHistory()
                         },
-                        onHistoryClick = { navController.navigate("history") }
+                        history = history,
+                        currentTrackId = currentTrackId,
+                        onPlayTrack = { mainVm.playTrack(it) },
+                        isHistoryLoading = historyLoading,
+                        historyError = historyError,
+                        onTrackLongPress = { contextTrack = it },
+                        favoriteIds = favoriteIds,
+                        onToggleFavorite = { mainVm.toggleFavorite(it) },
+                        hasMoreHistory = hasMoreHistory,
+                        isLoadingMoreHistory = isLoadingMoreHistory,
+                        onLoadMoreHistory = { mainVm.loadMoreHistory() }
                     )
                 }
 
