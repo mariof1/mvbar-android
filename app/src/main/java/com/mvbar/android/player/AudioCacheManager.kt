@@ -58,10 +58,14 @@ object AudioCacheManager {
 
     fun getCache(): SimpleCache? = cache
 
-    /** Check whether a music track's audio is fully cached */
+    /** Check whether a music track's audio is cached (fully or partially) */
     fun isTrackCached(trackId: Int): Boolean {
         val url = ApiClient.streamUrl(trackId)
-        return cache?.isCached(url, 0, Long.MAX_VALUE) == true
+        val c = cache ?: return false
+        // isCached with MAX_VALUE fails when content-length metadata is missing
+        if (c.isCached(url, 0, Long.MAX_VALUE)) return true
+        // Fallback: check if any cached bytes exist for this key
+        return c.getCachedBytes(url, 0, Long.MAX_VALUE) > 0
     }
 
     fun getCacheSizeMb(): Long = (cache?.cacheSpace ?: 0) / (1024 * 1024)
@@ -333,16 +337,20 @@ object AudioCacheManager {
         }
     }
 
-    /** Check whether a podcast episode is fully cached */
+    /** Check whether a podcast episode is cached */
     fun isEpisodeCached(episodeId: Int): Boolean {
         val url = ApiClient.episodeStreamUrl(episodeId)
-        return cache?.isCached(url, 0, Long.MAX_VALUE) == true
+        val c = cache ?: return false
+        if (c.isCached(url, 0, Long.MAX_VALUE)) return true
+        return c.getCachedBytes(url, 0, Long.MAX_VALUE) > 0
     }
 
-    /** Check whether an audiobook chapter is fully cached */
+    /** Check whether an audiobook chapter is cached */
     fun isChapterCached(audiobookId: Int, chapterId: Int): Boolean {
         val url = ApiClient.audiobookChapterStreamUrl(audiobookId, chapterId)
-        return cache?.isCached(url, 0, Long.MAX_VALUE) == true
+        val c = cache ?: return false
+        if (c.isCached(url, 0, Long.MAX_VALUE)) return true
+        return c.getCachedBytes(url, 0, Long.MAX_VALUE) > 0
     }
 
     private fun shouldSkipDownload(): Boolean {
