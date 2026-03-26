@@ -11,6 +11,7 @@ import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -396,6 +397,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 DebugLog.e("AllTracks", "Load more failed", e)
             } finally {
                 _isLoadingMoreAllTracks.value = false
+            }
+        }
+    }
+
+    fun playShuffledAllTracks(selectedTrack: Track? = null) {
+        viewModelScope.launch {
+            try {
+                val response = repo.getTracks(limit = 500, offset = 0, sort = "random")
+                val tracks = response.tracks.toMutableList()
+                if (tracks.isEmpty()) return@launch
+                // If a specific track was selected, ensure it's first
+                val startIndex = if (selectedTrack != null) {
+                    val idx = tracks.indexOfFirst { it.id == selectedTrack.id }
+                    if (idx >= 0) {
+                        // Move selected track to front
+                        tracks.removeAt(idx)
+                        tracks.add(0, selectedTrack)
+                    } else {
+                        tracks.add(0, selectedTrack)
+                    }
+                    0
+                } else {
+                    0
+                }
+                playerManager.playTracks(tracks, startIndex)
+                // Enable shuffle mode
+                if (playerManager.state.value.playMode != PlayMode.SHUFFLE) {
+                    playerManager.cyclePlayMode()
+                    // May need to cycle through modes to reach SHUFFLE
+                    while (playerManager.state.value.playMode != PlayMode.SHUFFLE) {
+                        playerManager.cyclePlayMode()
+                    }
+                }
+                selectedTrack?.let { prefetchLyrics(it.id) }
+            } catch (e: Exception) {
+                DebugLog.e("AllTracks", "Shuffle all failed", e)
             }
         }
     }

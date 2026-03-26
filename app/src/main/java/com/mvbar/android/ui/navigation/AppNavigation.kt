@@ -1106,6 +1106,7 @@ fun MainScreen(
                 hasMoreAllTracks = hasMoreAllTracks,
                 onLoadAllTracks = { mainVm.loadAllTracks() },
                 onLoadMoreAllTracks = { mainVm.loadMoreAllTracks() },
+                onShuffleAllTracks = { mainVm.playShuffledAllTracks(it) },
                 initialQueueOpen = mainVm.queuePanelOpen,
                 onQueueOpenChanged = { mainVm.queuePanelOpen = it },
                 onSearch = { showNowPlaying = false; showSearch = true }

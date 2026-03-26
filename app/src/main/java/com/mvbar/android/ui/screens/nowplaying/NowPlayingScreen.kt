@@ -84,6 +84,7 @@ fun NowPlayingScreen(
     hasMoreAllTracks: Boolean = false,
     onLoadAllTracks: () -> Unit = {},
     onLoadMoreAllTracks: () -> Unit = {},
+    onShuffleAllTracks: (Track?) -> Unit = {},
     initialQueueOpen: Boolean = false,
     onQueueOpenChanged: (Boolean) -> Unit = {},
     onSearch: () -> Unit = {}
@@ -183,6 +184,7 @@ fun NowPlayingScreen(
                         hasMoreAllTracks = hasMoreAllTracks,
                         onLoadAllTracks = onLoadAllTracks,
                         onLoadMoreAllTracks = onLoadMoreAllTracks,
+                        onShuffleAllTracks = onShuffleAllTracks,
                         onPlayQueueItem = onPlayQueueItem,
                         onRemoveFromQueue = onRemoveFromQueue,
                         onClearQueue = onClearQueue,
@@ -524,6 +526,7 @@ fun NowPlayingScreen(
                         hasMoreAllTracks = hasMoreAllTracks,
                         onLoadAllTracks = onLoadAllTracks,
                         onLoadMoreAllTracks = onLoadMoreAllTracks,
+                        onShuffleAllTracks = onShuffleAllTracks,
                         onPlayQueueItem = onPlayQueueItem,
                         onRemoveFromQueue = onRemoveFromQueue,
                         onClearQueue = onClearQueue,
@@ -636,6 +639,7 @@ private fun QueuePanelContent(
     hasMoreAllTracks: Boolean,
     onLoadAllTracks: () -> Unit,
     onLoadMoreAllTracks: () -> Unit,
+    onShuffleAllTracks: (Track?) -> Unit,
     onPlayQueueItem: (Int) -> Unit,
     onRemoveFromQueue: (Int) -> Unit,
     onClearQueue: () -> Unit,
@@ -747,6 +751,15 @@ private fun QueuePanelContent(
                         "${allTracks.size}${if (hasMoreAllTracks) "+" else ""} tracks",
                         style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim
                     )
+                    TextButton(
+                        onClick = { onShuffleAllTracks(null) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Icon(Icons.Filled.Shuffle, null, tint = Cyan500, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Shuffle All", color = Cyan500, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
 
                 if (allTracksLoading && allTracks.isEmpty()) {
@@ -779,11 +792,16 @@ private fun QueuePanelContent(
                             val isPlaying = track.id == state.currentTrack?.id
                             QueueItem(track = track, isActive = isPlaying,
                                 onPlay = {
-                                    // Limit queue window to ~200 tracks around selection to avoid overloading ExoPlayer
-                                    val windowStart = (index - 100).coerceAtLeast(0)
-                                    val windowEnd = (index + 100).coerceAtMost(allTracks.size)
-                                    val window = allTracks.subList(windowStart, windowEnd)
-                                    onPlayTrackWithQueue(track, window)
+                                    if (state.playMode == PlayMode.SHUFFLE) {
+                                        // In shuffle mode, fetch a random batch from server
+                                        onShuffleAllTracks(track)
+                                    } else {
+                                        // Normal mode: queue a window of ~200 tracks around selection
+                                        val windowStart = (index - 100).coerceAtLeast(0)
+                                        val windowEnd = (index + 100).coerceAtMost(allTracks.size)
+                                        val window = allTracks.subList(windowStart, windowEnd)
+                                        onPlayTrackWithQueue(track, window)
+                                    }
                                 },
                                 onRemove = {}, showRemove = false)
                         }

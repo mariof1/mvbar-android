@@ -103,7 +103,7 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
 
     // ── API calls (unchanged) ──
 
-    suspend fun getTracks(limit: Int = 100, offset: Int = 0) = api.getTracks(limit, offset)
+    suspend fun getTracks(limit: Int = 100, offset: Int = 0, sort: String? = null) = api.getTracks(limit, offset, sort)
     suspend fun getArtists(limit: Int = 50, offset: Int = 0) = api.getArtists(limit, offset)
     suspend fun getArtistDetail(id: Int) = api.getArtistDetail(id)
     suspend fun getArtistTracks(id: Int, limit: Int = 50, offset: Int = 0) = api.getArtistTracks(id, limit, offset)
