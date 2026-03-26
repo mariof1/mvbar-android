@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -131,17 +132,28 @@ fun NowPlayingScreen(
                 modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.6f }.blur(100.dp))
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)))
 
-            Row(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
                     .navigationBarsPadding()
             ) {
-                // Queue panel (animated)
-                AnimatedVisibility(
-                    visible = showQueue,
-                    enter = slideInHorizontally(animationSpec = tween(200)) { -it } + fadeIn(tween(150)),
-                    exit = slideOutHorizontally(animationSpec = tween(150)) { -it } + fadeOut(tween(100))
+                val totalWidth = maxWidth
+                val queueTargetWidth = if (showQueue) totalWidth * 0.42f else 0.dp
+                val queueWidth by animateDpAsState(
+                    targetValue = queueTargetWidth,
+                    animationSpec = tween(200),
+                    label = "queueWidth"
+                )
+
+                Row(modifier = Modifier.fillMaxSize()) {
+                // Queue panel — always composed, width animated
+                Box(
+                    modifier = Modifier
+                        .width(queueWidth)
+                        .fillMaxHeight()
+                        .clipToBounds()
+                        .background(SurfaceContainerDark.copy(alpha = 0.95f))
                 ) {
                     QueuePanelContent(
                         state = state,
@@ -160,8 +172,7 @@ fun NowPlayingScreen(
                         onPlayTrackWithQueue = onPlayTrackWithQueue,
                         modifier = Modifier
                             .fillMaxHeight()
-                            .fillMaxWidth(0.42f)
-                            .background(SurfaceContainerDark.copy(alpha = 0.95f))
+                            .width(totalWidth * 0.42f)
                     )
                 }
 
@@ -334,7 +345,8 @@ fun NowPlayingScreen(
                         }
                     }
                 }
-            }
+                } // Row
+            } // BoxWithConstraints
         }
     } else {
         // ===== PORTRAIT: standalone layout with toggleable queue =====
@@ -669,7 +681,7 @@ private fun QueuePanelContent(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
-                        itemsIndexed(state.queue) { index, qTrack ->
+                        itemsIndexed(state.queue, key = { index, t -> "q_${index}_${t.id}" }) { index, qTrack ->
                             val isActive = index == state.queueIndex
                             val isPast = index < state.queueIndex
                             Box(modifier = Modifier.graphicsLayer { alpha = if (isPast) 0.5f else 1f }) {
@@ -709,7 +721,7 @@ private fun QueuePanelContent(
                         }
                     } else {
                         LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
-                            itemsIndexed(playlistTracks) { _, track ->
+                            itemsIndexed(playlistTracks, key = { _, t -> "pl_${t.id}" }) { _, track ->
                                 QueueItem(track = track, isActive = track.id == state.currentTrack?.id,
                                     onPlay = { onPlayTrackWithQueue(track, playlistTracks) },
                                     onRemove = {}, showRemove = false)
@@ -724,7 +736,7 @@ private fun QueuePanelContent(
                         }
                     } else {
                         LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
-                            items(playlists) { playlist ->
+                            items(playlists, key = { it.id }) { playlist ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth()
                                         .clickable {
@@ -775,7 +787,7 @@ private fun QueuePanelContent(
                         }
                     } else {
                         LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
-                            itemsIndexed(smartPlaylistTracks) { _, track ->
+                            itemsIndexed(smartPlaylistTracks, key = { _, t -> "sp_${t.id}" }) { _, track ->
                                 QueueItem(track = track, isActive = track.id == state.currentTrack?.id,
                                     onPlay = { onPlayTrackWithQueue(track, smartPlaylistTracks) },
                                     onRemove = {}, showRemove = false)
@@ -790,7 +802,7 @@ private fun QueuePanelContent(
                         }
                     } else {
                         LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
-                            items(smartPlaylists) { sp ->
+                            items(smartPlaylists, key = { it.id }) { sp ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth()
                                         .clickable {
@@ -832,7 +844,7 @@ private fun QueuePanelContent(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
-                        itemsIndexed(favorites) { _, track ->
+                        itemsIndexed(favorites, key = { _, t -> "fav_${t.id}" }) { _, track ->
                             val isPlaying = track.id == state.currentTrack?.id
                             QueueItem(track = track, isActive = isPlaying,
                                 onPlay = { onPlayTrackWithQueue(track, favorites) },
