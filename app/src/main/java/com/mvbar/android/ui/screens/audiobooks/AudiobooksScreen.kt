@@ -17,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,26 +37,7 @@ fun AudiobooksScreen(
     LaunchedEffect(Unit) { onRefresh() }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Header
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Cyan900.copy(alpha = 0.5f), BackgroundDark)
-                    )
-                )
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-        ) {
-            Text(
-                "Audiobooks",
-                style = MaterialTheme.typography.headlineLarge,
-                color = OnSurface,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        if (isLoading && audiobooks.isEmpty()) {
+        if (isLoading&& audiobooks.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Cyan500)
             }

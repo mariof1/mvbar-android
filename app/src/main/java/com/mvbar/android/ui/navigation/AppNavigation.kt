@@ -323,8 +323,29 @@ fun MainScreen(
         Scaffold(
             containerColor = BackgroundDark,
             topBar = {
-                CenterAlignedTopAppBar(
-                    title = { },
+                val screenTitle = when {
+                    currentTab == "home" -> "For You"
+                    currentTab == "browse" || currentTab?.startsWith("artist/") == true ||
+                        currentTab?.startsWith("album") == true || currentTab?.startsWith("genre/") == true ||
+                        currentTab?.startsWith("country/") == true || currentTab?.startsWith("language/") == true -> "Browse"
+                    currentTab == "library" || currentTab == "history" ||
+                        currentTab?.startsWith("playlist/") == true ||
+                        currentTab?.startsWith("smart-playlist") == true -> "Library"
+                    currentTab == "podcasts" || currentTab?.startsWith("podcast/") == true -> "Podcasts"
+                    currentTab == "audiobooks" || currentTab?.startsWith("audiobook/") == true -> "Audiobooks"
+                    currentTab == "favorites" -> "Favorites"
+                    currentTab == "settings" -> "Settings"
+                    currentTab == "cache-browser" -> "Cache"
+                    else -> ""
+                }
+                TopAppBar(
+                    title = {
+                        Text(
+                            screenTitle,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = OnSurface
+                        )
+                    },
                     actions = {
                         IconButton(onClick = { showSearch = true }) {
                             Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
@@ -337,7 +358,7 @@ fun MainScreen(
                             Icon(Icons.Filled.Settings, "Settings", tint = OnSurfaceDim)
                         }
                     },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = BackgroundDark
                     )
                 )

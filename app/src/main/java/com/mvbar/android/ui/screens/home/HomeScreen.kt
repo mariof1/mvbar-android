@@ -118,15 +118,6 @@ private fun HomeContent(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 140.dp)
         ) {
-            item {
-                Text(
-                    "For You",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = OnSurface,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
-                )
-            }
-
             // Error state
             if (state.error != null) {
                 item {

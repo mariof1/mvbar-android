@@ -45,20 +45,6 @@ fun LibraryScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "Library",
-                style = MaterialTheme.typography.headlineLarge,
-                color = OnSurface
-            )
-        }
-
         LazyColumn(contentPadding = PaddingValues(bottom = 140.dp)) {
             // History shortcut
             onHistoryClick?.let { onClick ->

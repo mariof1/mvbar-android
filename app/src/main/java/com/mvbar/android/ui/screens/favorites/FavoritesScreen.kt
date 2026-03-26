@@ -32,13 +32,6 @@ fun FavoritesScreen(
     val pullRefreshState = rememberPullToRefreshState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            "Favorites",
-            style = MaterialTheme.typography.headlineLarge,
-            color = OnSurface,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
-        )
-
         PullToRefreshBox(
             isRefreshing = isLoading,
             onRefresh = onRefresh,

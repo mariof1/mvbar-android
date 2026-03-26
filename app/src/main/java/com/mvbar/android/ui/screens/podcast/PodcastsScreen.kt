@@ -19,7 +19,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,29 +46,18 @@ fun PodcastsScreen(
     var currentView by remember { mutableStateOf("new") } // "new" or "subscriptions"
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Header
+        // Header actions & filters
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Orange900.copy(alpha = 0.5f), BackgroundDark)
-                    )
-                )
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "Podcasts",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = OnSurface,
-                        fontWeight = FontWeight.Bold
-                    )
                     FilledTonalButton(
                         onClick = onSubscribeClick,
                         colors = ButtonDefaults.filledTonalButtonColors(

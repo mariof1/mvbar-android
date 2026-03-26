@@ -51,13 +51,6 @@ fun BrowseScreen(
     val tabs = listOf("Artists", "Albums", "Genres", "Countries", "Languages")
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            "Browse",
-            style = MaterialTheme.typography.headlineLarge,
-            color = OnSurface,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
-        )
-
         ScrollableTabRow(
             selectedTabIndex = state.selectedTab,
             containerColor = androidx.compose.ui.graphics.Color.Transparent,
