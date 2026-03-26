@@ -16,12 +16,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Track
+import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.theme.*
 
 @Composable
@@ -34,6 +37,12 @@ fun TrackListItem(
     onMore: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val isOnline = LocalIsOnline.current
+    val isPlayable = remember(track.id, isOnline) {
+        isOnline || if (track.id > 0) AudioCacheManager.isTrackCached(track.id)
+        else AudioCacheManager.isEpisodeCached(-track.id)
+    }
+
     val bgColor by animateColorAsState(
         if (isPlaying) Cyan500.copy(alpha = 0.15f) else androidx.compose.ui.graphics.Color.Transparent,
         animationSpec = tween(200),
@@ -48,9 +57,10 @@ fun TrackListItem(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .graphicsLayer { alpha = if (isPlayable) 1f else 0.38f }
             .clip(RoundedCornerShape(12.dp))
             .background(bgColor)
-            .clickable(onClick = onPlay)
+            .clickable(enabled = isPlayable, onClick = onPlay)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

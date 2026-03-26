@@ -46,6 +46,8 @@ import com.mvbar.android.data.model.SmartPlaylist
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerState
+import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -879,11 +881,17 @@ private fun QueueItem(
     onRemove: () -> Unit,
     showRemove: Boolean = true
 ) {
+    val isOnline = LocalIsOnline.current
+    val isPlayable = remember(track.id, isOnline) {
+        isOnline || if (track.id > 0) AudioCacheManager.isTrackCached(track.id)
+        else AudioCacheManager.isEpisodeCached(-track.id)
+    }
     val bgColor = if (isActive) Cyan500.copy(alpha = 0.12f) else Color.Transparent
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer { alpha = if (isPlayable) 1f else 0.38f }
             .background(bgColor)
             .clickable(onClick = onPlay)
             .padding(horizontal = 20.dp, vertical = 10.dp),

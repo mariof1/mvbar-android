@@ -27,12 +27,14 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.mvbar.android.data.AaPreferences
+import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.model.Playlist
 import com.mvbar.android.data.model.SmartPlaylistFilters
 import com.mvbar.android.data.model.SuggestResponse
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.PlayerState
+import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.components.*
 import com.mvbar.android.ui.screens.browse.BrowseScreen
 import com.mvbar.android.ui.screens.detail.AlbumDetailScreen
@@ -108,6 +110,8 @@ fun MainScreen(
 
     val currentRoute by navController.currentBackStackEntryAsState()
     val currentTab = currentRoute?.destination?.route
+
+    val isOnline by NetworkMonitor.isOnline.collectAsState()
 
     val homeState by mainVm.homeState.collectAsState()
     val favorites by mainVm.favorites.collectAsState()
@@ -359,6 +363,7 @@ fun MainScreen(
         }
     }
 
+    CompositionLocalProvider(LocalIsOnline provides isOnline) {
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             containerColor = BackgroundDark,
@@ -1070,4 +1075,5 @@ fun MainScreen(
                 .padding(bottom = if (playerState.currentTrack != null) 180.dp else 100.dp)
         )
     }
+    } // CompositionLocalProvider
 }

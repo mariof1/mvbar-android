@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,6 +29,8 @@ import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Episode
 import com.mvbar.android.data.model.Podcast
+import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.theme.*
 
 @Composable
@@ -226,6 +229,11 @@ fun EpisodeListItem(
     onPlay: () -> Unit,
     onMarkPlayed: () -> Unit
 ) {
+    val isOnline = LocalIsOnline.current
+    val isPlayable = remember(episode.id, isOnline) {
+        isOnline || AudioCacheManager.isEpisodeCached(episode.id)
+    }
+
     val artUrl = episode.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
         ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
         ?: ApiClient.episodeArtUrl(episode.id)
@@ -233,7 +241,8 @@ fun EpisodeListItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onPlay)
+            .graphicsLayer { alpha = if (isPlayable) 1f else 0.38f }
+            .clickable(enabled = isPlayable, onClick = onPlay)
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .then(if (episode.played) Modifier.background(BackgroundDark.copy(alpha = 0.6f)) else Modifier),
         verticalAlignment = Alignment.Top,

@@ -339,6 +339,12 @@ object AudioCacheManager {
         return cache?.isCached(url, 0, Long.MAX_VALUE) == true
     }
 
+    /** Check whether an audiobook chapter is fully cached */
+    fun isChapterCached(audiobookId: Int, chapterId: Int): Boolean {
+        val url = ApiClient.audiobookChapterStreamUrl(audiobookId, chapterId)
+        return cache?.isCached(url, 0, Long.MAX_VALUE) == true
+    }
+
     private fun shouldSkipDownload(): Boolean {
         if (!wifiOnlyDownload) return false
         val ctx = appContext ?: return false

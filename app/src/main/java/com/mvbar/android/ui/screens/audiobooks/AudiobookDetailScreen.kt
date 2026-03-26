@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -29,6 +30,8 @@ import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Audiobook
 import com.mvbar.android.data.model.AudiobookChapter
 import com.mvbar.android.data.model.AudiobookDetailProgress
+import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.theme.*
 
 @Composable
@@ -231,11 +234,16 @@ private fun ChapterListItem(
     hasProgress: Boolean,
     onClick: () -> Unit
 ) {
+    val isOnline = LocalIsOnline.current
+    val isPlayable = remember(chapter.id, chapter.audiobookId, isOnline) {
+        isOnline || AudioCacheManager.isChapterCached(chapter.audiobookId, chapter.id)
+    }
     val highlight = isPlaying || hasProgress
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .graphicsLayer { alpha = if (isPlayable) 1f else 0.38f }
+            .clickable(enabled = isPlayable, onClick = onClick)
             .background(
                 when {
                     isPlaying -> Cyan900.copy(alpha = 0.3f)
