@@ -35,6 +35,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -91,6 +92,13 @@ fun NowPlayingScreen(
 ) {
     val track = state.currentTrack ?: return
     var showLyrics by remember { mutableStateOf(false) }
+
+    // Keep screen on while lyrics are visible
+    val view = LocalView.current
+    DisposableEffect(showLyrics) {
+        if (showLyrics) view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
 
     // Back gesture minimizes the player
     BackHandler(onBack = onBack)
@@ -313,15 +321,8 @@ fun NowPlayingScreen(
                             // Art + info + controls
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Box(modifier = Modifier.weight(0.45f).padding(8.dp), contentAlignment = Alignment.Center) {
-                                    if (showLyrics && !state.isPodcastMode && !state.isAudiobookMode) {
-                                        com.mvbar.android.ui.components.LyricsView(
-                                            lyrics = lyrics, isLoading = lyricsLoading, positionMs = state.position,
-                                            modifier = Modifier.fillMaxHeight(0.8f).aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(SurfaceDark.copy(alpha = 0.5f))
-                                        )
-                                    } else {
-                                        AsyncImage(model = artModel, contentDescription = null, contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxHeight(0.8f).aspectRatio(1f).clip(RoundedCornerShape(16.dp)).shadow(16.dp, RoundedCornerShape(16.dp)))
-                                    }
+                                    AsyncImage(model = artModel, contentDescription = null, contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxHeight(0.8f).aspectRatio(1f).clip(RoundedCornerShape(16.dp)).shadow(16.dp, RoundedCornerShape(16.dp)))
                                 }
 
                                 Column(modifier = Modifier.weight(0.55f).padding(start = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -374,6 +375,23 @@ fun NowPlayingScreen(
                 }
                 } // Row
             } // BoxWithConstraints
+
+            // Full-screen lyrics overlay (landscape)
+            if (showLyrics && !state.isPodcastMode && !state.isAudiobookMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.7f))
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .clickable { showLyrics = false }
+                ) {
+                    com.mvbar.android.ui.components.LyricsView(
+                        lyrics = lyrics, isLoading = lyricsLoading, positionMs = state.position,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
         }
     } else {
         // ===== PORTRAIT: standalone layout with toggleable queue =====
@@ -447,16 +465,8 @@ fun NowPlayingScreen(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (showLyrics && !state.isPodcastMode && !state.isAudiobookMode) {
-                            com.mvbar.android.ui.components.LyricsView(
-                                lyrics = lyrics, isLoading = lyricsLoading, positionMs = state.position,
-                                modifier = Modifier.size(64.dp).clip(RoundedCornerShape(12.dp))
-                                    .background(SurfaceDark.copy(alpha = 0.5f))
-                            )
-                        } else {
-                            AsyncImage(model = artModel, contentDescription = null, contentScale = ContentScale.Crop,
-                                modifier = Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)))
-                        }
+                        AsyncImage(model = artModel, contentDescription = null, contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)))
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(track.displayTitle, style = MaterialTheme.typography.titleMedium,
@@ -539,17 +549,9 @@ fun NowPlayingScreen(
                     // ---- FULL MODE: normal portrait layout ----
                     Spacer(Modifier.weight(0.5f))
 
-                    if (showLyrics && !state.isPodcastMode && !state.isAudiobookMode) {
-                        com.mvbar.android.ui.components.LyricsView(
-                            lyrics = lyrics, isLoading = lyricsLoading, positionMs = state.position,
-                            modifier = Modifier.fillMaxWidth(0.85f).aspectRatio(1f)
-                                .clip(RoundedCornerShape(20.dp)).background(SurfaceDark.copy(alpha = 0.5f))
-                        )
-                    } else {
-                        AsyncImage(model = artModel, contentDescription = null, contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth(0.85f).aspectRatio(1f)
-                                .clip(RoundedCornerShape(20.dp)).shadow(24.dp, RoundedCornerShape(20.dp)))
-                    }
+                    AsyncImage(model = artModel, contentDescription = null, contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth(0.85f).aspectRatio(1f)
+                            .clip(RoundedCornerShape(20.dp)).shadow(24.dp, RoundedCornerShape(20.dp)))
 
                     Spacer(Modifier.height(32.dp))
 
@@ -610,6 +612,23 @@ fun NowPlayingScreen(
                     }
 
                     Spacer(Modifier.weight(1f))
+                }
+            }
+
+            // Full-screen lyrics overlay
+            if (showLyrics && !state.isPodcastMode && !state.isAudiobookMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.7f))
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .clickable { showLyrics = false }
+                ) {
+                    com.mvbar.android.ui.components.LyricsView(
+                        lyrics = lyrics, isLoading = lyricsLoading, positionMs = state.position,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
         }
