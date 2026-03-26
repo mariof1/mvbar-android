@@ -365,7 +365,7 @@ fun MainScreen(
             },
             bottomBar = {
                 if (!useNavRail) {
-                    Column {
+                    Column(Modifier.navigationBarsPadding()) {
                         // Mini player
                         AnimatedVisibility(
                             visible = playerState.currentTrack != null,
@@ -385,7 +385,8 @@ fun MainScreen(
                         NavigationBar(
                             containerColor = SurfaceDark.copy(alpha = 0.95f),
                             contentColor = OnSurface,
-                            tonalElevation = 0.dp
+                            tonalElevation = 0.dp,
+                            windowInsets = WindowInsets(0, 0, 0, 0)
                         ) {
                             BottomTab.entries.forEach { tab ->
                                 val selected = isTabSelected(tab)
@@ -463,7 +464,7 @@ fun MainScreen(
                 }
 
                 // Main content column (with mini player at bottom for tablet)
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f).navigationBarsPadding()) {
             NavHost(
                 navController = navController,
                 startDestination = "home",
