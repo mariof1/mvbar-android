@@ -71,6 +71,11 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun getCachedCountryCount(): Int = db?.browseDao()?.countryCount() ?: 0
     suspend fun getCachedLanguageCount(): Int = db?.browseDao()?.languageCount() ?: 0
 
+    suspend fun getCachedTracksPage(limit: Int, offset: Int): List<Track>? =
+        db?.trackDao()?.getPage(limit, offset)?.map { it.toModel() }
+
+    suspend fun getCachedTrackCount(): Int = db?.trackDao()?.count() ?: 0
+
     suspend fun getCachedRecentlyAdded(limit: Int): List<Track>? =
         db?.trackDao()?.getRecentlyAdded(limit)?.map { it.toModel() }
 

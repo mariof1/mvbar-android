@@ -365,7 +365,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // All tracks for queue "All" tab — paginated for large libraries
+    // All tracks for queue "All" tab — paginated, with offline fallback
 
     fun loadAllTracks() {
         if (_allTracksLoading.value) return
@@ -374,11 +374,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _allTracks.value = emptyList()
             _hasMoreAllTracks.value = true
             try {
-                val response = repo.getTracks(ALL_TRACKS_PAGE_SIZE, 0)
-                _allTracks.value = response.tracks
-                _hasMoreAllTracks.value = response.tracks.size >= ALL_TRACKS_PAGE_SIZE
+                val tracks = if (NetworkMonitor.isOnline.value) {
+                    val response = repo.getTracks(ALL_TRACKS_PAGE_SIZE, 0)
+                    response.tracks
+                } else {
+                    repo.getCachedTracksPage(ALL_TRACKS_PAGE_SIZE, 0) ?: emptyList()
+                }
+                _allTracks.value = tracks
+                _hasMoreAllTracks.value = tracks.size >= ALL_TRACKS_PAGE_SIZE
             } catch (e: Exception) {
-                DebugLog.e("AllTracks", "Load failed", e)
+                // API failed (e.g. network dropped mid-request) — fall back to cache
+                DebugLog.e("AllTracks", "Load failed, trying cache", e)
+                val cached = repo.getCachedTracksPage(ALL_TRACKS_PAGE_SIZE, 0)
+                if (cached != null) {
+                    _allTracks.value = cached
+                    _hasMoreAllTracks.value = cached.size >= ALL_TRACKS_PAGE_SIZE
+                }
             } finally {
                 _allTracksLoading.value = false
             }
@@ -391,12 +402,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _isLoadingMoreAllTracks.value = true
             try {
                 val offset = _allTracks.value.size
-                val response = repo.getTracks(ALL_TRACKS_PAGE_SIZE, offset)
-                DebugLog.i("AllTracks", "Loaded ${response.tracks.size} more (offset $offset)")
-                _allTracks.value = _allTracks.value + response.tracks
-                _hasMoreAllTracks.value = response.tracks.size >= ALL_TRACKS_PAGE_SIZE
+                val tracks = if (NetworkMonitor.isOnline.value) {
+                    val response = repo.getTracks(ALL_TRACKS_PAGE_SIZE, offset)
+                    response.tracks
+                } else {
+                    repo.getCachedTracksPage(ALL_TRACKS_PAGE_SIZE, offset) ?: emptyList()
+                }
+                DebugLog.i("AllTracks", "Loaded ${tracks.size} more (offset $offset, online=${NetworkMonitor.isOnline.value})")
+                _allTracks.value = _allTracks.value + tracks
+                _hasMoreAllTracks.value = tracks.size >= ALL_TRACKS_PAGE_SIZE
             } catch (e: Exception) {
-                DebugLog.e("AllTracks", "Load more failed", e)
+                // Fallback to cache on network failure
+                DebugLog.e("AllTracks", "Load more failed, trying cache", e)
+                val offset = _allTracks.value.size
+                val cached = repo.getCachedTracksPage(ALL_TRACKS_PAGE_SIZE, offset)
+                if (cached != null) {
+                    _allTracks.value = _allTracks.value + cached
+                    _hasMoreAllTracks.value = cached.size >= ALL_TRACKS_PAGE_SIZE
+                }
             } finally {
                 _isLoadingMoreAllTracks.value = false
             }
@@ -406,32 +429,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun playShuffledAllTracks(selectedTrack: Track? = null) {
         viewModelScope.launch {
             try {
-                // Sample from random offsets across the entire library
-                // to get a diverse shuffled queue (not just the first 500)
-                val batchSize = 50
-                val maxEstimate = 50_000 // upper bound guess; excess offsets just return empty
-                val offsets = (0 until 10).map { (0..maxEstimate).random() } + listOf(0)
-                val allFetched = mutableListOf<Track>()
+                val tracks: MutableList<Track>
 
-                // Fetch batches in parallel
-                kotlinx.coroutines.coroutineScope {
-                    val deferred = offsets.map { offset ->
-                        async {
-                            try {
-                                repo.getTracks(limit = batchSize, offset = offset).tracks
-                            } catch (_: Exception) {
-                                emptyList()
+                if (NetworkMonitor.isOnline.value) {
+                    // Online: sample from random offsets across entire library
+                    val batchSize = 50
+                    val maxEstimate = 50_000
+                    val offsets = (0 until 10).map { (0..maxEstimate).random() } + listOf(0)
+                    val allFetched = mutableListOf<Track>()
+
+                    coroutineScope {
+                        val deferred = offsets.map { offset ->
+                            async {
+                                try {
+                                    repo.getTracks(limit = batchSize, offset = offset).tracks
+                                } catch (_: Exception) {
+                                    emptyList()
+                                }
                             }
                         }
+                        deferred.forEach { allFetched.addAll(it.await()) }
                     }
-                    deferred.forEach { allFetched.addAll(it.await()) }
-                }
 
-                // Deduplicate by track ID and shuffle
-                val tracks = allFetched
-                    .distinctBy { it.id }
-                    .shuffled()
-                    .toMutableList()
+                    tracks = allFetched.distinctBy { it.id }.shuffled().toMutableList()
+                } else {
+                    // Offline: shuffle from locally cached tracks (audio must be cached)
+                    val totalCached = repo.getCachedTrackCount()
+                    if (totalCached == 0) return@launch
+                    val allCached = mutableListOf<Track>()
+                    var offset = 0
+                    while (offset < totalCached) {
+                        val page = repo.getCachedTracksPage(500, offset) ?: break
+                        allCached.addAll(page)
+                        if (page.size < 500) break
+                        offset += 500
+                    }
+                    // Filter to only tracks whose audio is actually cached
+                    tracks = allCached
+                        .filter { AudioCacheManager.isTrackCached(it.id) }
+                        .shuffled()
+                        .take(500)
+                        .toMutableList()
+                    DebugLog.i("AllTracks", "Offline shuffle: ${tracks.size} cached tracks available")
+                }
 
                 if (tracks.isEmpty()) return@launch
 
