@@ -11,6 +11,9 @@ import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import coil.imageLoader
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.model.Track
@@ -49,10 +52,17 @@ object AudioCacheManager {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
         val maxBytes = maxCacheMb.toLong() * 1024 * 1024
-        val cacheDir = File(context.cacheDir, "audio_cache")
+        val newDir = File(context.filesDir, "audio_cache")
+        // Migrate from cacheDir to filesDir (one-time)
+        val oldDir = File(context.cacheDir, "audio_cache")
+        if (oldDir.exists() && !newDir.exists()) {
+            if (oldDir.renameTo(newDir)) {
+                DebugLog.i("Cache", "Migrated audio cache from cacheDir to filesDir")
+            }
+        }
         val evictor = LeastRecentlyUsedCacheEvictor(maxBytes)
         val dbProvider = StandaloneDatabaseProvider(context)
-        cache = SimpleCache(cacheDir, evictor, dbProvider)
+        cache = SimpleCache(newDir, evictor, dbProvider)
         DebugLog.i("Cache", "Audio cache initialized (${maxCacheMb}MB max)")
     }
 
@@ -162,6 +172,10 @@ object AudioCacheManager {
                     catch (e: Exception) { DebugLog.e("Cache", "Auto-cache failed: ${track.title}", e) }
                 }
                 if (cached > 0) DebugLog.i("Cache", "Auto-cached $cached favorite tracks")
+                // Pre-cache artwork for favorites
+                for (track in favTracks) {
+                    precacheArtworkById(track.id)
+                }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { DebugLog.e("Cache", "reCacheFavorites failed", e) }
         }
@@ -176,6 +190,7 @@ object AudioCacheManager {
             if (cache?.isCached(url, 0, Long.MAX_VALUE) == true) return@launch
             try {
                 cacheUrl(c, url)
+                precacheArtworkById(trackId)
                 DebugLog.d("Cache", "Auto-cached new favorite track $trackId")
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { DebugLog.e("Cache", "Cache track $trackId failed", e) }
@@ -223,6 +238,8 @@ object AudioCacheManager {
         if (tracksToCache.isEmpty()) return
 
         prefetchJob = prefetchScope.launch {
+            // Pre-cache artwork for upcoming tracks
+            precacheArtwork(tracksToCache)
             for (track in tracksToCache) {
                 if (!isActive) break
                 if (shouldSkipDownload()) break
@@ -296,6 +313,8 @@ object AudioCacheManager {
                 }
             }
             if (cached > 0) DebugLog.i("Cache", "Auto-cached $cached favorite tracks")
+            // Pre-cache artwork for all tracks in the batch
+            precacheArtwork(tracks)
         }
     }
 
@@ -380,5 +399,35 @@ object AudioCacheManager {
         podcastCacheJob?.cancel()
         cache?.release()
         cache = null
+    }
+
+    /** Returns the artwork URL the UI would use for a given track. */
+    private fun trackArtworkUrl(track: Track): String =
+        track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+
+    /** Pre-cache artwork into Coil's disk cache so it's available offline. */
+    fun precacheArtwork(tracks: List<Track>) {
+        val ctx = appContext ?: return
+        val imageLoader = ctx.imageLoader
+        var enqueued = 0
+        for (track in tracks) {
+            val request = ImageRequest.Builder(ctx)
+                .data(trackArtworkUrl(track))
+                .memoryCachePolicy(CachePolicy.DISABLED)
+                .build()
+            imageLoader.enqueue(request)
+            enqueued++
+        }
+        if (enqueued > 0) DebugLog.d("Cache", "Pre-caching artwork for $enqueued tracks")
+    }
+
+    /** Pre-cache artwork for a single track by ID. */
+    fun precacheArtworkById(trackId: Int) {
+        val ctx = appContext ?: return
+        val request = ImageRequest.Builder(ctx)
+            .data(ApiClient.trackArtUrl(trackId))
+            .memoryCachePolicy(CachePolicy.DISABLED)
+            .build()
+        ctx.imageLoader.enqueue(request)
     }
 }

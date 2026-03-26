@@ -72,7 +72,7 @@ class MvbarApp : Application(), ImageLoaderFactory {
             }
             .diskCache {
                 DiskCache.Builder()
-                    .directory(cacheDir.resolve("image_cache"))
+                    .directory(filesDir.resolve("image_cache"))
                     .maxSizePercent(0.1)
                     .build()
             }

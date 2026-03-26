@@ -50,7 +50,7 @@ class ArtworkProvider : ContentProvider() {
     }
 
     private val cacheDir by lazy {
-        File(context!!.cacheDir, "artwork").also { it.mkdirs() }
+        File(context!!.filesDir, "artwork").also { it.mkdirs() }
     }
 
     override fun onCreate(): Boolean = true
