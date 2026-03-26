@@ -140,8 +140,8 @@ fun NowPlayingScreen(
                 // Queue panel (animated)
                 AnimatedVisibility(
                     visible = showQueue,
-                    enter = expandHorizontally(animationSpec = tween(300), expandFrom = Alignment.Start) + fadeIn(tween(200)),
-                    exit = shrinkHorizontally(animationSpec = tween(250), shrinkTowards = Alignment.Start) + fadeOut(tween(150))
+                    enter = slideInHorizontally(animationSpec = tween(200)) { -it } + fadeIn(tween(150)),
+                    exit = slideOutHorizontally(animationSpec = tween(150)) { -it } + fadeOut(tween(100))
                 ) {
                     QueuePanelContent(
                         state = state,
