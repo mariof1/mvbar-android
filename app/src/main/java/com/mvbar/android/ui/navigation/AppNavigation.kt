@@ -28,6 +28,7 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.NetworkMonitor
+import com.mvbar.android.data.model.Artist
 import com.mvbar.android.data.model.Playlist
 import com.mvbar.android.data.model.SmartPlaylistFilters
 import com.mvbar.android.data.model.SuggestResponse
@@ -605,7 +606,19 @@ fun MainScreen(
                     )
                 }
 
-                composable("artist/{id}") {
+                composable(
+                    route = "artist/{id}",
+                    arguments = listOf(navArgument("id") {
+                        type = NavType.IntType
+                        defaultValue = -1
+                    })
+                ) { entry ->
+                    val id = entry.arguments?.getInt("id") ?: -1
+                    LaunchedEffect(id) {
+                        if (id > 0) {
+                            browseVm.loadArtistDetail(Artist(id = id))
+                        }
+                    }
                     ArtistDetailScreen(
                         artist = selectedArtist,
                         tracks = artistTracks,
