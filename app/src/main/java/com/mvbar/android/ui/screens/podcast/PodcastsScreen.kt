@@ -46,61 +46,50 @@ fun PodcastsScreen(
     var currentView by remember { mutableStateOf("new") } // "new" or "subscriptions"
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Header actions & filters
-        Box(
+        // Filter chips + Subscribe button on one row
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FilledTonalButton(
-                        onClick = onSubscribeClick,
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Cyan600,
-                            contentColor = OnSurface
-                        ),
-                        shape = RoundedCornerShape(50)
-                    ) {
-                        Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Subscribe")
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                // View tabs
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = currentView == "new",
-                        onClick = { currentView = "new" },
-                        label = { Text("Continue Listening") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OnSurface,
-                            selectedLabelColor = BackgroundDark,
-                            containerColor = SurfaceElevated,
-                            labelColor = OnSurface
-                        ),
-                        shape = RoundedCornerShape(50)
-                    )
-                    FilterChip(
-                        selected = currentView == "subscriptions",
-                        onClick = { currentView = "subscriptions" },
-                        label = { Text("Subscriptions") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OnSurface,
-                            selectedLabelColor = BackgroundDark,
-                            containerColor = SurfaceElevated,
-                            labelColor = OnSurface
-                        ),
-                        shape = RoundedCornerShape(50)
-                    )
-                }
+            FilterChip(
+                selected = currentView == "new",
+                onClick = { currentView = "new" },
+                label = { Text("Continue Listening") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = OnSurface,
+                    selectedLabelColor = BackgroundDark,
+                    containerColor = SurfaceElevated,
+                    labelColor = OnSurface
+                ),
+                shape = RoundedCornerShape(50)
+            )
+            FilterChip(
+                selected = currentView == "subscriptions",
+                onClick = { currentView = "subscriptions" },
+                label = { Text("Subscriptions") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = OnSurface,
+                    selectedLabelColor = BackgroundDark,
+                    containerColor = SurfaceElevated,
+                    labelColor = OnSurface
+                ),
+                shape = RoundedCornerShape(50)
+            )
+            Spacer(Modifier.weight(1f))
+            FilledTonalButton(
+                onClick = onSubscribeClick,
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = Cyan600,
+                    contentColor = OnSurface
+                ),
+                shape = RoundedCornerShape(50)
+            ) {
+                Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Subscribe")
             }
         }
 
