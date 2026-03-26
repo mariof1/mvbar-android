@@ -760,15 +760,14 @@ private fun QueuePanelContent(
                 } else {
                     val allListState = rememberLazyListState()
 
-                    // Infinite scroll: load more when near the end
-                    val shouldLoadMore = remember {
-                        derivedStateOf {
+                    // Infinite scroll using snapshotFlow — re-launches when list size or hasMore changes
+                    LaunchedEffect(allListState, hasMoreAllTracks, allTracks.size) {
+                        snapshotFlow {
                             val lastVisible = allListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                            lastVisible >= allTracks.size - 20
+                            hasMoreAllTracks && lastVisible >= allTracks.size - 20
+                        }.collect { shouldLoad ->
+                            if (shouldLoad) onLoadMoreAllTracks()
                         }
-                    }
-                    LaunchedEffect(shouldLoadMore.value) {
-                        if (shouldLoadMore.value && hasMoreAllTracks) onLoadMoreAllTracks()
                     }
 
                     LazyColumn(
