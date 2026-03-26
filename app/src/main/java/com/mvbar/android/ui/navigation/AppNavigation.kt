@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -288,6 +289,36 @@ fun MainScreen(
         )
     }
 
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val useNavRail = screenWidthDp >= 600
+
+    // Shared tab selection logic
+    fun isTabSelected(tab: BottomTab): Boolean =
+        currentTab == tab.route ||
+            (currentTab?.startsWith("artist/") == true && tab == BottomTab.BROWSE) ||
+            (currentTab?.startsWith("album") == true && tab == BottomTab.BROWSE) ||
+            (currentTab?.startsWith("genre/") == true && tab == BottomTab.BROWSE) ||
+            (currentTab?.startsWith("country/") == true && tab == BottomTab.BROWSE) ||
+            (currentTab?.startsWith("language/") == true && tab == BottomTab.BROWSE) ||
+            (currentTab == "history" && tab == BottomTab.LIBRARY) ||
+            (currentTab?.startsWith("playlist/") == true && tab == BottomTab.LIBRARY) ||
+            (currentTab?.startsWith("smart-playlist") == true && tab == BottomTab.LIBRARY) ||
+            (currentTab?.startsWith("podcast/") == true && tab == BottomTab.PODCASTS) ||
+            (currentTab?.startsWith("audiobook/") == true && tab == BottomTab.AUDIOBOOKS)
+
+    fun onTabClick(tab: BottomTab) {
+        if (currentTab != null && currentTab !in rootTabs) {
+            navController.popBackStack()
+        }
+        if (currentTab != tab.route) {
+            navController.navigate(tab.route) {
+                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             containerColor = BackgroundDark,
@@ -312,56 +343,76 @@ fun MainScreen(
                 )
             },
             bottomBar = {
-                Column {
-                    // Mini player
-                    AnimatedVisibility(
-                        visible = playerState.currentTrack != null,
-                        enter = slideInVertically { it } + fadeIn(),
-                        exit = slideOutVertically { it } + fadeOut()
-                    ) {
-                        MiniPlayerBar(
-                            state = playerState,
-                            onTogglePlay = { mainVm.playerManager.togglePlay() },
-                            onNext = { mainVm.playerManager.next() },
-                            onPrevious = { mainVm.playerManager.previous() },
-                            onTap = { showNowPlaying = true }
-                        )
+                if (!useNavRail) {
+                    Column {
+                        // Mini player
+                        AnimatedVisibility(
+                            visible = playerState.currentTrack != null,
+                            enter = slideInVertically { it } + fadeIn(),
+                            exit = slideOutVertically { it } + fadeOut()
+                        ) {
+                            MiniPlayerBar(
+                                state = playerState,
+                                onTogglePlay = { mainVm.playerManager.togglePlay() },
+                                onNext = { mainVm.playerManager.next() },
+                                onPrevious = { mainVm.playerManager.previous() },
+                                onTap = { showNowPlaying = true }
+                            )
+                        }
+
+                        // Bottom navigation
+                        NavigationBar(
+                            containerColor = SurfaceDark.copy(alpha = 0.95f),
+                            contentColor = OnSurface,
+                            tonalElevation = 0.dp
+                        ) {
+                            BottomTab.entries.forEach { tab ->
+                                val selected = isTabSelected(tab)
+                                NavigationBarItem(
+                                    selected = selected,
+                                    onClick = { onTabClick(tab) },
+                                    icon = {
+                                        Icon(
+                                            if (selected) tab.selectedIcon else tab.unselectedIcon,
+                                            tab.label
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            tab.label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    },
+                                    alwaysShowLabel = false,
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = Cyan500,
+                                        selectedTextColor = Cyan500,
+                                        unselectedIconColor = OnSurfaceDim,
+                                        unselectedTextColor = OnSurfaceDim,
+                                        indicatorColor = Cyan500.copy(alpha = 0.15f)
+                                    )
+                                )
+                            }
+                        }
                     }
-
-                    // Bottom navigation
-                    NavigationBar(
+                }
+            }
+        ) { innerPadding ->
+            Row(modifier = Modifier.padding(top = innerPadding.calculateTopPadding())) {
+                // Navigation rail for tablets
+                if (useNavRail) {
+                    NavigationRail(
                         containerColor = SurfaceDark.copy(alpha = 0.95f),
-                        contentColor = OnSurface,
-                        tonalElevation = 0.dp
+                        contentColor = OnSurface
                     ) {
+                        Spacer(Modifier.weight(1f))
                         BottomTab.entries.forEach { tab ->
-                            val selected = currentTab == tab.route ||
-                                (currentTab?.startsWith("artist/") == true && tab == BottomTab.BROWSE) ||
-                                (currentTab?.startsWith("album") == true && tab == BottomTab.BROWSE) ||
-                                (currentTab?.startsWith("genre/") == true && tab == BottomTab.BROWSE) ||
-                                (currentTab?.startsWith("country/") == true && tab == BottomTab.BROWSE) ||
-                                (currentTab?.startsWith("language/") == true && tab == BottomTab.BROWSE) ||
-                                (currentTab == "history" && tab == BottomTab.LIBRARY) ||
-                                (currentTab?.startsWith("playlist/") == true && tab == BottomTab.LIBRARY) ||
-                                (currentTab?.startsWith("smart-playlist") == true && tab == BottomTab.LIBRARY) ||
-                                (currentTab?.startsWith("podcast/") == true && tab == BottomTab.PODCASTS) ||
-                                (currentTab?.startsWith("audiobook/") == true && tab == BottomTab.AUDIOBOOKS)
-
-                            NavigationBarItem(
+                            val selected = isTabSelected(tab)
+                            NavigationRailItem(
                                 selected = selected,
-                                onClick = {
-                                    // Pop overlay routes (like settings) before switching tabs
-                                    if (currentTab != null && currentTab !in rootTabs) {
-                                        navController.popBackStack()
-                                    }
-                                    if (currentTab != tab.route) {
-                                        navController.navigate(tab.route) {
-                                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    }
-                                },
+                                onClick = { onTabClick(tab) },
                                 icon = {
                                     Icon(
                                         if (selected) tab.selectedIcon else tab.unselectedIcon,
@@ -377,7 +428,7 @@ fun MainScreen(
                                     )
                                 },
                                 alwaysShowLabel = false,
-                                colors = NavigationBarItemDefaults.colors(
+                                colors = NavigationRailItemDefaults.colors(
                                     selectedIconColor = Cyan500,
                                     selectedTextColor = Cyan500,
                                     unselectedIconColor = OnSurfaceDim,
@@ -386,14 +437,16 @@ fun MainScreen(
                                 )
                             )
                         }
+                        Spacer(Modifier.weight(1f))
                     }
                 }
-            }
-        ) { innerPadding ->
+
+                // Main content column (with mini player at bottom for tablet)
+                Column(modifier = Modifier.weight(1f)) {
             NavHost(
                 navController = navController,
                 startDestination = "home",
-                modifier = Modifier.padding(top = innerPadding.calculateTopPadding()),
+                modifier = Modifier.weight(1f),
                 enterTransition = {
                     fadeIn(tween(250)) + slideInHorizontally(tween(300)) { it / 3 } +
                         scaleIn(tween(300), initialScale = 0.92f)
@@ -859,6 +912,25 @@ fun MainScreen(
                     )
                 }
             }
+
+                    // Mini player at bottom of content area (tablet only)
+                    if (useNavRail) {
+                        AnimatedVisibility(
+                            visible = playerState.currentTrack != null,
+                            enter = slideInVertically { it } + fadeIn(),
+                            exit = slideOutVertically { it } + fadeOut()
+                        ) {
+                            MiniPlayerBar(
+                                state = playerState,
+                                onTogglePlay = { mainVm.playerManager.togglePlay() },
+                                onNext = { mainVm.playerManager.next() },
+                                onPrevious = { mainVm.playerManager.previous() },
+                                onTap = { showNowPlaying = true }
+                            )
+                        }
+                    }
+                } // Column
+            } // Row
         }
 
         // Full-screen Now Playing overlay (slide up/down)
