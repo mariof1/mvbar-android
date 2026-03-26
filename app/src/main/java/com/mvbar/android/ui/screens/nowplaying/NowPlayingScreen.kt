@@ -166,50 +166,47 @@ fun NowPlayingScreen(
                 }
 
                 // Right side: art + controls
-                Column(
-                    modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    // Top bar
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(28.dp))
-                        }
-                        Row {
-                            if (!state.isPodcastMode && !state.isAudiobookMode) {
-                                IconButton(onClick = { showLyrics = !showLyrics }) {
-                                    Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    if (showQueue) {
+                        // Queue-open layout: artwork as full background, larger controls overlay
+                        AsyncImage(
+                            model = artModel, contentDescription = null, contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.45f }
+                        )
+                        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)))
+
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            // Top bar
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = onBack) {
+                                    Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(32.dp))
+                                }
+                                Row {
+                                    if (!state.isPodcastMode && !state.isAudiobookMode) {
+                                        IconButton(onClick = { showLyrics = !showLyrics }) {
+                                            Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim, modifier = Modifier.size(28.dp))
+                                        }
+                                    }
+                                    IconButton(onClick = { showQueue = !showQueue }) {
+                                        Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = Cyan500, modifier = Modifier.size(28.dp))
+                                    }
                                 }
                             }
-                            IconButton(onClick = { showQueue = !showQueue }) {
-                                Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = if (showQueue) Cyan500 else OnSurfaceDim)
-                            }
-                        }
-                    }
 
-                    Spacer(Modifier.weight(1f))
+                            Spacer(Modifier.weight(1f))
 
-                    // Art + info + controls
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.weight(0.45f).padding(8.dp), contentAlignment = Alignment.Center) {
-                            if (showLyrics && !state.isPodcastMode && !state.isAudiobookMode) {
-                                com.mvbar.android.ui.components.LyricsView(
-                                    lyrics = lyrics, isLoading = lyricsLoading, positionMs = state.position,
-                                    modifier = Modifier.fillMaxHeight(0.8f).aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(SurfaceDark.copy(alpha = 0.5f))
-                                )
-                            } else {
-                                AsyncImage(model = artModel, contentDescription = null, contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxHeight(0.8f).aspectRatio(1f).clip(RoundedCornerShape(16.dp)).shadow(16.dp, RoundedCornerShape(16.dp)))
-                            }
-                        }
+                            // Artist info — larger
+                            Text(track.displayTitle, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = OnSurface, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                            Spacer(Modifier.height(4.dp))
+                            Text(track.displayArtist, style = MaterialTheme.typography.bodyLarge, color = OnSurfaceDim, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
 
-                        Column(modifier = Modifier.weight(0.55f).padding(start = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(track.displayTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                            Text(track.displayArtist, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                            Spacer(Modifier.height(16.dp))
 
-                            Spacer(Modifier.height(8.dp))
-
+                            // Seekbar
                             var isDragging by remember { mutableStateOf(false) }
                             var dragProgress by remember { mutableFloatStateOf(0f) }
                             val currentProgress = if (isDragging) dragProgress else if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
@@ -220,35 +217,122 @@ fun NowPlayingScreen(
                                 modifier = Modifier.fillMaxWidth())
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 val displayPosition = if (isDragging) (dragProgress * state.duration).toLong() else state.position
-                                Text(formatTime(displayPosition), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
-                                Text(formatTime(state.duration), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
+                                Text(formatTime(displayPosition), style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                                Text(formatTime(state.duration), style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
                             }
 
-                            Spacer(Modifier.height(4.dp))
+                            Spacer(Modifier.height(8.dp))
 
+                            // Media buttons — larger
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                                if (state.isPodcastMode || state.isAudiobookMode) Spacer(Modifier.size(36.dp))
-                                else IconButton(onClick = onCyclePlayMode, modifier = Modifier.size(36.dp)) {
+                                if (state.isPodcastMode || state.isAudiobookMode) Spacer(Modifier.size(48.dp))
+                                else IconButton(onClick = onCyclePlayMode, modifier = Modifier.size(48.dp)) {
                                     Icon(when (state.playMode) { PlayMode.SHUFFLE -> Icons.Filled.Shuffle; PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne; else -> Icons.Filled.Repeat },
-                                        "Play Mode", tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim, modifier = Modifier.size(20.dp))
+                                        "Play Mode", tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim, modifier = Modifier.size(28.dp))
                                 }
-                                if (state.isPodcastMode || state.isAudiobookMode) IconButton(onClick = onPrevious, modifier = Modifier.size(44.dp)) { Text("-15", color = OnSurface, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
-                                else IconButton(onClick = onPrevious, modifier = Modifier.size(44.dp)) { Icon(Icons.Filled.SkipPrevious, "Previous", tint = OnSurface, modifier = Modifier.size(28.dp)) }
-                                IconButton(onClick = onTogglePlay, modifier = Modifier.size(56.dp).background(if (state.isPodcastMode) Orange500 else Cyan500, CircleShape)) {
-                                    Icon(if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (state.isPlaying) "Pause" else "Play", tint = Color.Black, modifier = Modifier.size(32.dp))
+                                if (state.isPodcastMode || state.isAudiobookMode) IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) { Text("-15", color = OnSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                                else IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) { Icon(Icons.Filled.SkipPrevious, "Previous", tint = OnSurface, modifier = Modifier.size(36.dp)) }
+                                IconButton(onClick = onTogglePlay, modifier = Modifier.size(72.dp).background(if (state.isPodcastMode) Orange500 else Cyan500, CircleShape)) {
+                                    Icon(if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (state.isPlaying) "Pause" else "Play", tint = Color.Black, modifier = Modifier.size(44.dp))
                                 }
-                                if (state.isPodcastMode || state.isAudiobookMode) IconButton(onClick = onNext, modifier = Modifier.size(44.dp)) { Text("+15", color = OnSurface, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
-                                else IconButton(onClick = onNext, modifier = Modifier.size(44.dp)) { Icon(Icons.Filled.SkipNext, "Next", tint = OnSurface, modifier = Modifier.size(28.dp)) }
-                                if (state.isPodcastMode || state.isAudiobookMode) Spacer(Modifier.size(36.dp))
-                                else IconButton(onClick = onToggleFavorite, modifier = Modifier.size(36.dp)) {
+                                if (state.isPodcastMode || state.isAudiobookMode) IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) { Text("+15", color = OnSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                                else IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) { Icon(Icons.Filled.SkipNext, "Next", tint = OnSurface, modifier = Modifier.size(36.dp)) }
+                                if (state.isPodcastMode || state.isAudiobookMode) Spacer(Modifier.size(48.dp))
+                                else IconButton(onClick = onToggleFavorite, modifier = Modifier.size(48.dp)) {
                                     Icon(if (state.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, "Favorite",
-                                        tint = if (state.isFavorite) Pink500 else OnSurfaceDim, modifier = Modifier.size(20.dp))
+                                        tint = if (state.isFavorite) Pink500 else OnSurfaceDim, modifier = Modifier.size(28.dp))
                                 }
                             }
+
+                            Spacer(Modifier.weight(1f))
+                        }
+                    } else {
+                        // Queue-closed layout: standard side-by-side art + controls
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            // Top bar
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = onBack) {
+                                    Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(28.dp))
+                                }
+                                Row {
+                                    if (!state.isPodcastMode && !state.isAudiobookMode) {
+                                        IconButton(onClick = { showLyrics = !showLyrics }) {
+                                            Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
+                                        }
+                                    }
+                                    IconButton(onClick = { showQueue = !showQueue }) {
+                                        Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = if (showQueue) Cyan500 else OnSurfaceDim)
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.weight(1f))
+
+                            // Art + info + controls
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.weight(0.45f).padding(8.dp), contentAlignment = Alignment.Center) {
+                                    if (showLyrics && !state.isPodcastMode && !state.isAudiobookMode) {
+                                        com.mvbar.android.ui.components.LyricsView(
+                                            lyrics = lyrics, isLoading = lyricsLoading, positionMs = state.position,
+                                            modifier = Modifier.fillMaxHeight(0.8f).aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(SurfaceDark.copy(alpha = 0.5f))
+                                        )
+                                    } else {
+                                        AsyncImage(model = artModel, contentDescription = null, contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxHeight(0.8f).aspectRatio(1f).clip(RoundedCornerShape(16.dp)).shadow(16.dp, RoundedCornerShape(16.dp)))
+                                    }
+                                }
+
+                                Column(modifier = Modifier.weight(0.55f).padding(start = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(track.displayTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                                    Text(track.displayArtist, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+
+                                    Spacer(Modifier.height(8.dp))
+
+                                    var isDragging by remember { mutableStateOf(false) }
+                                    var dragProgress by remember { mutableFloatStateOf(0f) }
+                                    val currentProgress = if (isDragging) dragProgress else if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
+
+                                    Slider(value = currentProgress, onValueChange = { isDragging = true; dragProgress = it },
+                                        onValueChangeFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
+                                        colors = SliderDefaults.colors(thumbColor = Cyan500, activeTrackColor = Cyan500, inactiveTrackColor = WhiteOverlay15),
+                                        modifier = Modifier.fillMaxWidth())
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        val displayPosition = if (isDragging) (dragProgress * state.duration).toLong() else state.position
+                                        Text(formatTime(displayPosition), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
+                                        Text(formatTime(state.duration), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
+                                    }
+
+                                    Spacer(Modifier.height(4.dp))
+
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                                        if (state.isPodcastMode || state.isAudiobookMode) Spacer(Modifier.size(36.dp))
+                                        else IconButton(onClick = onCyclePlayMode, modifier = Modifier.size(36.dp)) {
+                                            Icon(when (state.playMode) { PlayMode.SHUFFLE -> Icons.Filled.Shuffle; PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne; else -> Icons.Filled.Repeat },
+                                                "Play Mode", tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim, modifier = Modifier.size(20.dp))
+                                        }
+                                        if (state.isPodcastMode || state.isAudiobookMode) IconButton(onClick = onPrevious, modifier = Modifier.size(44.dp)) { Text("-15", color = OnSurface, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
+                                        else IconButton(onClick = onPrevious, modifier = Modifier.size(44.dp)) { Icon(Icons.Filled.SkipPrevious, "Previous", tint = OnSurface, modifier = Modifier.size(28.dp)) }
+                                        IconButton(onClick = onTogglePlay, modifier = Modifier.size(56.dp).background(if (state.isPodcastMode) Orange500 else Cyan500, CircleShape)) {
+                                            Icon(if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (state.isPlaying) "Pause" else "Play", tint = Color.Black, modifier = Modifier.size(32.dp))
+                                        }
+                                        if (state.isPodcastMode || state.isAudiobookMode) IconButton(onClick = onNext, modifier = Modifier.size(44.dp)) { Text("+15", color = OnSurface, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
+                                        else IconButton(onClick = onNext, modifier = Modifier.size(44.dp)) { Icon(Icons.Filled.SkipNext, "Next", tint = OnSurface, modifier = Modifier.size(28.dp)) }
+                                        if (state.isPodcastMode || state.isAudiobookMode) Spacer(Modifier.size(36.dp))
+                                        else IconButton(onClick = onToggleFavorite, modifier = Modifier.size(36.dp)) {
+                                            Icon(if (state.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, "Favorite",
+                                                tint = if (state.isFavorite) Pink500 else OnSurfaceDim, modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.weight(1f))
                         }
                     }
-
-                    Spacer(Modifier.weight(1f))
                 }
             }
         }
