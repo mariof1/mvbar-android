@@ -13,6 +13,8 @@ import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerManager
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -404,30 +406,52 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun playShuffledAllTracks(selectedTrack: Track? = null) {
         viewModelScope.launch {
             try {
-                val response = repo.getTracks(limit = 500, offset = 0, sort = "random")
-                val tracks = response.tracks.toMutableList()
+                // Sample from random offsets across the entire library
+                // to get a diverse shuffled queue (not just the first 500)
+                val batchSize = 50
+                val maxEstimate = 50_000 // upper bound guess; excess offsets just return empty
+                val offsets = (0 until 10).map { (0..maxEstimate).random() } + listOf(0)
+                val allFetched = mutableListOf<Track>()
+
+                // Fetch batches in parallel
+                kotlinx.coroutines.coroutineScope {
+                    val deferred = offsets.map { offset ->
+                        async {
+                            try {
+                                repo.getTracks(limit = batchSize, offset = offset).tracks
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
+                        }
+                    }
+                    deferred.forEach { allFetched.addAll(it.await()) }
+                }
+
+                // Deduplicate by track ID and shuffle
+                val tracks = allFetched
+                    .distinctBy { it.id }
+                    .shuffled()
+                    .toMutableList()
+
                 if (tracks.isEmpty()) return@launch
+
                 // If a specific track was selected, ensure it's first
-                val startIndex = if (selectedTrack != null) {
+                if (selectedTrack != null) {
                     val idx = tracks.indexOfFirst { it.id == selectedTrack.id }
                     if (idx >= 0) {
-                        // Move selected track to front
                         tracks.removeAt(idx)
-                        tracks.add(0, selectedTrack)
-                    } else {
-                        tracks.add(0, selectedTrack)
                     }
-                    0
-                } else {
-                    0
+                    tracks.add(0, selectedTrack)
                 }
-                playerManager.playTracks(tracks, startIndex)
+
+                playerManager.playTracks(tracks, 0)
+
                 // Enable shuffle mode
                 if (playerManager.state.value.playMode != PlayMode.SHUFFLE) {
-                    playerManager.cyclePlayMode()
-                    // May need to cycle through modes to reach SHUFFLE
-                    while (playerManager.state.value.playMode != PlayMode.SHUFFLE) {
+                    var safety = 0
+                    while (playerManager.state.value.playMode != PlayMode.SHUFFLE && safety < 10) {
                         playerManager.cyclePlayMode()
+                        safety++
                     }
                 }
                 selectedTrack?.let { prefetchLyrics(it.id) }
