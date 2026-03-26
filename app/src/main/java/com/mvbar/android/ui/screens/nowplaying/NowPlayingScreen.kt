@@ -168,6 +168,205 @@ fun NowPlayingScreen(
             )
 
             // Content
+            val configuration = LocalConfiguration.current
+            val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+
+            if (isLandscape) {
+                // Landscape: art on left, controls on right
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Left side: art
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (showLyrics && !state.isPodcastMode && !state.isAudiobookMode) {
+                            com.mvbar.android.ui.components.LyricsView(
+                                lyrics = lyrics,
+                                isLoading = lyricsLoading,
+                                positionMs = state.position,
+                                modifier = Modifier
+                                    .fillMaxHeight(0.85f)
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(SurfaceDark.copy(alpha = 0.5f))
+                            )
+                        } else {
+                            val artModelLand = state.artworkUrl
+                                ?: if (state.isPodcastMode) {
+                                    ApiClient.episodeArtUrl(-track.id)
+                                } else {
+                                    track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+                                }
+                            AsyncImage(
+                                model = artModelLand,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxHeight(0.85f)
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .shadow(24.dp, RoundedCornerShape(20.dp))
+                            )
+                        }
+                    }
+
+                    // Right side: info + controls
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        // Top bar (minimize + lyrics/queue buttons)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(28.dp))
+                            }
+                            Row {
+                                if (!state.isPodcastMode && !state.isAudiobookMode) {
+                                    IconButton(onClick = { showLyrics = !showLyrics }) {
+                                        Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
+                                    }
+                                }
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        if (scaffoldState.bottomSheetState.currentValue == SheetValue.Expanded)
+                                            scaffoldState.bottomSheetState.partialExpand()
+                                        else scaffoldState.bottomSheetState.expand()
+                                    }
+                                }) {
+                                    Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue",
+                                        tint = if (scaffoldState.bottomSheetState.currentValue == SheetValue.Expanded) Cyan500 else OnSurfaceDim)
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // Track info
+                        Text(
+                            track.displayTitle,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = OnSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(track.displayArtist, style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDim, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                        Text(track.displayAlbum, style = MaterialTheme.typography.bodySmall, color = OnSurfaceSubtle, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // Progress bar
+                        var isDragging by remember { mutableStateOf(false) }
+                        var dragProgress by remember { mutableFloatStateOf(0f) }
+                        val currentProgress = if (isDragging) dragProgress
+                            else if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
+
+                        Slider(
+                            value = currentProgress,
+                            onValueChange = { isDragging = true; dragProgress = it },
+                            onValueChangeFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
+                            colors = SliderDefaults.colors(thumbColor = Cyan500, activeTrackColor = Cyan500, inactiveTrackColor = WhiteOverlay15),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            val displayPosition = if (isDragging) (dragProgress * state.duration).toLong() else state.position
+                            Text(formatTime(displayPosition), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
+                            Text(formatTime(state.duration), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // Controls
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (state.isPodcastMode || state.isAudiobookMode) {
+                                Spacer(Modifier.size(40.dp))
+                            } else {
+                                IconButton(onClick = onCyclePlayMode) {
+                                    Icon(
+                                        when (state.playMode) {
+                                            PlayMode.SHUFFLE -> Icons.Filled.Shuffle
+                                            PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne
+                                            else -> Icons.Filled.Repeat
+                                        },
+                                        "Play Mode",
+                                        tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+
+                            if (state.isPodcastMode || state.isAudiobookMode) {
+                                IconButton(onClick = onPrevious, modifier = Modifier.size(48.dp)) {
+                                    Text("-15", color = OnSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                IconButton(onClick = onPrevious, modifier = Modifier.size(48.dp)) {
+                                    Icon(Icons.Filled.SkipPrevious, "Previous", tint = OnSurface, modifier = Modifier.size(32.dp))
+                                }
+                            }
+
+                            IconButton(
+                                onClick = onTogglePlay,
+                                modifier = Modifier.size(64.dp).background(if (state.isPodcastMode) Orange500 else Cyan500, CircleShape)
+                            ) {
+                                Icon(
+                                    if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    if (state.isPlaying) "Pause" else "Play",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+
+                            if (state.isPodcastMode || state.isAudiobookMode) {
+                                IconButton(onClick = onNext, modifier = Modifier.size(48.dp)) {
+                                    Text("+15", color = OnSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                IconButton(onClick = onNext, modifier = Modifier.size(48.dp)) {
+                                    Icon(Icons.Filled.SkipNext, "Next", tint = OnSurface, modifier = Modifier.size(32.dp))
+                                }
+                            }
+
+                            if (state.isPodcastMode || state.isAudiobookMode) {
+                                Spacer(Modifier.size(40.dp))
+                            } else {
+                                IconButton(onClick = onToggleFavorite) {
+                                    Icon(
+                                        if (state.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                        "Favorite",
+                                        tint = if (state.isFavorite) Pink500 else OnSurfaceDim,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+            // Portrait layout (original)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -405,6 +604,7 @@ fun NowPlayingScreen(
 
                 Spacer(Modifier.weight(1f))
             }
+            } // end portrait else
         }
     }
 }
