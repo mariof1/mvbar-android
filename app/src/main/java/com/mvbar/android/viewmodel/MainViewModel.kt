@@ -444,22 +444,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // If online fetch yielded nothing, fall back to cached tracks
                 if (tracks.isEmpty()) {
                     DebugLog.i("AllTracks", "Online shuffle returned 0 tracks, falling back to cache")
-                    val totalCached = repo.getCachedTrackCount()
-                    if (totalCached == 0) return@launch
-                    val allCached = mutableListOf<Track>()
-                    var offset = 0
-                    while (offset < totalCached) {
-                        val page = repo.getCachedTracksPage(500, offset) ?: break
-                        allCached.addAll(page)
-                        if (page.size < 500) break
-                        offset += 500
+                    val cachedIds = AudioCacheManager.getCachedTrackIds()
+                    DebugLog.i("AllTracks", "Audio cache contains ${cachedIds.size} track IDs")
+                    if (cachedIds.isNotEmpty()) {
+                        val cachedTracks = repo.getTracksByIds(cachedIds) ?: emptyList()
+                        tracks = cachedTracks.shuffled().toMutableList()
                     }
-                    // Filter to only tracks whose audio is actually cached
-                    tracks = allCached
-                        .filter { AudioCacheManager.isTrackCached(it.id) }
-                        .shuffled()
-                        .take(500)
-                        .toMutableList()
                     DebugLog.i("AllTracks", "Offline shuffle: ${tracks.size} cached tracks available")
                 }
 

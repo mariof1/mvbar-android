@@ -74,6 +74,19 @@ object AudioCacheManager {
         return cache?.keys?.size ?: 0
     }
 
+    /** Returns IDs of tracks whose audio is in the ExoPlayer cache. */
+    fun getCachedTrackIds(): List<Int> {
+        val keys = cache?.keys ?: return emptyList()
+        val prefix = "api/library/tracks/"
+        val suffix = "/stream"
+        return keys.mapNotNull { key ->
+            val start = key.indexOf(prefix)
+            if (start < 0 || !key.endsWith(suffix)) return@mapNotNull null
+            val idStr = key.substring(start + prefix.length, key.length - suffix.length)
+            idStr.toIntOrNull()
+        }
+    }
+
     /**
      * Returns all cached content keys. Each key is a stream URL that can be
      * parsed back to a track/episode/chapter ID.

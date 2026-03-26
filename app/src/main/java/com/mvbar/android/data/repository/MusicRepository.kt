@@ -76,6 +76,9 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
 
     suspend fun getCachedTrackCount(): Int = db?.trackDao()?.count() ?: 0
 
+    suspend fun getTracksByIds(ids: List<Int>): List<Track>? =
+        db?.trackDao()?.getByIds(ids)?.map { it.toModel() }
+
     suspend fun getCachedRecentlyAdded(limit: Int): List<Track>? =
         db?.trackDao()?.getRecentlyAdded(limit)?.map { it.toModel() }
 
