@@ -78,13 +78,6 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            "Settings",
-            style = MaterialTheme.typography.headlineLarge,
-            color = OnSurface,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
-        )
-
         // Tab row
         ScrollableTabRow(
             selectedTabIndex = selectedTab.ordinal,
