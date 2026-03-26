@@ -19,6 +19,7 @@ object AaPreferences {
     private val KEY_LAST_QUEUE = stringPreferencesKey("last_queue")
     private val KEY_LAST_INDEX = intPreferencesKey("last_index")
     private val KEY_LAST_POSITION = stringPreferencesKey("last_position_ms")
+    private val KEY_AUTO_RESUME = booleanPreferencesKey("auto_resume_on_start")
 
     val ALL_CATEGORIES = listOf(
         "foryou" to "For You",
@@ -80,6 +81,16 @@ object AaPreferences {
 
     suspend fun saveRepeatMode(context: Context, mode: Int) {
         context.aaDataStore.edit { it[KEY_REPEAT_MODE] = mode }
+    }
+
+    // Auto-resume on app start
+
+    suspend fun getAutoResume(context: Context): Boolean {
+        return context.aaDataStore.data.first()[KEY_AUTO_RESUME] ?: false
+    }
+
+    suspend fun saveAutoResume(context: Context, enabled: Boolean) {
+        context.aaDataStore.edit { it[KEY_AUTO_RESUME] = enabled }
     }
 
     // Last playback state persistence (for AA reconnect auto-resume)

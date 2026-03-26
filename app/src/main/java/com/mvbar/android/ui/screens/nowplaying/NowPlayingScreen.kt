@@ -7,11 +7,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -35,6 +40,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.model.Playlist
+import com.mvbar.android.data.model.SmartPlaylist
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerState
@@ -56,7 +63,18 @@ fun NowPlayingScreen(
     onPlayQueueItem: (Int) -> Unit = {},
     onRemoveFromQueue: (Int) -> Unit = {},
     onClearQueue: () -> Unit = {},
-    onLoadLyrics: ((Int) -> Unit)? = null
+    onLoadLyrics: ((Int) -> Unit)? = null,
+    // Queue panel tabs data
+    playlists: List<Playlist> = emptyList(),
+    smartPlaylists: List<SmartPlaylist> = emptyList(),
+    favorites: List<Track> = emptyList(),
+    playlistTracks: List<Track> = emptyList(),
+    playlistTracksLoading: Boolean = false,
+    smartPlaylistTracks: List<Track> = emptyList(),
+    smartPlaylistTracksLoading: Boolean = false,
+    onLoadPlaylistTracks: (Int) -> Unit = {},
+    onLoadSmartPlaylistTracks: (Int) -> Unit = {},
+    onPlayTrackWithQueue: (Track, List<Track>) -> Unit = { _, _ -> }
 ) {
     val track = state.currentTrack ?: return
     var showLyrics by remember { mutableStateOf(false) }
@@ -125,47 +143,26 @@ fun NowPlayingScreen(
                     enter = expandHorizontally(animationSpec = tween(300), expandFrom = Alignment.Start) + fadeIn(tween(200)),
                     exit = shrinkHorizontally(animationSpec = tween(250), shrinkTowards = Alignment.Start) + fadeOut(tween(150))
                 ) {
-                    Column(
+                    QueuePanelContent(
+                        state = state,
+                        playlists = playlists,
+                        smartPlaylists = smartPlaylists,
+                        favorites = favorites,
+                        playlistTracks = playlistTracks,
+                        playlistTracksLoading = playlistTracksLoading,
+                        smartPlaylistTracks = smartPlaylistTracks,
+                        smartPlaylistTracksLoading = smartPlaylistTracksLoading,
+                        onPlayQueueItem = onPlayQueueItem,
+                        onRemoveFromQueue = onRemoveFromQueue,
+                        onClearQueue = onClearQueue,
+                        onLoadPlaylistTracks = onLoadPlaylistTracks,
+                        onLoadSmartPlaylistTracks = onLoadSmartPlaylistTracks,
+                        onPlayTrackWithQueue = onPlayTrackWithQueue,
                         modifier = Modifier
                             .fillMaxHeight()
                             .fillMaxWidth(0.42f)
                             .background(SurfaceContainerDark.copy(alpha = 0.95f))
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = OnSurface)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("${state.queue.size}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
-                                if (state.queue.isNotEmpty()) {
-                                    Spacer(Modifier.width(4.dp))
-                                    TextButton(onClick = onClearQueue) {
-                                        Text("Clear", color = Pink500, style = MaterialTheme.typography.labelSmall)
-                                    }
-                                }
-                            }
-                        }
-                        HorizontalDivider(color = WhiteOverlay10, modifier = Modifier.padding(horizontal = 16.dp))
-
-                        if (state.queue.isEmpty()) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("Queue is empty", color = OnSurfaceDim)
-                            }
-                        } else {
-                            LazyColumn(contentPadding = PaddingValues(vertical = 4.dp)) {
-                                itemsIndexed(state.queue) { index, qTrack ->
-                                    val isActive = index == state.queueIndex
-                                    val isPast = index < state.queueIndex
-                                    Box(modifier = Modifier.graphicsLayer { alpha = if (isPast) 0.5f else 1f }) {
-                                        QueueItem(track = qTrack, isActive = isActive,
-                                            onPlay = { onPlayQueueItem(index) }, onRemove = { onRemoveFromQueue(index) })
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    )
                 }
 
                 // Right side: art + controls
@@ -389,43 +386,24 @@ fun NowPlayingScreen(
                     }
 
                     Spacer(Modifier.height(8.dp))
-                    HorizontalDivider(color = WhiteOverlay10)
 
-                    // Queue header
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = OnSurface)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("${state.queue.size} tracks", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
-                            if (state.queue.isNotEmpty()) {
-                                Spacer(Modifier.width(4.dp))
-                                TextButton(onClick = onClearQueue) {
-                                    Text("Clear", color = Pink500, style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        }
-                    }
-
-                    // Queue list
-                    if (state.queue.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            Text("Queue is empty", color = OnSurfaceDim)
-                        }
-                    } else {
-                        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
-                            itemsIndexed(state.queue) { index, qTrack ->
-                                val isActive = index == state.queueIndex
-                                val isPast = index < state.queueIndex
-                                Box(modifier = Modifier.graphicsLayer { alpha = if (isPast) 0.5f else 1f }) {
-                                    QueueItem(track = qTrack, isActive = isActive,
-                                        onPlay = { onPlayQueueItem(index) }, onRemove = { onRemoveFromQueue(index) })
-                                }
-                            }
-                        }
-                    }
+                    QueuePanelContent(
+                        state = state,
+                        playlists = playlists,
+                        smartPlaylists = smartPlaylists,
+                        favorites = favorites,
+                        playlistTracks = playlistTracks,
+                        playlistTracksLoading = playlistTracksLoading,
+                        smartPlaylistTracks = smartPlaylistTracks,
+                        smartPlaylistTracksLoading = smartPlaylistTracksLoading,
+                        onPlayQueueItem = onPlayQueueItem,
+                        onRemoveFromQueue = onRemoveFromQueue,
+                        onClearQueue = onClearQueue,
+                        onLoadPlaylistTracks = onLoadPlaylistTracks,
+                        onLoadSmartPlaylistTracks = onLoadSmartPlaylistTracks,
+                        onPlayTrackWithQueue = onPlayTrackWithQueue,
+                        modifier = Modifier.weight(1f)
+                    )
                 } else {
                     // ---- FULL MODE: normal portrait layout ----
                     Spacer(Modifier.weight(0.5f))
@@ -507,12 +485,289 @@ fun NowPlayingScreen(
     }
 }
 
+private enum class QueueTab(val label: String) {
+    QUEUE("Queue"),
+    PLAYLISTS("Playlists"),
+    SMART("Smart"),
+    FAVOURITES("Favourites")
+}
+
+@Composable
+private fun QueuePanelContent(
+    state: PlayerState,
+    playlists: List<Playlist>,
+    smartPlaylists: List<SmartPlaylist>,
+    favorites: List<Track>,
+    playlistTracks: List<Track>,
+    playlistTracksLoading: Boolean,
+    smartPlaylistTracks: List<Track>,
+    smartPlaylistTracksLoading: Boolean,
+    onPlayQueueItem: (Int) -> Unit,
+    onRemoveFromQueue: (Int) -> Unit,
+    onClearQueue: () -> Unit,
+    onLoadPlaylistTracks: (Int) -> Unit,
+    onLoadSmartPlaylistTracks: (Int) -> Unit,
+    onPlayTrackWithQueue: (Track, List<Track>) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var selectedTab by remember { mutableStateOf(QueueTab.QUEUE) }
+    var selectedPlaylistId by remember { mutableStateOf<Int?>(null) }
+    var selectedSmartPlaylistId by remember { mutableStateOf<Int?>(null) }
+
+    Column(modifier = modifier) {
+        // Tab chips
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            QueueTab.entries.forEach { tab ->
+                FilterChip(
+                    selected = selectedTab == tab,
+                    onClick = {
+                        selectedTab = tab
+                        selectedPlaylistId = null
+                        selectedSmartPlaylistId = null
+                    },
+                    label = { Text(tab.label, style = MaterialTheme.typography.labelSmall) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.Transparent,
+                        selectedContainerColor = Cyan500.copy(alpha = 0.2f),
+                        labelColor = OnSurfaceDim,
+                        selectedLabelColor = Cyan500
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        borderColor = WhiteOverlay15,
+                        selectedBorderColor = Cyan500.copy(alpha = 0.4f),
+                        enabled = true,
+                        selected = selectedTab == tab
+                    ),
+                    modifier = Modifier.height(30.dp)
+                )
+            }
+        }
+
+        HorizontalDivider(color = WhiteOverlay10, modifier = Modifier.padding(horizontal = 12.dp))
+
+        when (selectedTab) {
+            QueueTab.QUEUE -> {
+                // Queue header
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("${state.queue.size} tracks", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                    if (state.queue.isNotEmpty()) {
+                        TextButton(onClick = onClearQueue) {
+                            Text("Clear", color = Pink500, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+
+                // Auto-scroll to currently playing track
+                val queueListState = rememberLazyListState()
+                LaunchedEffect(state.queueIndex) {
+                    if (state.queue.isNotEmpty() && state.queueIndex in state.queue.indices) {
+                        queueListState.animateScrollToItem(state.queueIndex)
+                    }
+                }
+
+                if (state.queue.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text("Queue is empty", color = OnSurfaceDim)
+                    }
+                } else {
+                    LazyColumn(
+                        state = queueListState,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        itemsIndexed(state.queue) { index, qTrack ->
+                            val isActive = index == state.queueIndex
+                            val isPast = index < state.queueIndex
+                            Box(modifier = Modifier.graphicsLayer { alpha = if (isPast) 0.5f else 1f }) {
+                                QueueItem(track = qTrack, isActive = isActive,
+                                    onPlay = { onPlayQueueItem(index) },
+                                    onRemove = { onRemoveFromQueue(index) })
+                            }
+                        }
+                    }
+                }
+            }
+
+            QueueTab.PLAYLISTS -> {
+                if (selectedPlaylistId != null) {
+                    // Track list for selected playlist
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { selectedPlaylistId = null }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            playlists.firstOrNull { it.id == selectedPlaylistId }?.name ?: "Playlist",
+                            style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                            color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (playlistTracksLoading) {
+                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                        }
+                    } else if (playlistTracks.isEmpty()) {
+                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            Text("No tracks", color = OnSurfaceDim)
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
+                            itemsIndexed(playlistTracks) { _, track ->
+                                QueueItem(track = track, isActive = track.id == state.currentTrack?.id,
+                                    onPlay = { onPlayTrackWithQueue(track, playlistTracks) },
+                                    onRemove = {}, showRemove = false)
+                            }
+                        }
+                    }
+                } else {
+                    // Playlist list
+                    if (playlists.isEmpty()) {
+                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            Text("No playlists", color = OnSurfaceDim)
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
+                            items(playlists) { playlist ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clickable {
+                                            selectedPlaylistId = playlist.id
+                                            onLoadPlaylistTracks(playlist.id)
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = Cyan500, modifier = Modifier.size(24.dp))
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(playlist.name, style = MaterialTheme.typography.bodyMedium, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("${playlist.itemCount} tracks", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                                    }
+                                    Icon(Icons.Filled.ChevronRight, null, tint = OnSurfaceDim, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            QueueTab.SMART -> {
+                if (selectedSmartPlaylistId != null) {
+                    // Track list for selected smart playlist
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { selectedSmartPlaylistId = null }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            smartPlaylists.firstOrNull { it.id == selectedSmartPlaylistId }?.name ?: "Smart Playlist",
+                            style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                            color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (smartPlaylistTracksLoading) {
+                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                        }
+                    } else if (smartPlaylistTracks.isEmpty()) {
+                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            Text("No tracks", color = OnSurfaceDim)
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
+                            itemsIndexed(smartPlaylistTracks) { _, track ->
+                                QueueItem(track = track, isActive = track.id == state.currentTrack?.id,
+                                    onPlay = { onPlayTrackWithQueue(track, smartPlaylistTracks) },
+                                    onRemove = {}, showRemove = false)
+                            }
+                        }
+                    }
+                } else {
+                    // Smart playlist list
+                    if (smartPlaylists.isEmpty()) {
+                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            Text("No smart playlists", color = OnSurfaceDim)
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
+                            items(smartPlaylists) { sp ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clickable {
+                                            selectedSmartPlaylistId = sp.id
+                                            onLoadSmartPlaylistTracks(sp.id)
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Filled.AutoAwesome, null, tint = Pink500, modifier = Modifier.size(24.dp))
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(sp.name, style = MaterialTheme.typography.bodyMedium, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("Smart • ${sp.sort}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                                    }
+                                    Icon(Icons.Filled.ChevronRight, null, tint = OnSurfaceDim, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            QueueTab.FAVOURITES -> {
+                val favListState = rememberLazyListState()
+                // Auto-scroll to currently playing track in favorites
+                LaunchedEffect(state.currentTrack?.id) {
+                    val idx = favorites.indexOfFirst { it.id == state.currentTrack?.id }
+                    if (idx >= 0) favListState.animateScrollToItem(idx)
+                }
+
+                if (favorites.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text("No favourites", color = OnSurfaceDim)
+                    }
+                } else {
+                    LazyColumn(
+                        state = favListState,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        itemsIndexed(favorites) { _, track ->
+                            val isPlaying = track.id == state.currentTrack?.id
+                            QueueItem(track = track, isActive = isPlaying,
+                                onPlay = { onPlayTrackWithQueue(track, favorites) },
+                                onRemove = {}, showRemove = false)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun QueueItem(
     track: Track,
     isActive: Boolean,
     onPlay: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    showRemove: Boolean = true
 ) {
     val bgColor = if (isActive) Cyan500.copy(alpha = 0.12f) else Color.Transparent
 
@@ -572,8 +827,10 @@ private fun QueueItem(
             color = OnSurfaceDim
         )
 
-        IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Filled.Close, "Remove", tint = OnSurfaceDim, modifier = Modifier.size(18.dp))
+        if (showRemove) {
+            IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.Close, "Remove", tint = OnSurfaceDim, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }

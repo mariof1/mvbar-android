@@ -355,6 +355,52 @@ private fun GeneralTab(onLogout: () -> Unit) {
             }
         }
 
+        // Auto-resume on start
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.PlayCircle, null, tint = Cyan500)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Auto-Resume", style = MaterialTheme.typography.titleMedium, color = OnSurface)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Resume on app start", style = MaterialTheme.typography.bodyMedium, color = OnSurface)
+                            Text("Restore last queue and open player when app launches", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        var autoResume by remember { mutableStateOf(false) }
+                        LaunchedEffect(Unit) {
+                            autoResume = AaPreferences.getAutoResume(context)
+                        }
+                        Switch(
+                            checked = autoResume,
+                            onCheckedChange = {
+                                autoResume = it
+                                scope.launch { AaPreferences.saveAutoResume(context, it) }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Cyan500,
+                                checkedTrackColor = Cyan500.copy(alpha = 0.3f)
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
         // Sign out
         item {
             Spacer(Modifier.height(24.dp))

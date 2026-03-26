@@ -3,6 +3,7 @@ package com.mvbar.android.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.ActivityQueue
 import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.local.MvbarDatabase
@@ -506,4 +507,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun addToQueue(track: Track) { playerManager.addToQueue(track) }
+
+    /** Save current playback state for auto-resume */
+    fun savePlaybackState() {
+        viewModelScope.launch {
+            val state = playerManager.state.value
+            if (state.queue.isEmpty()) return@launch
+            val entries = state.queue.map { track ->
+                AaPreferences.QueueEntry(
+                    mediaId = if (track.id < 0) "ep:${-track.id}" else track.id.toString(),
+                    title = track.title,
+                    artist = track.artist,
+                    album = track.album,
+                    artUri = track.artPath?.let { com.mvbar.android.data.api.ApiClient.artPathUrl(it) }
+                        ?: if (track.id < 0) com.mvbar.android.data.api.ApiClient.episodeArtUrl(-track.id)
+                        else com.mvbar.android.data.api.ApiClient.trackArtUrl(track.id)
+                )
+            }
+            AaPreferences.savePlaybackState(getApplication(), entries, state.queueIndex, state.position)
+        }
+    }
 }

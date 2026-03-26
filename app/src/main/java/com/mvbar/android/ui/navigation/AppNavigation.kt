@@ -16,13 +16,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.model.Playlist
 import com.mvbar.android.data.model.SmartPlaylistFilters
 import com.mvbar.android.data.model.SuggestResponse
@@ -168,6 +172,32 @@ fun MainScreen(
     val audiobookPlayingChapter by audiobookVm.playingChapter.collectAsState()
 
     val currentTrackId = playerState.currentTrack?.id
+    val context = LocalContext.current
+
+    // Save playback state when app goes to background
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                mainVm.savePlaybackState()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Auto-resume: restore last session and open player
+    LaunchedEffect(Unit) {
+        val autoResume = AaPreferences.getAutoResume(context)
+        if (!autoResume) return@LaunchedEffect
+        // Wait for the service to restore the queue (happens in onConnect)
+        kotlinx.coroutines.delay(2000)
+        val state = mainVm.playerManager.state.value
+        if (state.queue.isNotEmpty() && !state.isPlaying) {
+            mainVm.playerManager.togglePlay()
+            showNowPlaying = true
+        }
+    }
 
     val rootTabs = remember { BottomTab.entries.map { it.route }.toSet() }
     val isAtRootTab = currentTab in rootTabs
@@ -994,7 +1024,20 @@ fun MainScreen(
                 onPlayQueueItem = { mainVm.playerManager.playQueueIndex(it) },
                 onRemoveFromQueue = { mainVm.playerManager.removeFromQueue(it) },
                 onClearQueue = { mainVm.playerManager.clearQueue() },
-                onLoadLyrics = { mainVm.loadLyrics(it) }
+                onLoadLyrics = { mainVm.loadLyrics(it) },
+                playlists = playlists,
+                smartPlaylists = smartPlaylists,
+                favorites = favorites,
+                playlistTracks = playlistTracks,
+                playlistTracksLoading = playlistLoading,
+                smartPlaylistTracks = smartPlaylistDetail?.tracks ?: emptyList(),
+                smartPlaylistTracksLoading = smartPlaylistLoading,
+                onLoadPlaylistTracks = { id ->
+                    val playlist = playlists.firstOrNull { it.id == id }
+                    if (playlist != null) mainVm.loadPlaylistDetail(playlist)
+                },
+                onLoadSmartPlaylistTracks = { mainVm.loadSmartPlaylistDetail(it) },
+                onPlayTrackWithQueue = { track, queue -> mainVm.playTrack(track, queue) }
             )
         }
 
