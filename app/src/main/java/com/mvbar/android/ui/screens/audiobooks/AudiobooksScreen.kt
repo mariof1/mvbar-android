@@ -61,7 +61,7 @@ fun AudiobooksScreen(
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 160.dp),
+                columns = GridCells.Adaptive(minSize = 150.dp),
                 contentPadding = PaddingValues(
                     start = 12.dp, end = 12.dp,
                     top = 8.dp, bottom = 140.dp

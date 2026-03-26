@@ -111,7 +111,7 @@ private fun HomeContent(
         val screenWidthDp = LocalConfiguration.current.screenWidthDp
         val bucketColumns = when {
             screenWidthDp > 900 -> 4
-            screenWidthDp > 600 -> 3
+            screenWidthDp > 600 -> 4
             else -> 2
         }
         LazyColumn(
