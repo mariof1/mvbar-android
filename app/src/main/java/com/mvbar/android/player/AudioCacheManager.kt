@@ -209,6 +209,7 @@ object AudioCacheManager {
             for (track in tracksToCache) {
                 if (!isActive) break
                 if (shouldSkipDownload()) break
+                if (track.id <= 0) continue  // skip invalid IDs (podcasts/audiobooks)
 
                 val url = ApiClient.streamUrl(track.id)
                 // Skip if already fully cached

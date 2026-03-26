@@ -32,9 +32,12 @@ import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -147,38 +150,65 @@ class PlaybackService : MediaLibraryService() {
 
         player.addListener(object : Player.Listener {
             private var consecutiveErrors = 0
+            private var retryJob: Job? = null
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 DebugLog.e("Player", "Playback error: ${error.errorCodeName}", error)
 
-                // If the error is a network/HTTP issue, try to skip to the next cached track
                 val errorCode = error.errorCode
                 val isNetworkError = errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                     errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
                     errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
                     errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_UNSPECIFIED
 
-                if (isNetworkError && player.mediaItemCount > 1) {
-                    consecutiveErrors++
-                    if (consecutiveErrors > player.mediaItemCount) {
-                        // Tried all items — stop to avoid infinite loop
-                        DebugLog.w("Player", "All tracks failed, stopping playback")
-                        consecutiveErrors = 0
-                        return
-                    }
-                    DebugLog.i("Player", "Skipping uncached track (error $consecutiveErrors)")
-                    player.seekToNextMediaItem()
+                if (!isNetworkError) return
+
+                consecutiveErrors++
+
+                // If all tracks have been tried, pause instead of looping
+                if (consecutiveErrors > player.mediaItemCount) {
+                    DebugLog.w("Player", "All tracks failed, pausing playback")
+                    consecutiveErrors = 0
+                    player.pause()
                     player.prepare()
+                    return
+                }
+
+                // Retry current track with exponential backoff (up to 2 retries)
+                val retryCount = consecutiveErrors
+                if (retryCount <= 2) {
+                    val delayMs = retryCount * 2000L  // 2s, 4s
+                    DebugLog.i("Player", "Retry $retryCount in ${delayMs}ms")
+                    retryJob?.cancel()
+                    retryJob = serviceScope.launch {
+                        delay(delayMs)
+                        withContext(Dispatchers.Main) {
+                            player.prepare()
+                        }
+                    }
+                } else {
+                    // After 2 retries, skip to next track
+                    DebugLog.i("Player", "Skipping after $retryCount errors, moving to next")
+                    if (player.mediaItemCount > 1) {
+                        player.seekToNextMediaItem()
+                        player.prepare()
+                    } else {
+                        player.pause()
+                        player.prepare()
+                    }
                 }
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                // Reset error counter on successful track transition
                 consecutiveErrors = 0
+                retryJob?.cancel()
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) consecutiveErrors = 0
+                if (state == Player.STATE_READY) {
+                    consecutiveErrors = 0
+                    retryJob?.cancel()
+                }
             }
         })
 
