@@ -203,9 +203,9 @@ fun MainScreen(
             mainVm.playerManager.togglePlay()
         }
         if (state.queue.isNotEmpty()) {
-            showNowPlaying = true
-            // Restore queue panel visibility
+            // Restore queue panel visibility BEFORE showing player
             mainVm.queuePanelOpen = AaPreferences.getQueuePanelOpen(context)
+            showNowPlaying = true
         }
     }
 
@@ -1058,7 +1058,8 @@ fun MainScreen(
                 onLoadSmartPlaylistTracks = { mainVm.loadSmartPlaylistDetail(it) },
                 onPlayTrackWithQueue = { track, queue -> mainVm.playTrack(track, queue) },
                 initialQueueOpen = mainVm.queuePanelOpen,
-                onQueueOpenChanged = { mainVm.queuePanelOpen = it }
+                onQueueOpenChanged = { mainVm.queuePanelOpen = it },
+                onSearch = { showNowPlaying = false; showSearch = true }
             )
         }
 

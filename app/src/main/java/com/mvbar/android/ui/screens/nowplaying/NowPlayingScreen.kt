@@ -77,7 +77,8 @@ fun NowPlayingScreen(
     onLoadSmartPlaylistTracks: (Int) -> Unit = {},
     onPlayTrackWithQueue: (Track, List<Track>) -> Unit = { _, _ -> },
     initialQueueOpen: Boolean = false,
-    onQueueOpenChanged: (Boolean) -> Unit = {}
+    onQueueOpenChanged: (Boolean) -> Unit = {},
+    onSearch: () -> Unit = {}
 ) {
     val track = state.currentTrack ?: return
     var showLyrics by remember { mutableStateOf(false) }
@@ -202,6 +203,9 @@ fun NowPlayingScreen(
                                     Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(32.dp))
                                 }
                                 Row {
+                                    IconButton(onClick = onSearch) {
+                                        Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim, modifier = Modifier.size(28.dp))
+                                    }
                                     if (!state.isPodcastMode && !state.isAudiobookMode) {
                                         IconButton(onClick = { showLyrics = !showLyrics }) {
                                             Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim, modifier = Modifier.size(28.dp))
@@ -275,6 +279,9 @@ fun NowPlayingScreen(
                                     Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(28.dp))
                                 }
                                 Row {
+                                    IconButton(onClick = onSearch) {
+                                        Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
+                                    }
                                     if (!state.isPodcastMode && !state.isAudiobookMode) {
                                         IconButton(onClick = { showLyrics = !showLyrics }) {
                                             Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
@@ -404,6 +411,9 @@ fun NowPlayingScreen(
                         color = OnSurfaceDim
                     )
                     Row {
+                        IconButton(onClick = onSearch) {
+                            Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
+                        }
                         if (!state.isPodcastMode && !state.isAudiobookMode) {
                             IconButton(onClick = { showLyrics = !showLyrics }) {
                                 Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
