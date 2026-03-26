@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.model.RecBucket
@@ -107,6 +108,12 @@ private fun HomeContent(
         state = pullRefreshState,
         modifier = Modifier.fillMaxSize()
     ) {
+        val screenWidthDp = LocalConfiguration.current.screenWidthDp
+        val bucketColumns = when {
+            screenWidthDp > 900 -> 4
+            screenWidthDp > 600 -> 3
+            else -> 2
+        }
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 140.dp)
@@ -142,7 +149,7 @@ private fun HomeContent(
                     )
                 }
 
-                val rows = state.buckets.chunked(2)
+                val rows = state.buckets.chunked(bucketColumns)
                 itemsIndexed(rows) { rowIndex, row ->
                     Row(
                         modifier = Modifier
@@ -159,11 +166,11 @@ private fun HomeContent(
                                         onPlayTrack(bucket.tracks.first(), bucket.tracks)
                                     }
                                 },
-                                bucketIndex = rowIndex * 2 + colIndex,
+                                bucketIndex = rowIndex * bucketColumns + colIndex,
                                 modifier = Modifier.weight(1f)
                             )
                         }
-                        if (row.size == 1) {
+                        repeat(bucketColumns - row.size) {
                             Spacer(Modifier.weight(1f))
                         }
                     }
