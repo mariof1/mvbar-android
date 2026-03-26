@@ -15,6 +15,7 @@ import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerManager
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -153,6 +154,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 loadHome(isRefresh = true)
             }
         }
+        // Poll favorites every 5 minutes so changes from other devices appear quickly
+        viewModelScope.launch {
+            while (true) {
+                delay(5 * 60 * 1000L)
+                loadFavorites(isRefresh = true)
+            }
+        }
+    }
+
+    /** Called when the app returns to foreground — refreshes favorites immediately. */
+    fun onAppResumed() {
+        loadFavorites(isRefresh = true)
     }
 
     fun loadHome(isRefresh: Boolean = false) {

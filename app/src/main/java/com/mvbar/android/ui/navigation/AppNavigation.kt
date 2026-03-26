@@ -190,6 +190,9 @@ fun MainScreen(
             if (event == Lifecycle.Event.ON_STOP) {
                 mainVm.savePlaybackState()
             }
+            if (event == Lifecycle.Event.ON_RESUME) {
+                mainVm.onAppResumed()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
