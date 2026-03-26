@@ -48,6 +48,7 @@ class MvbarApp : Application(), ImageLoaderFactory {
         // Initialize sync manager and schedule periodic sync
         SyncManager.init(this)
         SyncManager.schedulePeriodic(this)
+        SyncManager.scheduleFavoritesSync(this)
     }
 
     override fun newImageLoader(): ImageLoader {

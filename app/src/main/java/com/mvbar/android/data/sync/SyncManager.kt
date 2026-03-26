@@ -14,6 +14,7 @@ object SyncManager {
     private const val KEY_LAST_SYNC = "last_sync_timestamp"
     private const val KEY_SYNC_INTERVAL = "sync_interval_hours"
     private const val WORK_NAME = "mvbar_periodic_sync"
+    private const val FAV_WORK_NAME = "mvbar_favorites_sync"
 
     private val _lastSyncTime = MutableStateFlow(0L)
     val lastSyncTime: StateFlow<Long> = _lastSyncTime.asStateFlow()
@@ -87,5 +88,26 @@ object SyncManager {
             .build()
 
         WorkManager.getInstance(context).enqueue(request)
+    }
+
+    /** Schedule a lightweight favorites-only sync every 15 minutes in the background. */
+    fun scheduleFavoritesSync(context: Context) {
+        DebugLog.i("SyncManager", "Scheduling favorites sync every 15min")
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val request = PeriodicWorkRequestBuilder<FavoritesSyncWorker>(
+            15, TimeUnit.MINUTES
+        )
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            FAV_WORK_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            request
+        )
     }
 }
