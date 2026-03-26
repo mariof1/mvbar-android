@@ -158,6 +158,9 @@ fun MainScreen(
     val selectedPlaylist by mainVm.selectedPlaylist.collectAsState()
     val smartPlaylistDetail by mainVm.smartPlaylistDetail.collectAsState()
     val smartPlaylistLoading by mainVm.smartPlaylistLoading.collectAsState()
+    val allTracks by mainVm.allTracks.collectAsState()
+    val allTracksLoading by mainVm.allTracksLoading.collectAsState()
+    val hasMoreAllTracks by mainVm.hasMoreAllTracks.collectAsState()
 
     // Podcast state
     val podcastsList by podcastVm.podcasts.collectAsState()
@@ -1075,6 +1078,11 @@ fun MainScreen(
                 },
                 onLoadSmartPlaylistTracks = { mainVm.loadSmartPlaylistDetail(it) },
                 onPlayTrackWithQueue = { track, queue -> mainVm.playTrack(track, queue) },
+                allTracks = allTracks,
+                allTracksLoading = allTracksLoading,
+                hasMoreAllTracks = hasMoreAllTracks,
+                onLoadAllTracks = { mainVm.loadAllTracks() },
+                onLoadMoreAllTracks = { mainVm.loadMoreAllTracks() },
                 initialQueueOpen = mainVm.queuePanelOpen,
                 onQueueOpenChanged = { mainVm.queuePanelOpen = it },
                 onSearch = { showNowPlaying = false; showSearch = true }

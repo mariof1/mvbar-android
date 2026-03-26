@@ -73,6 +73,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val PAGE_SIZE = 50
+        const val ALL_TRACKS_PAGE_SIZE = 100
     }
 
     // History pagination
@@ -114,6 +115,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _smartPlaylistLoading = MutableStateFlow(false)
     val smartPlaylistLoading: StateFlow<Boolean> = _smartPlaylistLoading.asStateFlow()
+
+    // All tracks (paginated for queue "All" tab)
+    private val _allTracks = MutableStateFlow<List<Track>>(emptyList())
+    val allTracks: StateFlow<List<Track>> = _allTracks.asStateFlow()
+
+    private val _allTracksLoading = MutableStateFlow(false)
+    val allTracksLoading: StateFlow<Boolean> = _allTracksLoading.asStateFlow()
+
+    private val _hasMoreAllTracks = MutableStateFlow(true)
+    val hasMoreAllTracks: StateFlow<Boolean> = _hasMoreAllTracks.asStateFlow()
+
+    private val _isLoadingMoreAllTracks = MutableStateFlow(false)
 
     init {
         viewModelScope.launch { playerManager.connect() }
@@ -345,6 +358,44 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 DebugLog.e("SmartPlaylist", "Load detail failed", e)
             } finally {
                 _smartPlaylistLoading.value = false
+            }
+        }
+    }
+
+    // All tracks for queue "All" tab — paginated for large libraries
+
+    fun loadAllTracks() {
+        if (_allTracksLoading.value) return
+        viewModelScope.launch {
+            _allTracksLoading.value = true
+            _allTracks.value = emptyList()
+            _hasMoreAllTracks.value = true
+            try {
+                val response = repo.getTracks(ALL_TRACKS_PAGE_SIZE, 0)
+                _allTracks.value = response.tracks
+                _hasMoreAllTracks.value = response.tracks.size >= ALL_TRACKS_PAGE_SIZE
+            } catch (e: Exception) {
+                DebugLog.e("AllTracks", "Load failed", e)
+            } finally {
+                _allTracksLoading.value = false
+            }
+        }
+    }
+
+    fun loadMoreAllTracks() {
+        if (_isLoadingMoreAllTracks.value || !_hasMoreAllTracks.value) return
+        viewModelScope.launch {
+            _isLoadingMoreAllTracks.value = true
+            try {
+                val offset = _allTracks.value.size
+                val response = repo.getTracks(ALL_TRACKS_PAGE_SIZE, offset)
+                DebugLog.i("AllTracks", "Loaded ${response.tracks.size} more (offset $offset)")
+                _allTracks.value = _allTracks.value + response.tracks
+                _hasMoreAllTracks.value = response.tracks.size >= ALL_TRACKS_PAGE_SIZE
+            } catch (e: Exception) {
+                DebugLog.e("AllTracks", "Load more failed", e)
+            } finally {
+                _isLoadingMoreAllTracks.value = false
             }
         }
     }

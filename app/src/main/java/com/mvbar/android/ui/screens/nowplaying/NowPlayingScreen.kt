@@ -78,6 +78,12 @@ fun NowPlayingScreen(
     onLoadPlaylistTracks: (Int) -> Unit = {},
     onLoadSmartPlaylistTracks: (Int) -> Unit = {},
     onPlayTrackWithQueue: (Track, List<Track>) -> Unit = { _, _ -> },
+    // All tracks tab
+    allTracks: List<Track> = emptyList(),
+    allTracksLoading: Boolean = false,
+    hasMoreAllTracks: Boolean = false,
+    onLoadAllTracks: () -> Unit = {},
+    onLoadMoreAllTracks: () -> Unit = {},
     initialQueueOpen: Boolean = false,
     onQueueOpenChanged: (Boolean) -> Unit = {},
     onSearch: () -> Unit = {}
@@ -172,6 +178,11 @@ fun NowPlayingScreen(
                         playlistTracksLoading = playlistTracksLoading,
                         smartPlaylistTracks = smartPlaylistTracks,
                         smartPlaylistTracksLoading = smartPlaylistTracksLoading,
+                        allTracks = allTracks,
+                        allTracksLoading = allTracksLoading,
+                        hasMoreAllTracks = hasMoreAllTracks,
+                        onLoadAllTracks = onLoadAllTracks,
+                        onLoadMoreAllTracks = onLoadMoreAllTracks,
                         onPlayQueueItem = onPlayQueueItem,
                         onRemoveFromQueue = onRemoveFromQueue,
                         onClearQueue = onClearQueue,
@@ -508,6 +519,11 @@ fun NowPlayingScreen(
                         playlistTracksLoading = playlistTracksLoading,
                         smartPlaylistTracks = smartPlaylistTracks,
                         smartPlaylistTracksLoading = smartPlaylistTracksLoading,
+                        allTracks = allTracks,
+                        allTracksLoading = allTracksLoading,
+                        hasMoreAllTracks = hasMoreAllTracks,
+                        onLoadAllTracks = onLoadAllTracks,
+                        onLoadMoreAllTracks = onLoadMoreAllTracks,
                         onPlayQueueItem = onPlayQueueItem,
                         onRemoveFromQueue = onRemoveFromQueue,
                         onClearQueue = onClearQueue,
@@ -599,6 +615,7 @@ fun NowPlayingScreen(
 
 private enum class QueueTab(val label: String) {
     QUEUE("Queue"),
+    ALL("All"),
     PLAYLISTS("Playlists"),
     SMART("Smart"),
     FAVOURITES("Favourites")
@@ -614,6 +631,11 @@ private fun QueuePanelContent(
     playlistTracksLoading: Boolean,
     smartPlaylistTracks: List<Track>,
     smartPlaylistTracksLoading: Boolean,
+    allTracks: List<Track>,
+    allTracksLoading: Boolean,
+    hasMoreAllTracks: Boolean,
+    onLoadAllTracks: () -> Unit,
+    onLoadMoreAllTracks: () -> Unit,
     onPlayQueueItem: (Int) -> Unit,
     onRemoveFromQueue: (Int) -> Unit,
     onClearQueue: () -> Unit,
@@ -704,6 +726,73 @@ private fun QueuePanelContent(
                                 QueueItem(track = qTrack, isActive = isActive,
                                     onPlay = { onPlayQueueItem(index) },
                                     onRemove = { onRemoveFromQueue(index) })
+                            }
+                        }
+                    }
+                }
+            }
+
+            QueueTab.ALL -> {
+                // Load first page when tab is first selected
+                LaunchedEffect(Unit) {
+                    if (allTracks.isEmpty() && !allTracksLoading) onLoadAllTracks()
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${allTracks.size}${if (hasMoreAllTracks) "+" else ""} tracks",
+                        style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim
+                    )
+                }
+
+                if (allTracksLoading && allTracks.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                    }
+                } else if (allTracks.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text("No tracks", color = OnSurfaceDim)
+                    }
+                } else {
+                    val allListState = rememberLazyListState()
+
+                    // Infinite scroll: load more when near the end
+                    val shouldLoadMore = remember {
+                        derivedStateOf {
+                            val lastVisible = allListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            lastVisible >= allTracks.size - 20
+                        }
+                    }
+                    LaunchedEffect(shouldLoadMore.value) {
+                        if (shouldLoadMore.value && hasMoreAllTracks) onLoadMoreAllTracks()
+                    }
+
+                    LazyColumn(
+                        state = allListState,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        itemsIndexed(allTracks, key = { _, t -> "all_${t.id}" }) { index, track ->
+                            val isPlaying = track.id == state.currentTrack?.id
+                            QueueItem(track = track, isActive = isPlaying,
+                                onPlay = {
+                                    // Limit queue window to ~200 tracks around selection to avoid overloading ExoPlayer
+                                    val windowStart = (index - 100).coerceAtLeast(0)
+                                    val windowEnd = (index + 100).coerceAtMost(allTracks.size)
+                                    val window = allTracks.subList(windowStart, windowEnd)
+                                    onPlayTrackWithQueue(track, window)
+                                },
+                                onRemove = {}, showRemove = false)
+                        }
+                        if (hasMoreAllTracks) {
+                            item(key = "all_loading") {
+                                Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                }
                             }
                         }
                     }
