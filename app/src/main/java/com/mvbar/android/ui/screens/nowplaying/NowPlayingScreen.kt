@@ -75,7 +75,9 @@ fun NowPlayingScreen(
     smartPlaylistTracksLoading: Boolean = false,
     onLoadPlaylistTracks: (Int) -> Unit = {},
     onLoadSmartPlaylistTracks: (Int) -> Unit = {},
-    onPlayTrackWithQueue: (Track, List<Track>) -> Unit = { _, _ -> }
+    onPlayTrackWithQueue: (Track, List<Track>) -> Unit = { _, _ -> },
+    initialQueueOpen: Boolean = false,
+    onQueueOpenChanged: (Boolean) -> Unit = {}
 ) {
     val track = state.currentTrack ?: return
     var showLyrics by remember { mutableStateOf(false) }
@@ -107,9 +109,12 @@ fun NowPlayingScreen(
         ?: if (state.isPodcastMode) ApiClient.episodeArtUrl(-track.id)
         else track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
 
+    // Queue panel visibility — shared, persisted via callback
+    var showQueue by remember { mutableStateOf(initialQueueOpen) }
+    LaunchedEffect(showQueue) { onQueueOpenChanged(showQueue) }
+
     if (isLandscape) {
         // ===== LANDSCAPE: standalone layout (no bottom sheet) =====
-        var showQueue by remember { mutableStateOf(false) }
 
         Box(
             modifier = Modifier
@@ -350,7 +355,6 @@ fun NowPlayingScreen(
         }
     } else {
         // ===== PORTRAIT: standalone layout with toggleable queue =====
-        var showQueue by remember { mutableStateOf(false) }
 
         Box(
             modifier = Modifier

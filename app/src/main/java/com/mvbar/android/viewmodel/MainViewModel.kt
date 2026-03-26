@@ -30,6 +30,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = MusicRepository.getInstance(db)
     val playerManager = PlayerManager.getInstance(app)
 
+    /** Persisted across auto-resume: whether queue panel was open */
+    var queuePanelOpen = false
+
     private val _homeState = MutableStateFlow(HomeState())
     val homeState: StateFlow<HomeState> = _homeState.asStateFlow()
 
@@ -525,6 +528,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             AaPreferences.savePlaybackState(getApplication(), entries, state.queueIndex, state.position)
+            AaPreferences.saveQueuePanelOpen(getApplication(), queuePanelOpen)
         }
     }
 }

@@ -20,6 +20,7 @@ object AaPreferences {
     private val KEY_LAST_INDEX = intPreferencesKey("last_index")
     private val KEY_LAST_POSITION = stringPreferencesKey("last_position_ms")
     private val KEY_AUTO_RESUME = booleanPreferencesKey("auto_resume_on_start")
+    private val KEY_QUEUE_PANEL_OPEN = booleanPreferencesKey("queue_panel_open")
 
     val ALL_CATEGORIES = listOf(
         "foryou" to "For You",
@@ -91,6 +92,16 @@ object AaPreferences {
 
     suspend fun saveAutoResume(context: Context, enabled: Boolean) {
         context.aaDataStore.edit { it[KEY_AUTO_RESUME] = enabled }
+    }
+
+    // Queue panel visibility persistence
+
+    suspend fun getQueuePanelOpen(context: Context): Boolean {
+        return context.aaDataStore.data.first()[KEY_QUEUE_PANEL_OPEN] ?: false
+    }
+
+    suspend fun saveQueuePanelOpen(context: Context, open: Boolean) {
+        context.aaDataStore.edit { it[KEY_QUEUE_PANEL_OPEN] = open }
     }
 
     // Last playback state persistence (for AA reconnect auto-resume)

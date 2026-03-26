@@ -190,12 +190,22 @@ fun MainScreen(
     LaunchedEffect(Unit) {
         val autoResume = AaPreferences.getAutoResume(context)
         if (!autoResume) return@LaunchedEffect
-        // Wait for the service to restore the queue (happens in onConnect)
-        kotlinx.coroutines.delay(2000)
+        // Poll until service restores the queue (up to 10s for slow headunits)
+        var waited = 0L
+        while (waited < 10_000) {
+            val state = mainVm.playerManager.state.value
+            if (state.queue.isNotEmpty()) break
+            kotlinx.coroutines.delay(500)
+            waited += 500
+        }
         val state = mainVm.playerManager.state.value
         if (state.queue.isNotEmpty() && !state.isPlaying) {
             mainVm.playerManager.togglePlay()
+        }
+        if (state.queue.isNotEmpty()) {
             showNowPlaying = true
+            // Restore queue panel visibility
+            mainVm.queuePanelOpen = AaPreferences.getQueuePanelOpen(context)
         }
     }
 
@@ -1046,7 +1056,9 @@ fun MainScreen(
                     if (playlist != null) mainVm.loadPlaylistDetail(playlist)
                 },
                 onLoadSmartPlaylistTracks = { mainVm.loadSmartPlaylistDetail(it) },
-                onPlayTrackWithQueue = { track, queue -> mainVm.playTrack(track, queue) }
+                onPlayTrackWithQueue = { track, queue -> mainVm.playTrack(track, queue) },
+                initialQueueOpen = mainVm.queuePanelOpen,
+                onQueueOpenChanged = { mainVm.queuePanelOpen = it }
             )
         }
 
