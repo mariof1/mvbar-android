@@ -82,19 +82,25 @@ fun PodcastDetailScreen(
                         Text(it, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                }
-                IconButton(
-                    onClick = onRefresh,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(Icons.Filled.Refresh, "Refresh", tint = OnSurfaceDim, modifier = Modifier.size(20.dp))
-                }
-                TextButton(
-                    onClick = onUnsubscribe,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    modifier = Modifier.height(28.dp)
-                ) {
-                    Text("Unsub", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = onRefresh,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Filled.Refresh, "Refresh", tint = OnSurfaceDim, modifier = Modifier.size(18.dp))
+                        }
+                        TextButton(
+                            onClick = onUnsubscribe,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text("Unsub", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
                 }
             }
         }
