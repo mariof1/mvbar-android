@@ -49,13 +49,14 @@ fun PodcastsScreen(
     var currentView by remember { mutableStateOf("new") } // "new" or "subscriptions"
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Filter chips + Subscribe button on one row
-        Row(
+        // Filter chips + Subscribe button
+        @OptIn(ExperimentalLayoutApi::class)
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             FilterChip(
                 selected = currentView == "new",
@@ -81,14 +82,14 @@ fun PodcastsScreen(
                 ),
                 shape = RoundedCornerShape(50)
             )
-            Spacer(Modifier.weight(1f))
             FilledTonalButton(
                 onClick = onSubscribeClick,
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = Cyan600,
                     contentColor = OnSurface
                 ),
-                shape = RoundedCornerShape(50)
+                shape = RoundedCornerShape(50),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
