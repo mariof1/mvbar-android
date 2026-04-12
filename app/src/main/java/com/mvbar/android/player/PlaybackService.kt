@@ -20,11 +20,13 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CommandButton
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionCommands
 import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
@@ -178,6 +180,11 @@ class PlaybackService : MediaLibraryService() {
         private val AUDIOBOOK_ART_REGEX = """/api/audiobook-art/(\d+)(?:\?.*)?$""".toRegex()
 
         const val ACTION_VOICE_COMMAND = "com.mvbar.android.VOICE_COMMAND"
+        private const val CUSTOM_ACTION_SEEK_BACK_15 = "SEEK_BACK_15"
+        private const val CUSTOM_ACTION_SEEK_FORWARD_15 = "SEEK_FORWARD_15"
+        private const val CUSTOM_ACTION_TOGGLE_SHUFFLE = "TOGGLE_SHUFFLE"
+        private const val CUSTOM_ACTION_TOGGLE_REPEAT = "TOGGLE_REPEAT"
+        private const val CUSTOM_ACTION_TOGGLE_FAVORITE = "TOGGLE_FAVORITE"
 
         private fun categoryIdToConstant(key: String): String = when (key) {
             "foryou" -> FOR_YOU_ID
@@ -459,6 +466,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        setMediaNotificationProvider(TransportNotificationProvider())
 
         // Register noisy receiver to cancel focus retry on audio route change
         registerReceiver(
@@ -655,6 +663,19 @@ class PlaybackService : MediaLibraryService() {
             override fun seekToPreviousMediaItem() {
                 if (isPodcastOrAudiobook()) seekBack() else super.seekToPreviousMediaItem()
             }
+
+            override fun getAvailableCommands(): Player.Commands {
+                val commands = super.getAvailableCommands()
+                if (!isPodcastOrAudiobook()) {
+                    return commands
+                }
+                return commands.buildUpon()
+                    .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+                    .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    .remove(Player.COMMAND_SEEK_TO_NEXT)
+                    .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    .build()
+            }
         }
 
         mediaSession = MediaLibrarySession.Builder(this, forwardingPlayer, libraryCallback)
@@ -840,13 +861,74 @@ class PlaybackService : MediaLibraryService() {
         super.onDestroy()
     }
 
+    private inner class TransportNotificationProvider :
+        DefaultMediaNotificationProvider(this@PlaybackService) {
+
+        override fun getMediaButtons(
+            session: MediaSession,
+            playerCommands: Player.Commands,
+            customLayout: ImmutableList<CommandButton>,
+            showPauseButton: Boolean
+        ): ImmutableList<CommandButton> {
+            if (specialPlaybackTarget(session.player.currentMediaItem) == null) {
+                return super.getMediaButtons(session, playerCommands, customLayout, showPauseButton)
+            }
+
+            val buttons = ImmutableList.builder<CommandButton>()
+            customLayout
+                .firstOrNull { it.sessionCommand?.customAction == CUSTOM_ACTION_SEEK_BACK_15 }
+                ?.let { buttons.add(notificationCustomButton(it, compactViewIndex = 0)) }
+            if (playerCommands.contains(Player.COMMAND_PLAY_PAUSE)) {
+                buttons.add(playPauseNotificationButton(showPauseButton))
+            }
+            customLayout
+                .firstOrNull { it.sessionCommand?.customAction == CUSTOM_ACTION_SEEK_FORWARD_15 }
+                ?.let { buttons.add(notificationCustomButton(it, compactViewIndex = 2)) }
+            return buttons.build()
+        }
+
+        private fun notificationCustomButton(
+            button: CommandButton,
+            compactViewIndex: Int
+        ): CommandButton {
+            val extras = Bundle(button.extras).apply {
+                putInt(DefaultMediaNotificationProvider.COMMAND_KEY_COMPACT_VIEW_INDEX, compactViewIndex)
+            }
+            return CommandButton.Builder()
+                .setSessionCommand(checkNotNull(button.sessionCommand))
+                .setIconResId(button.iconResId)
+                .setDisplayName(button.displayName)
+                .setExtras(extras)
+                .build()
+        }
+
+        private fun playPauseNotificationButton(showPauseButton: Boolean): CommandButton {
+            val extras = Bundle().apply {
+                putInt(DefaultMediaNotificationProvider.COMMAND_KEY_COMPACT_VIEW_INDEX, 1)
+            }
+            return if (showPauseButton) {
+                CommandButton.Builder(CommandButton.ICON_PAUSE)
+                    .setPlayerCommand(Player.COMMAND_PLAY_PAUSE)
+                    .setDisplayName(getString(androidx.media3.session.R.string.media3_controls_pause_description))
+                    .setExtras(extras)
+                    .build()
+            } else {
+                CommandButton.Builder(CommandButton.ICON_PLAY)
+                    .setPlayerCommand(Player.COMMAND_PLAY_PAUSE)
+                    .setDisplayName(getString(androidx.media3.session.R.string.media3_controls_play_description))
+                    .setExtras(extras)
+                    .build()
+            }
+        }
+    }
+
     private inner class LibraryCallback : MediaLibrarySession.Callback {
 
-        private val SEEK_BACK_15 = SessionCommand("SEEK_BACK_15", Bundle.EMPTY)
-        private val SEEK_FORWARD_15 = SessionCommand("SEEK_FORWARD_15", Bundle.EMPTY)
-        private val TOGGLE_SHUFFLE = SessionCommand("TOGGLE_SHUFFLE", Bundle.EMPTY)
-        private val TOGGLE_REPEAT = SessionCommand("TOGGLE_REPEAT", Bundle.EMPTY)
-        private val TOGGLE_FAVORITE = SessionCommand("TOGGLE_FAVORITE", Bundle.EMPTY)
+        private val SEEK_BACK_15 = SessionCommand(CUSTOM_ACTION_SEEK_BACK_15, Bundle.EMPTY)
+        private val SEEK_FORWARD_15 = SessionCommand(CUSTOM_ACTION_SEEK_FORWARD_15, Bundle.EMPTY)
+        private val TOGGLE_SHUFFLE = SessionCommand(CUSTOM_ACTION_TOGGLE_SHUFFLE, Bundle.EMPTY)
+        private val TOGGLE_REPEAT = SessionCommand(CUSTOM_ACTION_TOGGLE_REPEAT, Bundle.EMPTY)
+        private val TOGGLE_FAVORITE = SessionCommand(CUSTOM_ACTION_TOGGLE_FAVORITE, Bundle.EMPTY)
 
         var currentTrackFavorite = false
 
@@ -899,6 +981,27 @@ class PlaybackService : MediaLibraryService() {
             )
         }
 
+        private fun buildSessionCommands(): SessionCommands =
+            MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+                .buildUpon()
+                .add(SEEK_BACK_15)
+                .add(SEEK_FORWARD_15)
+                .add(TOGGLE_SHUFFLE)
+                .add(TOGGLE_REPEAT)
+                .add(TOGGLE_FAVORITE)
+                .build()
+
+        private fun buildPlayerCommands(player: Player): Player.Commands {
+            val isPodcastOrBook = isPodcastOrAudiobook(player.currentMediaItem)
+            return player.availableCommands
+                .buildUpon()
+                .removeIf(Player.COMMAND_SEEK_TO_PREVIOUS, isPodcastOrBook)
+                .removeIf(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM, isPodcastOrBook)
+                .removeIf(Player.COMMAND_SEEK_TO_NEXT, isPodcastOrBook)
+                .removeIf(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM, isPodcastOrBook)
+                .build()
+        }
+
         override fun onConnect(
             session: MediaSession,
             controller: MediaSession.ControllerInfo
@@ -917,17 +1020,8 @@ class PlaybackService : MediaLibraryService() {
                 restorePlaybackState()
             }
 
-            val playerCommands = Player.Commands.Builder()
-                .addAllCommands()
-                .build()
-            val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
-                .buildUpon()
-                .add(SEEK_BACK_15)
-                .add(SEEK_FORWARD_15)
-                .add(TOGGLE_SHUFFLE)
-                .add(TOGGLE_REPEAT)
-                .add(TOGGLE_FAVORITE)
-                .build()
+            val playerCommands = buildPlayerCommands(session.player)
+            val sessionCommands = buildSessionCommands()
 
             val layout = if (isPodcastOrAudiobook(session.player.currentMediaItem))
                 buildPodcastLayout() else buildMusicLayout(session.player)
@@ -966,16 +1060,16 @@ class PlaybackService : MediaLibraryService() {
             args: Bundle
         ): ListenableFuture<SessionResult> {
             when (customCommand.customAction) {
-                "SEEK_BACK_15" -> session.player.seekBack()
-                "SEEK_FORWARD_15" -> session.player.seekForward()
-                "TOGGLE_SHUFFLE" -> {
+                CUSTOM_ACTION_SEEK_BACK_15 -> session.player.seekBack()
+                CUSTOM_ACTION_SEEK_FORWARD_15 -> session.player.seekForward()
+                CUSTOM_ACTION_TOGGLE_SHUFFLE -> {
                     session.player.shuffleModeEnabled = !session.player.shuffleModeEnabled
                     serviceScope.launch {
                         AaPreferences.saveShuffleEnabled(this@PlaybackService, session.player.shuffleModeEnabled)
                     }
                     updateCustomLayout(session)
                 }
-                "TOGGLE_REPEAT" -> {
+                CUSTOM_ACTION_TOGGLE_REPEAT -> {
                     session.player.repeatMode = when (session.player.repeatMode) {
                         Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
                         Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
@@ -986,7 +1080,7 @@ class PlaybackService : MediaLibraryService() {
                     }
                     updateCustomLayout(session)
                 }
-                "TOGGLE_FAVORITE" -> {
+                CUSTOM_ACTION_TOGGLE_FAVORITE -> {
                     val trackId = session.player.currentMediaItem?.mediaId?.toIntOrNull()
                     if (trackId != null && trackId > 0) {
                         val action = if (currentTrackFavorite)
@@ -1008,12 +1102,14 @@ class PlaybackService : MediaLibraryService() {
         fun updateCustomLayout(session: MediaSession) {
             val layout = if (isPodcastOrAudiobook(session.player.currentMediaItem))
                 buildPodcastLayout() else buildMusicLayout(session.player)
-            // Only push to AA if the layout actually changed
-            val layoutIds = layout.map { it.sessionCommand?.customAction ?: it.playerCommand.toString() }
-            val lastIds = lastCustomLayout?.map { it.sessionCommand?.customAction ?: it.playerCommand.toString() }
-            if (layoutIds != lastIds) {
+            if (layout != lastCustomLayout) {
                 lastCustomLayout = layout
                 session.setCustomLayout(layout)
+            }
+            val sessionCommands = buildSessionCommands()
+            val playerCommands = buildPlayerCommands(session.player)
+            session.connectedControllers.forEach { controller ->
+                session.setAvailableCommands(controller, sessionCommands, playerCommands)
             }
         }
 
