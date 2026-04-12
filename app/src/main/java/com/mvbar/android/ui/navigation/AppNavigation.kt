@@ -6,6 +6,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -341,8 +343,8 @@ fun MainScreen(
         )
     }
 
-    val screenWidthDp = LocalConfiguration.current.screenWidthDp
-    val useNavRail = screenWidthDp >= 600
+    val configuration = LocalConfiguration.current
+    val useNavRail = configuration.screenWidthDp >= 600
 
     // Shared tab selection logic
     fun isTabSelected(tab: BottomTab): Boolean =
@@ -373,7 +375,54 @@ fun MainScreen(
 
     CompositionLocalProvider(LocalIsOnline provides isOnline) {
     Box(modifier = Modifier.fillMaxSize()) {
+        // When using nav rail: put it outside Scaffold so it spans full height
+        Row(modifier = Modifier.fillMaxSize()) {
+            if (useNavRail) {
+                NavigationRail(
+                    containerColor = SurfaceDark.copy(alpha = 0.95f),
+                    contentColor = OnSurface
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        BottomTab.entries.forEach { tab ->
+                            val selected = isTabSelected(tab)
+                            NavigationRailItem(
+                                selected = selected,
+                                onClick = { onTabClick(tab) },
+                                icon = {
+                                    Icon(
+                                        if (selected) tab.selectedIcon else tab.unselectedIcon,
+                                        tab.label
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        tab.label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                alwaysShowLabel = false,
+                                colors = NavigationRailItemDefaults.colors(
+                                    selectedIconColor = Cyan500,
+                                    selectedTextColor = Cyan500,
+                                    unselectedIconColor = OnSurfaceDim,
+                                    unselectedTextColor = OnSurfaceDim,
+                                    indicatorColor = Cyan500.copy(alpha = 0.15f)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
         Scaffold(
+            modifier = if (useNavRail) Modifier.weight(1f) else Modifier,
             containerColor = BackgroundDark,
             topBar = {
                 val screenTitle = when {
@@ -452,7 +501,8 @@ fun MainScreen(
                                 onTogglePlay = { mainVm.playerManager.togglePlay() },
                                 onNext = { mainVm.playerManager.next() },
                                 onPrevious = { mainVm.playerManager.previous() },
-                                onTap = { showNowPlaying = true }
+                                onTap = { showNowPlaying = true },
+                                onDismiss = { mainVm.playerManager.clearQueue() }
                             )
                         }
 
@@ -497,49 +547,12 @@ fun MainScreen(
                 }
             }
         ) { innerPadding ->
-            Row(modifier = Modifier.padding(top = innerPadding.calculateTopPadding())) {
-                // Navigation rail for tablets
-                if (useNavRail) {
-                    NavigationRail(
-                        containerColor = SurfaceDark.copy(alpha = 0.95f),
-                        contentColor = OnSurface
-                    ) {
-                        Spacer(Modifier.weight(1f))
-                        BottomTab.entries.forEach { tab ->
-                            val selected = isTabSelected(tab)
-                            NavigationRailItem(
-                                selected = selected,
-                                onClick = { onTabClick(tab) },
-                                icon = {
-                                    Icon(
-                                        if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                        tab.label
-                                    )
-                                },
-                                label = {
-                                    Text(
-                                        tab.label,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                },
-                                alwaysShowLabel = false,
-                                colors = NavigationRailItemDefaults.colors(
-                                    selectedIconColor = Cyan500,
-                                    selectedTextColor = Cyan500,
-                                    unselectedIconColor = OnSurfaceDim,
-                                    unselectedTextColor = OnSurfaceDim,
-                                    indicatorColor = Cyan500.copy(alpha = 0.15f)
-                                )
-                            )
-                        }
-                        Spacer(Modifier.weight(1f))
-                    }
-                }
-
-                // Main content column (with mini player at bottom for tablet)
-                Column(modifier = Modifier.weight(1f).navigationBarsPadding()) {
+            // Main content column (with mini player at bottom for nav rail mode)
+            Column(modifier = Modifier
+                .padding(top = innerPadding.calculateTopPadding())
+                .fillMaxSize()
+                .navigationBarsPadding()
+            ) {
             NavHost(
                 navController = navController,
                 startDestination = "home",
@@ -574,7 +587,8 @@ fun MainScreen(
                                 DebugLog.e("Nav", "Album navigate failed", e)
                             }
                         },
-                        onRefresh = { mainVm.loadHome() },
+                        onRefresh = { mainVm.loadHome(isRefresh = true) },
+                        onInitialLoad = { mainVm.loadHome(isRefresh = false) },
                         onToggleFavorite = { mainVm.toggleFavorite(it) },
                         onTrackLongPress = { contextTrack = it }
                     )
@@ -1045,13 +1059,14 @@ fun MainScreen(
                                 onTogglePlay = { mainVm.playerManager.togglePlay() },
                                 onNext = { mainVm.playerManager.next() },
                                 onPrevious = { mainVm.playerManager.previous() },
-                                onTap = { showNowPlaying = true }
+                                onTap = { showNowPlaying = true },
+                                onDismiss = { mainVm.playerManager.clearQueue() }
                             )
                         }
                     }
                 } // Column
-            } // Row
-        }
+            } // Scaffold
+        } // Row
 
         // Load playlists/favorites data when player opens
         LaunchedEffect(showNowPlaying) {

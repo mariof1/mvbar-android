@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,14 +17,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Episode
 import com.mvbar.android.data.model.Podcast
+import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.theme.*
 
 @Composable
@@ -59,14 +59,14 @@ fun PodcastDetailScreen(
                 val artUrl = podcast?.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
                     ?: podcast?.let { ApiClient.podcastArtUrl(it.id) }
 
-                AsyncImage(
+                ArtworkImage(
                     model = artUrl,
                     contentDescription = podcast?.title,
+                    placeholderIcon = Icons.Filled.Podcasts,
+                    iconSize = 28.dp,
                     modifier = Modifier
                         .size(64.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(SurfaceElevated),
-                    contentScale = ContentScale.Crop
                 )
 
                 Column(modifier = Modifier.weight(1f)) {

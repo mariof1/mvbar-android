@@ -3,6 +3,7 @@ package com.mvbar.android.ui.components
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -12,16 +13,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.ui.theme.*
+import kotlin.math.abs
 
 @Composable
 fun MiniPlayerBar(
@@ -30,6 +33,7 @@ fun MiniPlayerBar(
     onNext: () -> Unit,
     onPrevious: (() -> Unit)? = null,
     onTap: () -> Unit,
+    onDismiss: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val track = state.currentTrack ?: return
@@ -41,12 +45,37 @@ fun MiniPlayerBar(
         track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
     }
 
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val dismissThresholdPx = with(density) { 120.dp.toPx() }
+
     // Floating pill design
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .height(64.dp)
+            .graphicsLayer {
+                translationX = offsetX
+                alpha = 1f - (abs(offsetX) / dismissThresholdPx).coerceIn(0f, 1f) * 0.4f
+            }
+            .pointerInput(onDismiss) {
+                if (onDismiss != null) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (abs(offsetX) > dismissThresholdPx) {
+                                onDismiss()
+                            }
+                            offsetX = 0f
+                        },
+                        onDragCancel = { offsetX = 0f },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            offsetX += dragAmount
+                        }
+                    )
+                }
+            }
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onTap),
         color = SurfaceElevated,
@@ -60,10 +89,11 @@ fun MiniPlayerBar(
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AsyncImage(
+                ArtworkImage(
                     model = artUrl,
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                    placeholderIcon = if (isPodcast) Icons.Filled.Podcasts else Icons.Filled.MusicNote,
+                    iconSize = 20.dp,
                     modifier = Modifier
                         .size(48.dp)
                         .clip(RoundedCornerShape(8.dp))

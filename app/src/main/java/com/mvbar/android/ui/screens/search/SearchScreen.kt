@@ -33,6 +33,7 @@ import com.mvbar.android.data.model.SearchAlbum
 import com.mvbar.android.data.model.SearchArtist
 import com.mvbar.android.data.model.SearchPlaylist
 import com.mvbar.android.data.model.SearchResults
+import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.ui.components.TrackListItem
 import com.mvbar.android.ui.theme.*
@@ -175,7 +176,7 @@ fun SearchScreen(
                         TrackListItem(
                             track = trackWithFav,
                             isPlaying = track.id == currentTrackId,
-                            onPlay = { onPlayTrack(track, hits) },
+                            onPlay = { onPlayTrack(track, listOf(track)) },
                             onFavorite = onToggleFavorite?.let { { it(track.id) } },
                             onMore = onTrackLongPress?.let { handler -> { handler(track) } },
                             modifier = Modifier.padding(horizontal = 12.dp)

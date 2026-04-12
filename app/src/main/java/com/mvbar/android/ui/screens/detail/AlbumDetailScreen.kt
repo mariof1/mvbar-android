@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,14 +17,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Album
 import com.mvbar.android.data.model.Track
+import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.components.TrackListItem
 import com.mvbar.android.ui.theme.*
 
@@ -57,14 +57,14 @@ fun AlbumDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AsyncImage(
+                ArtworkImage(
                     model = artUrl,
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                    placeholderIcon = Icons.Filled.Album,
+                    iconSize = 28.dp,
                     modifier = Modifier
                         .size(64.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(SurfaceElevated)
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(

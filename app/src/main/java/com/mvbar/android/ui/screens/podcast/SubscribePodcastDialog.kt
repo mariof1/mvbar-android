@@ -28,6 +28,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.mvbar.android.data.model.PodcastSearchResult
+import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.theme.*
 
 @Composable
@@ -178,26 +179,15 @@ fun SubscribePodcastDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 // Art
-                                if (result.imageUrl != null) {
-                                    AsyncImage(
-                                        model = result.imageUrl,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .size(56.dp)
-                                            .clip(RoundedCornerShape(8.dp)),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(56.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(SurfaceElevated),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text("🎙️", fontSize = 24.sp)
-                                    }
-                                }
+                                ArtworkImage(
+                                    model = result.imageUrl,
+                                    contentDescription = null,
+                                    placeholderIcon = Icons.Filled.RssFeed,
+                                    iconSize = 24.dp,
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
 
                                 // Info
                                 Column(modifier = Modifier.weight(1f)) {

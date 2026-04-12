@@ -29,6 +29,7 @@ import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -215,10 +216,11 @@ private fun CachedItemRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Art
-        AsyncImage(
+        ArtworkImage(
             model = item.artUrl,
             contentDescription = null,
-            contentScale = ContentScale.Crop,
+            placeholderIcon = Icons.Filled.MusicNote,
+            iconSize = 20.dp,
             modifier = Modifier
                 .size(48.dp)
                 .clip(RoundedCornerShape(8.dp))

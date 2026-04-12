@@ -31,6 +31,7 @@ import com.mvbar.android.data.model.Episode
 import com.mvbar.android.data.model.Podcast
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.ui.LocalIsOnline
+import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.theme.*
 
 @Composable
@@ -177,11 +178,12 @@ private fun PodcastGridItem(podcast: Podcast, onClick: () -> Unit) {
                 .clip(RoundedCornerShape(12.dp))
                 .background(SurfaceElevated)
         ) {
-            AsyncImage(
+            ArtworkImage(
                 model = artUrl,
                 contentDescription = podcast.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                placeholderIcon = Icons.Filled.Podcasts,
+                iconSize = 32.dp,
+                modifier = Modifier.fillMaxSize()
             )
             // Unplayed badge
             if (podcast.unplayedCount > 0) {
@@ -257,11 +259,12 @@ fun EpisodeListItem(
                 .background(SurfaceElevated),
             contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
+            ArtworkImage(
                 model = artUrl,
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                placeholderIcon = Icons.Filled.Podcasts,
+                iconSize = 24.dp,
+                modifier = Modifier.fillMaxSize()
             )
             Surface(
                 modifier = Modifier.size(28.dp),

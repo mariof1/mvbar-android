@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -16,7 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.RecBucket
 import com.mvbar.android.ui.theme.*
@@ -27,19 +28,21 @@ fun BucketCard(
     onClick: () -> Unit,
     onPlay: () -> Unit,
     bucketIndex: Int = 0,
+    compact: Boolean = false,
+    artAspectRatio: Float = 1f,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(if (compact) 8.dp else 12.dp))
             .clickable(onClick = onClick)
     ) {
         // 2x2 art grid like the web app
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(12.dp))
+                .aspectRatio(1f / artAspectRatio)
+                .clip(RoundedCornerShape(if (compact) 8.dp else 12.dp))
                 .background(SurfaceDark)
         ) {
             ArtGrid(artPaths = bucket.artPaths)
@@ -49,23 +52,24 @@ fun BucketCard(
                 onClick = onPlay,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(44.dp)
+                    .size(if (compact) 36.dp else 44.dp)
                     .background(Cyan500.copy(alpha = 0.9f), CircleShape)
             ) {
                 Icon(
                     Icons.Filled.PlayArrow,
                     contentDescription = "Play ${bucket.name}",
                     tint = Color.Black,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(if (compact) 20.dp else 26.dp)
                 )
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(if (compact) 4.dp else 8.dp))
 
         Text(
             bucket.name,
-            style = MaterialTheme.typography.titleSmall,
+            style = if (compact) MaterialTheme.typography.bodySmall
+                   else MaterialTheme.typography.titleSmall,
             color = OnSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -73,13 +77,14 @@ fun BucketCard(
         if (!bucket.subtitle.isNullOrBlank()) {
             Text(
                 bucket.subtitle,
-                style = MaterialTheme.typography.bodySmall,
+                style = if (compact) MaterialTheme.typography.labelSmall
+                       else MaterialTheme.typography.bodySmall,
                 color = OnSurfaceDim,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
-        if (bucket.count > 0) {
+        if (bucket.count > 0 && !compact) {
             Text(
                 "${bucket.count} songs",
                 style = MaterialTheme.typography.labelSmall,
@@ -122,26 +127,27 @@ fun ArtGrid(
 
     when (paths.size) {
         1 -> {
-            AsyncImage(
+            ArtworkImage(
                 model = ApiClient.artPathUrl(paths[0]),
                 contentDescription = null,
-                contentScale = ContentScale.Crop,
+                placeholderIcon = Icons.Filled.MusicNote,
+                iconSize = 32.dp,
                 modifier = modifier.fillMaxSize()
             )
         }
         2 -> {
             Row(modifier = modifier.fillMaxSize()) {
-                AsyncImage(
+                ArtworkImage(
                     model = ApiClient.artPathUrl(paths[0]),
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                    placeholderIcon = Icons.Filled.MusicNote,
                     modifier = Modifier.weight(1f).fillMaxHeight()
                 )
                 Spacer(Modifier.width(1.dp))
-                AsyncImage(
+                ArtworkImage(
                     model = ApiClient.artPathUrl(paths[1]),
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                    placeholderIcon = Icons.Filled.MusicNote,
                     modifier = Modifier.weight(1f).fillMaxHeight()
                 )
             }
@@ -149,25 +155,25 @@ fun ArtGrid(
         3 -> {
             Column(modifier = modifier.fillMaxSize()) {
                 Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    AsyncImage(
+                    ArtworkImage(
                         model = ApiClient.artPathUrl(paths[0]),
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                        placeholderIcon = Icons.Filled.MusicNote,
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                     Spacer(Modifier.width(1.dp))
-                    AsyncImage(
+                    ArtworkImage(
                         model = ApiClient.artPathUrl(paths[1]),
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                        placeholderIcon = Icons.Filled.MusicNote,
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                 }
                 Spacer(Modifier.height(1.dp))
-                AsyncImage(
+                ArtworkImage(
                     model = ApiClient.artPathUrl(paths[2]),
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                    placeholderIcon = Icons.Filled.MusicNote,
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
             }
@@ -176,33 +182,33 @@ fun ArtGrid(
             // 2x2 grid
             Column(modifier = modifier.fillMaxSize()) {
                 Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    AsyncImage(
+                    ArtworkImage(
                         model = ApiClient.artPathUrl(paths[0]),
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                        placeholderIcon = Icons.Filled.MusicNote,
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                     Spacer(Modifier.width(1.dp))
-                    AsyncImage(
+                    ArtworkImage(
                         model = ApiClient.artPathUrl(paths[1]),
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                        placeholderIcon = Icons.Filled.MusicNote,
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                 }
                 Spacer(Modifier.height(1.dp))
                 Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    AsyncImage(
+                    ArtworkImage(
                         model = ApiClient.artPathUrl(paths[2]),
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                        placeholderIcon = Icons.Filled.MusicNote,
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                     Spacer(Modifier.width(1.dp))
-                    AsyncImage(
+                    ArtworkImage(
                         model = ApiClient.artPathUrl(paths[3]),
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                        placeholderIcon = Icons.Filled.MusicNote,
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                 }

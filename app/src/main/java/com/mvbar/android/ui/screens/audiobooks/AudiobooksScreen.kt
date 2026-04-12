@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Audiobook
+import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.theme.*
 
 @Composable
@@ -96,11 +97,12 @@ private fun AudiobookGridItem(audiobook: Audiobook, onClick: () -> Unit) {
                 .clip(RoundedCornerShape(12.dp))
                 .background(SurfaceElevated)
         ) {
-            AsyncImage(
+            ArtworkImage(
                 model = artUrl,
                 contentDescription = audiobook.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                placeholderIcon = Icons.Filled.MenuBook,
+                iconSize = 32.dp,
+                modifier = Modifier.fillMaxSize()
             )
 
             // Finished badge

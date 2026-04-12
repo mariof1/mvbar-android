@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
@@ -32,6 +33,7 @@ import com.mvbar.android.data.model.AudiobookChapter
 import com.mvbar.android.data.model.AudiobookDetailProgress
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.ui.LocalIsOnline
+import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.theme.*
 
 @Composable
@@ -69,14 +71,14 @@ fun AudiobookDetailScreen(
                 ) {
                     val artUrl = audiobook?.let { ApiClient.audiobookArtUrl(it.id) }
 
-                    AsyncImage(
+                    ArtworkImage(
                         model = artUrl,
                         contentDescription = audiobook?.title,
+                        placeholderIcon = Icons.AutoMirrored.Filled.MenuBook,
+                        iconSize = 28.dp,
                         modifier = Modifier
                             .size(64.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(SurfaceElevated),
-                        contentScale = ContentScale.Crop
                     )
 
                     Column(modifier = Modifier.weight(1f)) {

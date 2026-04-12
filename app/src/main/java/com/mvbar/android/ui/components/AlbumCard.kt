@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -14,10 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Album
 import com.mvbar.android.ui.theme.*
@@ -39,10 +38,11 @@ fun AlbumCard(
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(12.dp))
         ) {
-            AsyncImage(
+            ArtworkImage(
                 model = album.artPath?.let { ApiClient.artPathUrl(it) },
                 contentDescription = album.displayName,
-                contentScale = ContentScale.Crop,
+                placeholderIcon = Icons.Filled.Album,
+                iconSize = 32.dp,
                 modifier = Modifier.fillMaxSize()
             )
             Box(

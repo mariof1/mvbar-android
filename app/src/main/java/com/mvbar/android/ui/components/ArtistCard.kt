@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -11,10 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Artist
 import com.mvbar.android.ui.theme.*
@@ -39,10 +39,17 @@ fun ArtistCard(
                 .background(SurfaceVariantDark)
         ) {
             artist.id?.let { id ->
-                AsyncImage(
+                ArtworkImage(
                     model = ApiClient.artistArtUrl(id),
                     contentDescription = artist.name,
-                    contentScale = ContentScale.Crop,
+                    placeholderIcon = Icons.Filled.Person,
+                    iconSize = 32.dp,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } ?: run {
+                ArtworkPlaceholder(
+                    icon = Icons.Filled.Person,
+                    iconSize = 32.dp,
                     modifier = Modifier.fillMaxSize()
                 )
             }

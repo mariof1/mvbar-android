@@ -13,6 +13,7 @@ import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -163,17 +164,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Called when the app returns to foreground — refreshes favorites immediately. */
+    private var homeJob: Job? = null
+    private var favoritesJob: Job? = null
+    private var homeLoadedOnce = false
+    private var lastFavoritesLoadTime = 0L
+
+    /** Called when the app returns to foreground — refreshes favorites and recommendations. */
     fun onAppResumed() {
         loadFavorites(isRefresh = true)
+        // On first launch, let HomeScreen's LaunchedEffect handle it (cache-first).
+        // On subsequent resumes, refresh silently in the background.
+        if (homeLoadedOnce) {
+            loadHome(isRefresh = true)
+        }
     }
 
     fun loadHome(isRefresh: Boolean = false) {
-        viewModelScope.launch {
+        homeJob?.cancel()
+        homeJob = viewModelScope.launch {
             _homeState.value = _homeState.value.copy(
-                isLoading = !isRefresh, isRefreshing = isRefresh, error = null
+                isLoading = !isRefresh && _homeState.value.buckets.isEmpty(),
+                isRefreshing = isRefresh, error = null
             )
-            // Load from cache first
+            // Load from cache first for instant display
             if (!isRefresh) {
                 val cachedBuckets = try { repo.getCachedRecommendations() } catch (_: Exception) { null }
                 val cachedRecent = try { repo.getCachedRecentlyAdded(PAGE_SIZE) } catch (_: Exception) { null }
@@ -184,38 +197,53 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
             }
-            // Then fetch from API
+            // Then fetch from API in parallel
             try {
                 DebugLog.i("Home", "Loading recommendations...")
-                val buckets = try {
-                    val resp = repo.getRecommendations()
-                    DebugLog.i("Home", "Got ${resp.buckets.size} buckets")
-                    resp.buckets
-                } catch (e: Exception) {
-                    DebugLog.e("Home", "Failed to load recommendations", e)
-                    _homeState.value.buckets.ifEmpty { emptyList() }
+                kotlinx.coroutines.coroutineScope {
+                    val bucketsDeferred = async {
+                        try {
+                            val resp = repo.getRecommendations()
+                            DebugLog.i("Home", "Got ${resp.buckets.size} buckets")
+                            resp.buckets
+                        } catch (e: Exception) {
+                            DebugLog.e("Home", "Failed to load recommendations", e)
+                            _homeState.value.buckets.ifEmpty { emptyList() }
+                        }
+                    }
+                    val recentDeferred = async {
+                        try {
+                            val resp = repo.getRecentlyAdded(PAGE_SIZE)
+                            DebugLog.i("Home", "Got ${resp.tracks.size} recent tracks")
+                            resp.tracks
+                        } catch (e: Exception) {
+                            DebugLog.e("Home", "Failed to load recent tracks", e)
+                            _homeState.value.recentlyAdded.ifEmpty { emptyList() }
+                        }
+                    }
+                    val buckets = bucketsDeferred.await()
+                    val recent = recentDeferred.await()
+                    _homeState.value = HomeState(buckets = buckets, recentlyAdded = recent)
+                    homeLoadedOnce = true
                 }
-                val recent = try {
-                    val resp = repo.getRecentlyAdded(PAGE_SIZE)
-                    DebugLog.i("Home", "Got ${resp.tracks.size} recent tracks")
-                    resp.tracks
-                } catch (e: Exception) {
-                    DebugLog.e("Home", "Failed to load recent tracks", e)
-                    _homeState.value.recentlyAdded.ifEmpty { emptyList() }
-                }
-                _homeState.value = HomeState(buckets = buckets, recentlyAdded = recent)
             } catch (e: Exception) {
                 DebugLog.e("Home", "loadHome failed", e)
                 _homeState.value = _homeState.value.copy(
                     isLoading = false, isRefreshing = false,
-                    error = "Failed to load: ${e.message}"
+                    error = if (_homeState.value.buckets.isEmpty()) "Failed to load: ${e.message}" else null
                 )
             }
         }
     }
 
     fun loadFavorites(isRefresh: Boolean = false) {
-        viewModelScope.launch {
+        // Debounce: skip if successfully loaded within last 30 seconds
+        val now = System.currentTimeMillis()
+        if (isRefresh && now - lastFavoritesLoadTime < 30_000) {
+            return
+        }
+        favoritesJob?.cancel()
+        favoritesJob = viewModelScope.launch {
             if (!isRefresh) _favoritesLoading.value = true
             _favoritesError.value = null
             // Load from cache first
@@ -232,6 +260,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val favTracks = repo.getFavorites().tracks
                 _favorites.value = favTracks
                 _favoriteIds.value = favTracks.map { it.id }.toSet()
+                lastFavoritesLoadTime = System.currentTimeMillis()
                 // Update player favorite state if current track is in favorites
                 syncPlayerFavoriteState()
                 if (AudioCacheManager.autoCacheFavorites && favTracks.isNotEmpty()) {
@@ -628,6 +657,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Play recording is handled centrally by PlaybackService.onMediaItemTransition
         // Prefetch lyrics for the track
         prefetchLyrics(track.id)
+        // If playing a single track (e.g. from search), fetch similar tracks as radio queue
+        if (tracks.size == 1 && track.id > 0) {
+            viewModelScope.launch {
+                try {
+                    val resp = repo.getSimilarTracks(track.id)
+                    if (resp.tracks.isNotEmpty()) {
+                        playerManager.appendTracks(resp.tracks)
+                        DebugLog.i("Radio", "Appended ${resp.tracks.size} similar tracks for ${track.displayTitle}")
+                    }
+                } catch (e: Exception) {
+                    DebugLog.e("Radio", "Failed to fetch similar tracks", e)
+                }
+            }
+        }
     }
 
     fun toggleFavorite(trackId: Int) {

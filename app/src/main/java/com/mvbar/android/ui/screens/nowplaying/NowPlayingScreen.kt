@@ -48,6 +48,7 @@ import com.mvbar.android.data.model.Track
 import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.theme.*
 
@@ -1037,10 +1038,11 @@ private fun QueueItem(
         } else {
             track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
         }
-        AsyncImage(
+        ArtworkImage(
             model = queueArtModel,
             contentDescription = null,
-            contentScale = ContentScale.Crop,
+            placeholderIcon = Icons.Filled.MusicNote,
+            iconSize = 20.dp,
             modifier = Modifier
                 .size(44.dp)
                 .clip(RoundedCornerShape(8.dp))
