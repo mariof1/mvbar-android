@@ -173,6 +173,9 @@ class PlaybackService : MediaLibraryService() {
         private const val COUNTRIES_ID = "[countries]"
         private const val SUGGESTED_ROOT_ID = "[suggested]"
         private const val RECENT_ROOT_ID = "[recent_root]"
+        private val PODCAST_STREAM_REGEX = """/api/podcasts/episodes/(\d+)/stream(?:\?.*)?$""".toRegex()
+        private val AUDIOBOOK_STREAM_REGEX = """/api/audiobooks/(\d+)/chapters/(\d+)/stream(?:\?.*)?$""".toRegex()
+        private val AUDIOBOOK_ART_REGEX = """/api/audiobook-art/(\d+)(?:\?.*)?$""".toRegex()
 
         const val ACTION_VOICE_COMMAND = "com.mvbar.android.VOICE_COMMAND"
 
@@ -190,6 +193,85 @@ class PlaybackService : MediaLibraryService() {
             "countries" -> COUNTRIES_ID
             else -> key
         }
+    }
+
+    private enum class SpecialPlaybackKind { PODCAST, AUDIOBOOK }
+
+    private data class SpecialPlaybackTarget(
+        val kind: SpecialPlaybackKind,
+        val episodeId: Int? = null,
+        val audiobookId: Int? = null,
+        val chapterId: Int? = null
+    )
+
+    private fun extractArtworkUrl(uri: Uri?): String? {
+        if (uri == null) return null
+        return if (uri.scheme == "content" && uri.authority == ArtworkProvider.AUTHORITY) {
+            ArtworkProvider.extractArtUrl(uri)
+        } else {
+            uri.toString()
+        }
+    }
+
+    private fun specialPlaybackTarget(item: MediaItem?): SpecialPlaybackTarget? {
+        item ?: return null
+        val mediaId = item.mediaId
+
+        if (mediaId.startsWith("ep:")) {
+            val episodeId = mediaId.removePrefix("ep:").toIntOrNull() ?: return null
+            return SpecialPlaybackTarget(SpecialPlaybackKind.PODCAST, episodeId = episodeId)
+        }
+
+        if (mediaId.startsWith("ab:")) {
+            val parts = mediaId.removePrefix("ab:").split(":")
+            val audiobookId = parts.getOrNull(0)?.toIntOrNull() ?: return null
+            val chapterId = parts.getOrNull(1)?.toIntOrNull() ?: return null
+            return SpecialPlaybackTarget(
+                SpecialPlaybackKind.AUDIOBOOK,
+                audiobookId = audiobookId,
+                chapterId = chapterId
+            )
+        }
+
+        val streamUrl = item.localConfiguration?.uri?.toString().orEmpty()
+        PODCAST_STREAM_REGEX.find(streamUrl)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { episodeId ->
+            return SpecialPlaybackTarget(SpecialPlaybackKind.PODCAST, episodeId = episodeId)
+        }
+
+        AUDIOBOOK_STREAM_REGEX.find(streamUrl)?.let { match ->
+            val audiobookId = match.groupValues.getOrNull(1)?.toIntOrNull()
+            val chapterId = match.groupValues.getOrNull(2)?.toIntOrNull()
+            if (audiobookId != null && chapterId != null) {
+                return SpecialPlaybackTarget(
+                    SpecialPlaybackKind.AUDIOBOOK,
+                    audiobookId = audiobookId,
+                    chapterId = chapterId
+                )
+            }
+        }
+
+        val legacyNegativeId = mediaId.toIntOrNull()?.takeIf { it < 0 } ?: return null
+        val absoluteId = -legacyNegativeId
+        val artUrl = extractArtworkUrl(item.mediaMetadata.artworkUri)
+
+        if (artUrl != null) {
+            AUDIOBOOK_ART_REGEX.find(artUrl)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { audiobookId ->
+                val chapterId = absoluteId - (audiobookId * 100000)
+                if (chapterId > 0) {
+                    return SpecialPlaybackTarget(
+                        SpecialPlaybackKind.AUDIOBOOK,
+                        audiobookId = audiobookId,
+                        chapterId = chapterId
+                    )
+                }
+            }
+
+            if (artUrl.contains("/api/podcasts/") || artUrl.contains("/api/podcast-art/")) {
+                return SpecialPlaybackTarget(SpecialPlaybackKind.PODCAST, episodeId = absoluteId)
+            }
+        }
+
+        return SpecialPlaybackTarget(SpecialPlaybackKind.PODCAST, episodeId = absoluteId)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -555,8 +637,7 @@ class PlaybackService : MediaLibraryService() {
         // Wrap player so prev/next seek ±15s for podcasts/audiobooks
         val forwardingPlayer = object : ForwardingPlayer(player) {
             private fun isPodcastOrAudiobook(): Boolean {
-                val id = wrappedPlayer.currentMediaItem?.mediaId ?: return false
-                return id.startsWith("ep:") || id.startsWith("ab:")
+                return specialPlaybackTarget(wrappedPlayer.currentMediaItem) != null
             }
 
             override fun seekToNext() {
@@ -626,8 +707,7 @@ class PlaybackService : MediaLibraryService() {
                 }
 
                 // --- Start periodic progress saving for episodes ---
-                val mediaId = item?.mediaId
-                if (mediaId != null && (mediaId.startsWith("ep:") || mediaId.startsWith("ab:"))) {
+                if (specialPlaybackTarget(item) != null) {
                     startProgressSaving(p)
                 }
 
@@ -770,10 +850,8 @@ class PlaybackService : MediaLibraryService() {
 
         var currentTrackFavorite = false
 
-        private fun isPodcastOrAudiobook(item: MediaItem?): Boolean {
-            val id = item?.mediaId ?: return false
-            return id.startsWith("ep:") || id.startsWith("ab:")
-        }
+        private fun isPodcastOrAudiobook(item: MediaItem?): Boolean =
+            specialPlaybackTarget(item) != null
 
         private fun buildPodcastLayout(): List<CommandButton> = listOf(
             CommandButton.Builder()
@@ -1086,7 +1164,7 @@ class PlaybackService : MediaLibraryService() {
             // Single track tap: queue all tracks from the same list, starting from tapped
             if (mediaItems.size == 1 && first != null) {
                 val tappedId = first.mediaId
-                val isPodcastOrBook = tappedId.startsWith("ep:") || tappedId.startsWith("ab:")
+                val isPodcastOrBook = specialPlaybackTarget(first) != null
 
                 // Search result tap: play just the tapped track + fetch similar from server
                 val isFromSearch = browsedTrackCache.entries
@@ -1863,19 +1941,18 @@ class PlaybackService : MediaLibraryService() {
     private fun resolveStreamUri(item: MediaItem): MediaItem {
         if (item.localConfiguration?.uri != null) return item
         val mediaId = item.mediaId
-        val uri = when {
-            mediaId.startsWith("ep:") -> {
-                val episodeId = mediaId.removePrefix("ep:").toIntOrNull() ?: return item
+        val target = specialPlaybackTarget(item)
+        val uri = when (target?.kind) {
+            SpecialPlaybackKind.PODCAST -> {
+                val episodeId = target.episodeId ?: return item
                 ApiClient.episodeStreamUrl(episodeId)
             }
-            mediaId.startsWith("ab:") -> {
-                val parts = mediaId.removePrefix("ab:").split(":")
-                if (parts.size != 2) return item
-                val bookId = parts[0].toIntOrNull() ?: return item
-                val chapterId = parts[1].toIntOrNull() ?: return item
-                ApiClient.audiobookChapterStreamUrl(bookId, chapterId)
+            SpecialPlaybackKind.AUDIOBOOK -> {
+                val audiobookId = target.audiobookId ?: return item
+                val chapterId = target.chapterId ?: return item
+                ApiClient.audiobookChapterStreamUrl(audiobookId, chapterId)
             }
-            else -> {
+            null -> {
                 val trackId = mediaId.toIntOrNull() ?: return item
                 ApiClient.streamUrl(trackId)
             }
@@ -1943,12 +2020,12 @@ class PlaybackService : MediaLibraryService() {
 
     /** Save current episode progress to server and local DB */
     private fun saveEpisodeProgress(player: Player) {
-        val mediaId = player.currentMediaItem?.mediaId ?: return
+        val target = specialPlaybackTarget(player.currentMediaItem) ?: return
         val posMs = player.currentPosition
         if (posMs <= 0L) return
-        when {
-            mediaId.startsWith("ep:") -> {
-                val epId = mediaId.removePrefix("ep:").toIntOrNull() ?: return
+        when (target.kind) {
+            SpecialPlaybackKind.PODCAST -> {
+                val epId = target.episodeId ?: return
                 serviceScope.launch {
                     try {
                         db.podcastDao().updateEpisodePosition(epId, posMs)
@@ -1965,26 +2042,21 @@ class PlaybackService : MediaLibraryService() {
                     }
                 }
             }
-            mediaId.startsWith("ab:") -> {
-                val parts = mediaId.removePrefix("ab:").split(":")
-                if (parts.size == 2) {
-                    val bookId = parts[0].toIntOrNull()
-                    val chapterId = parts[1].toIntOrNull()
-                    if (bookId != null && chapterId != null) {
-                        serviceScope.launch {
-                            try {
-                                if (NetworkMonitor.isOnline.value) {
-                                    ApiClient.api.updateAudiobookProgress(
-                                        bookId,
-                                        com.mvbar.android.data.model.AudiobookProgressRequest(
-                                            chapterId = chapterId, positionMs = posMs
-                                        )
-                                    )
-                                }
-                            } catch (e: Exception) {
-                                DebugLog.w("Player", "Failed to save audiobook progress", e)
-                            }
+            SpecialPlaybackKind.AUDIOBOOK -> {
+                val audiobookId = target.audiobookId ?: return
+                val chapterId = target.chapterId ?: return
+                serviceScope.launch {
+                    try {
+                        if (NetworkMonitor.isOnline.value) {
+                            ApiClient.api.updateAudiobookProgress(
+                                audiobookId,
+                                com.mvbar.android.data.model.AudiobookProgressRequest(
+                                    chapterId = chapterId, positionMs = posMs
+                                )
+                            )
                         }
+                    } catch (e: Exception) {
+                        DebugLog.w("Player", "Failed to save audiobook progress", e)
                     }
                 }
             }

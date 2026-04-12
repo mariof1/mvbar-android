@@ -44,6 +44,8 @@ class PlayerManager private constructor(private val context: Context) {
     companion object {
         @Volatile
         private var instance: PlayerManager? = null
+        private val EPISODE_STREAM_REGEX = """/api/podcasts/episodes/(\d+)/stream(?:\?.*)?$""".toRegex()
+        private val AUDIOBOOK_STREAM_REGEX = """/api/audiobooks/(\d+)/chapters/(\d+)/stream(?:\?.*)?$""".toRegex()
         fun getInstance(context: Context): PlayerManager =
             instance ?: synchronized(this) {
                 instance ?: PlayerManager(context.applicationContext).also { instance = it }
@@ -60,6 +62,39 @@ class PlayerManager private constructor(private val context: Context) {
     private val _queue = mutableListOf<Track>()
     private var _customArtUrls: Map<Int, String> = emptyMap()
     private var _isAudiobookMode: Boolean = false
+
+    private fun isPodcastMediaItem(item: MediaItem?): Boolean {
+        val mediaId = item?.mediaId ?: return false
+        if (mediaId.startsWith("ep:")) return true
+        val uri = item.localConfiguration?.uri?.toString().orEmpty()
+        if (EPISODE_STREAM_REGEX.containsMatchIn(uri)) return true
+        return mediaId.toIntOrNull()?.let { it < 0 } == true && !isAudiobookMediaItem(item)
+    }
+
+    private fun isAudiobookMediaItem(item: MediaItem?): Boolean {
+        val mediaId = item?.mediaId ?: return false
+        if (mediaId.startsWith("ab:")) return true
+        val uri = item.localConfiguration?.uri?.toString().orEmpty()
+        return AUDIOBOOK_STREAM_REGEX.containsMatchIn(uri)
+    }
+
+    private fun mediaIdForTrack(trackId: Int, streamUrl: String): String {
+        if (trackId >= 0) return trackId.toString()
+
+        EPISODE_STREAM_REGEX.find(streamUrl)?.groupValues?.getOrNull(1)?.let { episodeId ->
+            return "ep:$episodeId"
+        }
+
+        AUDIOBOOK_STREAM_REGEX.find(streamUrl)?.let { match ->
+            val bookId = match.groupValues.getOrNull(1)
+            val chapterId = match.groupValues.getOrNull(2)
+            if (!bookId.isNullOrBlank() && !chapterId.isNullOrBlank()) {
+                return "ab:$bookId:$chapterId"
+            }
+        }
+
+        return trackId.toString()
+    }
 
     suspend fun connect() {
         if (controller != null) return
@@ -79,8 +114,8 @@ class PlayerManager private constructor(private val context: Context) {
                     syncQueueFromController()
                 }
                 val track = if (idx in _queue.indices) _queue[idx] else null
-                val isPodcast = mediaItem?.mediaId?.startsWith("ep:") == true
-                val isAudiobook = mediaItem?.mediaId?.startsWith("ab:") == true
+                val isPodcast = isPodcastMediaItem(mediaItem)
+                val isAudiobook = isAudiobookMediaItem(mediaItem)
                 _state.value = _state.value.copy(
                     currentTrack = track,
                     queueIndex = idx,
@@ -133,8 +168,8 @@ class PlayerManager private constructor(private val context: Context) {
         val idx = ctrl.currentMediaItemIndex
         val track = if (idx in _queue.indices) _queue[idx] else null
         val mediaItem = ctrl.currentMediaItem
-        val isPodcast = mediaItem?.mediaId?.startsWith("ep:") == true
-        val isAudiobook = mediaItem?.mediaId?.startsWith("ab:") == true
+        val isPodcast = isPodcastMediaItem(mediaItem)
+        val isAudiobook = isAudiobookMediaItem(mediaItem)
         _state.value = _state.value.copy(
             currentTrack = track,
             queueIndex = idx,
@@ -152,10 +187,15 @@ class PlayerManager private constructor(private val context: Context) {
     private fun trackFromMediaItem(item: MediaItem): Track {
         val meta = item.mediaMetadata
         val mediaId = item.mediaId
-        // Parse ID: "ep:123" → 0 (podcast), "ab:1:2" → 0 (audiobook), "12345" → 12345
+        // Parse canonical AA IDs back into the pseudo IDs used by phone-side podcast/audiobook flows.
         val trackId = when {
-            mediaId.startsWith("ep:") -> 0
-            mediaId.startsWith("ab:") -> 0
+            mediaId.startsWith("ep:") -> -(mediaId.removePrefix("ep:").toIntOrNull() ?: 0)
+            mediaId.startsWith("ab:") -> {
+                val parts = mediaId.removePrefix("ab:").split(":")
+                val bookId = parts.getOrNull(0)?.toIntOrNull()
+                val chapterId = parts.getOrNull(1)?.toIntOrNull()
+                if (bookId != null && chapterId != null) -(bookId * 100000 + chapterId) else 0
+            }
             else -> mediaId.toIntOrNull() ?: 0
         }
         return Track(
@@ -192,7 +232,7 @@ class PlayerManager private constructor(private val context: Context) {
             DebugLog.d("Player", "Track ${track.id}: stream=$streamUrl")
             MediaItem.Builder()
                 .setUri(streamUrl)
-                .setMediaId(track.id.toString())
+                .setMediaId(mediaIdForTrack(track.id, streamUrl))
                 .setMediaMetadata(
                     MediaMetadata.Builder()
                         .setTitle(track.displayTitle)
