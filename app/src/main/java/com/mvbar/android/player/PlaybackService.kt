@@ -78,6 +78,10 @@ class PlaybackService : MediaLibraryService() {
     private var pausedByFocusManager = false
     /** True while Android Auto (gearhead) is connected */
     private var androidAutoConnected = false
+    /** True when AA disconnect triggered the pause — prevents immediate focus abandonment */
+    private var pausedByAutoDisconnect = false
+    /** Job that eventually releases foreground after extended pause */
+    private var foregroundTimeoutJob: Job? = null
 
     /**
      * When the audio output route changes (BT/USB disconnect → phone speaker),
@@ -287,6 +291,13 @@ class PlaybackService : MediaLibraryService() {
             return START_NOT_STICKY
         }
         return super.onStartCommand(intent, flags, startId)
+    }
+
+    // Keep the service in foreground as long as there's a queue, even when paused.
+    // This prevents Android from killing the service during AA disconnects or brief pauses.
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        val hasQueue = session.player.mediaItemCount > 0
+        super.onUpdateNotification(session, startInForegroundRequired || hasQueue)
     }
 
     private fun handleVoiceCommand(intent: Intent) {
@@ -607,14 +618,22 @@ class PlaybackService : MediaLibraryService() {
                 Log.i("mvbar.AudioFocus", "playWhenReady=$playWhenReady reason=$reasonStr")
 
                 if (playWhenReady) {
+                    foregroundTimeoutJob?.cancel()
                     focusRetryJob?.cancel() // user manually resumed — cancel auto-retry
                     requestAudioFocus()
                     pausedByFocusManager = false
+                    pausedByAutoDisconnect = false
                 } else if (!pausedByFocusManager) {
-                    // User or system paused (not our focus handler) — abandon focus & cancel retry
-                    wasPlayingBeforeFocusLoss = false
-                    focusRetryJob?.cancel()
-                    abandonAudioFocus()
+                    if (pausedByAutoDisconnect) {
+                        // AA disconnect paused us — keep focus & notification alive
+                        pausedByAutoDisconnect = false
+                        scheduleForegroundTimeout()
+                    } else {
+                        // User or system paused — abandon focus & cancel retry
+                        wasPlayingBeforeFocusLoss = false
+                        focusRetryJob?.cancel()
+                        abandonAudioFocus()
+                    }
                 }
             }
 
@@ -836,6 +855,7 @@ class PlaybackService : MediaLibraryService() {
         progressSaveJob?.cancel()
         resumeJob?.cancel()
         focusRetryJob?.cancel()
+        foregroundTimeoutJob?.cancel()
         abandonAudioFocus()
         mediaSession?.player?.let { player ->
             saveEpisodeProgress(player)
@@ -1055,6 +1075,7 @@ class PlaybackService : MediaLibraryService() {
                 focusRetryJob?.cancel()
                 val player = session.player
                 if (player.isPlaying || player.playWhenReady) {
+                    pausedByAutoDisconnect = true // keep foreground alive
                     pausedByFocusManager = false
                     player.pause()
                 }
@@ -2285,6 +2306,24 @@ class PlaybackService : MediaLibraryService() {
             }
             DebugLog.i("AudioFocus", "All retries exhausted, giving up auto-resume")
             wasPlayingBeforeFocusLoss = false
+        }
+    }
+
+    /**
+     * After AA disconnect pauses playback, schedule a delayed cleanup.
+     * If the user doesn't resume within 10 minutes, abandon audio focus
+     * so the service can eventually be reclaimed.
+     */
+    private fun scheduleForegroundTimeout() {
+        foregroundTimeoutJob?.cancel()
+        foregroundTimeoutJob = serviceScope.launch {
+            delay(10 * 60 * 1000L) // 10 minutes
+            val player = mediaSession?.player
+            if (player != null && !player.isPlaying && !player.playWhenReady) {
+                DebugLog.i("Player", "Foreground timeout — abandoning focus after 10 min pause")
+                wasPlayingBeforeFocusLoss = false
+                abandonAudioFocus()
+            }
         }
     }
 
