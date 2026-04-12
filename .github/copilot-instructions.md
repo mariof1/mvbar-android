@@ -10,6 +10,7 @@
 - Debug APK: `./gradlew assembleDebug`
 - **Release APK** (preferred): `./gradlew assembleRelease` — always build release. The signing keystore `mvbar-release.jks` must be in the project root (gitignored, never commit it). If missing, copy from `C:\Users\mariusz.faldasz\StudioProjects\mvbar-android\mvbar-release.jks`.
 - Install on device: `adb install -r app/build/outputs/apk/release/app-release.apk`
+- After every build, copy the output APK to `\\nas\syncthing\OP12\Documents\apk` and keep the keystore out of Git.
 - Lint: `./gradlew lint`
 - All checks: `./gradlew check`
 
