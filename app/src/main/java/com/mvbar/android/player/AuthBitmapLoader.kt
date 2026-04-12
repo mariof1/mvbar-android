@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
  * BitmapLoader that fetches artwork through our authenticated OkHttp client.
  * Includes an in-memory LRU cache and negative cache for 404s.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class AuthBitmapLoader : BitmapLoader {
 
     private val client = OkHttpClient.Builder()
