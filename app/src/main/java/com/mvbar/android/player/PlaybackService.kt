@@ -165,6 +165,9 @@ class PlaybackService : MediaLibraryService() {
         private const val FAVORITES_ID = "[favorites]"
         private const val LANGUAGES_ID = "[languages]"
         private const val PODCASTS_ID = "[podcasts]"
+        private const val PODCAST_CONTINUE_ID = "[podcast_continue]"
+        private const val PODCAST_SUBS_ID = "[podcast_subs]"
+        private const val PODCAST_NEW_ID = "[podcast_new]"
         private const val AUDIOBOOKS_ID = "[audiobooks]"
         private const val COUNTRIES_ID = "[countries]"
         private const val SUGGESTED_ROOT_ID = "[suggested]"
@@ -996,7 +999,10 @@ class PlaybackService : MediaLibraryService() {
                         parentId == PLAYLISTS_ID -> getPlaylistsList()
                         parentId == GENRES_ID -> getGenresList()
                         parentId == LANGUAGES_ID -> getLanguagesList()
-                        parentId == PODCASTS_ID -> getPodcastsList()
+                        parentId == PODCASTS_ID -> getPodcastsRootChildren()
+                        parentId == PODCAST_CONTINUE_ID -> getContinueListeningEpisodes()
+                        parentId == PODCAST_SUBS_ID -> getPodcastsSubscriptionsList()
+                        parentId == PODCAST_NEW_ID -> getNewEpisodesItems()
                         parentId == AUDIOBOOKS_ID -> getAudiobooksList()
                         parentId == COUNTRIES_ID -> getCountriesList()
                         parentId.startsWith("album:") -> withShuffle(parentId, getAlbumTracks(parentId.removePrefix("album:")))
@@ -1040,7 +1046,7 @@ class PlaybackService : MediaLibraryService() {
                     mediaId.startsWith("genre:") || mediaId.startsWith("language:") ||
                     mediaId.startsWith("country:") ||
                     mediaId.startsWith("podcast:") || mediaId.startsWith("audiobook:") ||
-                    mediaId in listOf(ROOT_ID, SUGGESTED_ROOT_ID, RECENT_ROOT_ID, FOR_YOU_ID, RECENT_ID, FAVORITES_ID, ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID, LANGUAGES_ID, COUNTRIES_ID, PODCASTS_ID, AUDIOBOOKS_ID)
+                    mediaId in listOf(ROOT_ID, SUGGESTED_ROOT_ID, RECENT_ROOT_ID, FOR_YOU_ID, RECENT_ID, FAVORITES_ID, ALBUMS_ID, ARTISTS_ID, PLAYLISTS_ID, GENRES_ID, LANGUAGES_ID, COUNTRIES_ID, PODCASTS_ID, PODCAST_CONTINUE_ID, PODCAST_SUBS_ID, PODCAST_NEW_ID, AUDIOBOOKS_ID)
             val item = MediaItem.Builder()
                 .setMediaId(mediaId)
                 .setMediaMetadata(
@@ -1206,6 +1212,12 @@ class PlaybackService : MediaLibraryService() {
             PODCASTS_ID, AUDIOBOOKS_ID -> {
                 extras.putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1)  // list
                 extras.putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 1) // list
+            }
+            PODCAST_CONTINUE_ID, PODCAST_NEW_ID -> {
+                extras.putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1)  // list
+            }
+            PODCAST_SUBS_ID -> {
+                extras.putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 2) // grid
             }
             else -> return null
         }
@@ -1661,7 +1673,49 @@ class PlaybackService : MediaLibraryService() {
 
     // Podcast browse
 
-    private suspend fun getPodcastsList(): List<MediaItem> {
+    /** Podcast root: shows Continue Listening, New Episodes, and Subscriptions sub-folders */
+    private fun getPodcastsRootChildren(): List<MediaItem> {
+        return listOf(
+            browseFolderItem(PODCAST_CONTINUE_ID, "Continue Listening", MediaMetadata.MEDIA_TYPE_FOLDER_PODCASTS),
+            browseFolderItem(PODCAST_NEW_ID, "New Episodes", MediaMetadata.MEDIA_TYPE_FOLDER_PODCASTS),
+            browseFolderItem(PODCAST_SUBS_ID, "Subscriptions", MediaMetadata.MEDIA_TYPE_FOLDER_PODCASTS)
+        )
+    }
+
+    /** Episodes with progress (positionMs > 0 and not finished) */
+    private suspend fun getContinueListeningEpisodes(): List<MediaItem> {
+        return try {
+            val episodes = apiOrCache("PodcastContinue",
+                apiCall = { ApiClient.api.getNewEpisodes(limit = 100).episodes },
+                cacheCall = { emptyList() }
+            )
+            episodes
+                .filter { it.positionMs > 0 && !it.played }
+                .map { buildEpisodeMediaItem(it) }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Continue listening failed (${e.message})")
+            emptyList()
+        }
+    }
+
+    /** All recent/new episodes across subscriptions */
+    private suspend fun getNewEpisodesItems(): List<MediaItem> {
+        return try {
+            val episodes = apiOrCache("PodcastNew",
+                apiCall = { ApiClient.api.getNewEpisodes(limit = 50).episodes },
+                cacheCall = { emptyList() }
+            )
+            episodes
+                .filter { !it.played }
+                .map { buildEpisodeMediaItem(it) }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "New episodes failed (${e.message})")
+            emptyList()
+        }
+    }
+
+    /** Subscribed podcast list (browsable folders) */
+    private suspend fun getPodcastsSubscriptionsList(): List<MediaItem> {
         val buildItem = { id: Int, title: String, author: String?, imagePath: String? ->
             val artUri = imagePath?.let { ApiClient.podcastArtPathUrl(it) }
                 ?: ApiClient.podcastArtUrl(id)
@@ -1689,39 +1743,55 @@ class PlaybackService : MediaLibraryService() {
         )
     }
 
-    private suspend fun getPodcastEpisodes(podcastId: Int): List<MediaItem> {
-        val buildEpisodeItem = { episode: com.mvbar.android.data.model.Episode, fallbackTitle: String? ->
-            val artUri = episode.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
-                ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
-                ?: ApiClient.episodeArtUrl(episode.id)
-            val streamUrl = ApiClient.episodeStreamUrl(episode.id)
-            val extras = Bundle().apply {
-                putLong("resume_position_ms", episode.positionMs)
-                putLong("duration_ms", episode.durationMs ?: 0L)
-            }
-            MediaItem.Builder()
-                .setMediaId("ep:${episode.id}")
-                .setUri(streamUrl)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(episode.title)
-                        .setArtist(episode.podcastTitle ?: fallbackTitle)
-                        .setArtworkUri(ArtworkProvider.buildUri(artUri))
-                        .setIsBrowsable(false)
-                        .setIsPlayable(true)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
-                        .setExtras(extras)
-                        .build()
-                )
-                .build()
+    /** Build a playable MediaItem from an Episode model (shared by continue listening / new / per-podcast) */
+    private fun buildEpisodeMediaItem(episode: com.mvbar.android.data.model.Episode, fallbackTitle: String? = null): MediaItem {
+        val artUri = episode.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+            ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
+            ?: ApiClient.episodeArtUrl(episode.id)
+        val streamUrl = ApiClient.episodeStreamUrl(episode.id)
+        val extras = Bundle().apply {
+            putLong("resume_position_ms", episode.positionMs)
+            putLong("duration_ms", episode.durationMs ?: 0L)
         }
+        // Build subtitle showing podcast name + progress
+        val subtitle = buildString {
+            val podName = episode.podcastTitle ?: fallbackTitle
+            if (podName != null) append(podName)
+            if (episode.positionMs > 0 && episode.durationMs != null && episode.durationMs > 0) {
+                val pct = episode.progressPercent
+                val remaining = (episode.durationMs - episode.positionMs) / 60_000
+                if (isNotEmpty()) append(" · ")
+                append("${remaining}m left ($pct%)")
+            } else if (episode.durationMs != null) {
+                if (isNotEmpty()) append(" · ")
+                append(episode.durationFormatted)
+            }
+        }
+        return MediaItem.Builder()
+            .setMediaId("ep:${episode.id}")
+            .setUri(streamUrl)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(episode.title)
+                    .setArtist(subtitle.ifEmpty { episode.podcastTitle ?: fallbackTitle })
+                    .setArtworkUri(ArtworkProvider.buildUri(artUri))
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
+                    .setExtras(extras)
+                    .build()
+            )
+            .build()
+    }
+
+    private suspend fun getPodcastEpisodes(podcastId: Int): List<MediaItem> {
         return apiOrCache("Podcast episodes:$podcastId",
             apiCall = {
                 val response = ApiClient.api.getPodcastDetail(podcastId)
-                response.episodes.map { buildEpisodeItem(it, response.podcast?.title) }
+                response.episodes.map { buildEpisodeMediaItem(it, response.podcast?.title) }
             },
             cacheCall = {
-                db.podcastDao().getEpisodes(podcastId).map { e -> buildEpisodeItem(e.toModel(), null) }
+                db.podcastDao().getEpisodes(podcastId).map { e -> buildEpisodeMediaItem(e.toModel()) }
             }
         )
     }
