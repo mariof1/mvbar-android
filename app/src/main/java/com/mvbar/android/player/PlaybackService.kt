@@ -1,12 +1,15 @@
 package com.mvbar.android.player
 
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
@@ -70,12 +73,32 @@ class PlaybackService : MediaLibraryService() {
     private var focusRetryJob: Job? = null
     /** True when we paused the player due to focus loss (prevents abandon on our own pause) */
     private var pausedByFocusManager = false
+    /** True while Android Auto (gearhead) is connected */
+    private var androidAutoConnected = false
+
+    /**
+     * When the audio output route changes (BT/USB disconnect → phone speaker),
+     * cancel any pending focus retry so we don't resume on the phone speaker
+     * after exiting the car.
+     */
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                Log.i("mvbar.AudioFocus", "AUDIO_BECOMING_NOISY — cancelling retry")
+                DebugLog.i("AudioFocus", "AUDIO_BECOMING_NOISY — cancelling retry")
+                wasPlayingBeforeFocusLoss = false
+                focusRetryJob?.cancel()
+                // ExoPlayer's handleAudioBecomingNoisy already pauses
+            }
+        }
+    }
 
     private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         val player = mediaSession?.player ?: return@OnAudioFocusChangeListener
         when (focusChange) {
             AudioManager.AUDIOFOCUS_GAIN -> {
                 DebugLog.i("AudioFocus", "GAIN")
+                Log.i("mvbar.AudioFocus", "GAIN")
                 focusRetryJob?.cancel()
                 player.volume = 1.0f
                 if (wasPlayingBeforeFocusLoss) {
@@ -91,6 +114,7 @@ class PlaybackService : MediaLibraryService() {
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
                 DebugLog.i("AudioFocus", "LOSS (permanent)")
+                Log.i("mvbar.AudioFocus", "LOSS (permanent)")
                 resumeJob?.cancel()
                 focusRetryJob?.cancel()
                 val shouldResume = player.isPlaying || player.playWhenReady
@@ -107,6 +131,7 @@ class PlaybackService : MediaLibraryService() {
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                 DebugLog.i("AudioFocus", "LOSS_TRANSIENT")
+                Log.i("mvbar.AudioFocus", "LOSS_TRANSIENT")
                 resumeJob?.cancel()
                 focusRetryJob?.cancel()
                 if (player.isPlaying || player.playWhenReady) {
@@ -347,6 +372,12 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
 
+        // Register noisy receiver to cancel focus retry on audio route change
+        registerReceiver(
+            noisyReceiver,
+            IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+        )
+
         AudioCacheManager.init(this)
 
         // Ensure API is configured (critical for Android Auto which may start service without Activity)
@@ -477,6 +508,7 @@ class PlaybackService : MediaLibraryService() {
                     else -> "other($reason)"
                 }
                 DebugLog.i("AudioFocus", "playWhenReady=$playWhenReady reason=$reasonStr")
+                Log.i("mvbar.AudioFocus", "playWhenReady=$playWhenReady reason=$reasonStr")
 
                 if (playWhenReady) {
                     focusRetryJob?.cancel() // user manually resumed — cancel auto-retry
@@ -499,6 +531,7 @@ class PlaybackService : MediaLibraryService() {
                     else -> "UNKNOWN($state)"
                 }
                 DebugLog.i("AudioFocus", "playbackState=$stateStr")
+                Log.i("mvbar.AudioFocus", "playbackState=$stateStr")
                 // Don't abandon focus on STATE_ENDED/IDLE — it fires during queue
                 // restore and causes the car to stop routing audio. Focus is only
                 // released when the user explicitly pauses (onPlayWhenReadyChanged).
@@ -680,6 +713,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         // Save playback state and episode progress before shutting down
+        try { unregisterReceiver(noisyReceiver) } catch (_: Exception) {}
         progressSaveJob?.cancel()
         resumeJob?.cancel()
         focusRetryJob?.cancel()
@@ -786,6 +820,12 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
             DebugLog.i("Auto", "onConnect: package=${controller.packageName} uid=${controller.controllerVersion}")
+            Log.i("mvbar.Auto", "onConnect: package=${controller.packageName}")
+
+            if (controller.packageName == "com.google.android.projection.gearhead") {
+                androidAutoConnected = true
+                Log.i("mvbar.Auto", "Android Auto connected")
+            }
 
             // If the player has no queue (service restarted or app was killed),
             // restore last playback state so the user can just press play
@@ -819,12 +859,17 @@ class PlaybackService : MediaLibraryService() {
             session: MediaSession,
             controller: MediaSession.ControllerInfo
         ) {
-            // When Android Auto (gearhead) disconnects, pause playback so music
-            // doesn't continue through the phone speaker after exiting the car.
+            Log.i("mvbar.Auto", "onDisconnected: package=${controller.packageName}")
             if (controller.packageName == "com.google.android.projection.gearhead") {
+                androidAutoConnected = false
                 DebugLog.i("Auto", "Android Auto disconnected — pausing playback")
+                Log.i("mvbar.Auto", "Gearhead disconnected — cancelling retry & pausing")
+                // Cancel focus retry so we don't resume on phone speaker
+                wasPlayingBeforeFocusLoss = false
+                focusRetryJob?.cancel()
                 val player = session.player
                 if (player.isPlaying || player.playWhenReady) {
+                    pausedByFocusManager = false
                     player.pause()
                 }
             }
@@ -1937,6 +1982,7 @@ class PlaybackService : MediaLibraryService() {
         ) {
             audioFocusRequest = request
             DebugLog.i("AudioFocus", "Requested — ${if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) "granted" else "delayed"}")
+            Log.i("mvbar.AudioFocus", "Requested — ${if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) "granted" else "delayed"}")
         } else {
             DebugLog.w("AudioFocus", "Request denied ($result)")
         }
@@ -1947,6 +1993,7 @@ class PlaybackService : MediaLibraryService() {
             audioManager.abandonAudioFocusRequest(it)
             audioFocusRequest = null
             DebugLog.i("AudioFocus", "Abandoned")
+            Log.i("mvbar.AudioFocus", "Abandoned")
         }
     }
 
@@ -1962,6 +2009,7 @@ class PlaybackService : MediaLibraryService() {
                     return@launch
                 }
                 DebugLog.i("AudioFocus", "Retry ${i + 1}/${delays.size}: re-requesting focus")
+                Log.i("mvbar.AudioFocus", "Retry ${i + 1}/${delays.size}: re-requesting focus")
                 requestAudioFocus()
                 if (audioFocusRequest != null) {
                     // Focus granted — resume playback
