@@ -80,7 +80,7 @@ class PlaybackService : MediaLibraryService() {
                     wasPlayingBeforeFocusLoss = false
                     resumeJob?.cancel()
                     resumeJob = serviceScope.launch {
-                        delay(300) // small delay for audio routing to settle
+                        delay(500)
                         DebugLog.i("AudioFocus", "Resuming playback after focus gain")
                         pausedByFocusManager = false
                         player.play()
@@ -90,20 +90,23 @@ class PlaybackService : MediaLibraryService() {
             AudioManager.AUDIOFOCUS_LOSS -> {
                 DebugLog.i("AudioFocus", "LOSS (permanent)")
                 resumeJob?.cancel()
-                if (player.isPlaying) {
+                if (player.isPlaying || player.playWhenReady) {
                     wasPlayingBeforeFocusLoss = true
                     pausedByFocusManager = true
                     player.pause()
                 }
+                // Clear our request ref so next play() re-requests fresh focus
+                audioFocusRequest = null
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                 DebugLog.i("AudioFocus", "LOSS_TRANSIENT")
                 resumeJob?.cancel()
-                if (player.isPlaying) {
+                if (player.isPlaying || player.playWhenReady) {
                     wasPlayingBeforeFocusLoss = true
                     pausedByFocusManager = true
                     player.pause()
                 }
+                // Keep audioFocusRequest alive — we'll get GAIN when the other app finishes
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 DebugLog.i("AudioFocus", "LOSS_TRANSIENT_CAN_DUCK — ducking")
@@ -1875,7 +1878,12 @@ class PlaybackService : MediaLibraryService() {
     // ── Audio focus request / abandon ──
 
     private fun requestAudioFocus() {
-        if (audioFocusRequest != null) return // already holding focus
+        // Always abandon old request before creating a new one
+        audioFocusRequest?.let {
+            audioManager.abandonAudioFocusRequest(it)
+        }
+        audioFocusRequest = null
+
         val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(
                 android.media.AudioAttributes.Builder()
