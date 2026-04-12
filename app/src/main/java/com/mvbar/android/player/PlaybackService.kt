@@ -67,6 +67,7 @@ class PlaybackService : MediaLibraryService() {
     private var audioFocusRequest: AudioFocusRequest? = null
     private var wasPlayingBeforeFocusLoss = false
     private var resumeJob: Job? = null
+    private var focusRetryJob: Job? = null
     /** True when we paused the player due to focus loss (prevents abandon on our own pause) */
     private var pausedByFocusManager = false
 
@@ -74,14 +75,15 @@ class PlaybackService : MediaLibraryService() {
         val player = mediaSession?.player ?: return@OnAudioFocusChangeListener
         when (focusChange) {
             AudioManager.AUDIOFOCUS_GAIN -> {
-                DebugLog.i("AudioFocus", "GAIN — restoring volume")
+                DebugLog.i("AudioFocus", "GAIN")
+                focusRetryJob?.cancel()
                 player.volume = 1.0f
                 if (wasPlayingBeforeFocusLoss) {
                     wasPlayingBeforeFocusLoss = false
                     resumeJob?.cancel()
                     resumeJob = serviceScope.launch {
                         delay(500)
-                        DebugLog.i("AudioFocus", "Resuming playback after focus gain")
+                        DebugLog.i("AudioFocus", "Resuming after focus gain")
                         pausedByFocusManager = false
                         player.play()
                     }
@@ -90,23 +92,33 @@ class PlaybackService : MediaLibraryService() {
             AudioManager.AUDIOFOCUS_LOSS -> {
                 DebugLog.i("AudioFocus", "LOSS (permanent)")
                 resumeJob?.cancel()
-                if (player.isPlaying || player.playWhenReady) {
+                focusRetryJob?.cancel()
+                val shouldResume = player.isPlaying || player.playWhenReady
+                if (shouldResume) {
                     wasPlayingBeforeFocusLoss = true
                     pausedByFocusManager = true
                     player.pause()
                 }
-                // Clear our request ref so next play() re-requests fresh focus
                 audioFocusRequest = null
+                // Retry to re-acquire focus after permanent loss
+                if (shouldResume) {
+                    startFocusRetry()
+                }
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                 DebugLog.i("AudioFocus", "LOSS_TRANSIENT")
                 resumeJob?.cancel()
+                focusRetryJob?.cancel()
                 if (player.isPlaying || player.playWhenReady) {
                     wasPlayingBeforeFocusLoss = true
                     pausedByFocusManager = true
                     player.pause()
                 }
                 // Keep audioFocusRequest alive — we'll get GAIN when the other app finishes
+                // Also start retry as safety net in case GAIN never arrives
+                if (wasPlayingBeforeFocusLoss) {
+                    startFocusRetry()
+                }
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 DebugLog.i("AudioFocus", "LOSS_TRANSIENT_CAN_DUCK — ducking")
@@ -467,11 +479,13 @@ class PlaybackService : MediaLibraryService() {
                 DebugLog.i("AudioFocus", "playWhenReady=$playWhenReady reason=$reasonStr")
 
                 if (playWhenReady) {
+                    focusRetryJob?.cancel() // user manually resumed — cancel auto-retry
                     requestAudioFocus()
                     pausedByFocusManager = false
                 } else if (!pausedByFocusManager) {
-                    // User or system paused (not our focus handler) — abandon focus
+                    // User or system paused (not our focus handler) — abandon focus & cancel retry
                     wasPlayingBeforeFocusLoss = false
+                    focusRetryJob?.cancel()
                     abandonAudioFocus()
                 }
             }
@@ -479,6 +493,7 @@ class PlaybackService : MediaLibraryService() {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED || state == Player.STATE_IDLE) {
                     wasPlayingBeforeFocusLoss = false
+                    focusRetryJob?.cancel()
                     abandonAudioFocus()
                 }
             }
@@ -661,6 +676,7 @@ class PlaybackService : MediaLibraryService() {
         // Save playback state and episode progress before shutting down
         progressSaveJob?.cancel()
         resumeJob?.cancel()
+        focusRetryJob?.cancel()
         abandonAudioFocus()
         mediaSession?.player?.let { player ->
             saveEpisodeProgress(player)
@@ -1910,6 +1926,33 @@ class PlaybackService : MediaLibraryService() {
             audioManager.abandonAudioFocusRequest(it)
             audioFocusRequest = null
             DebugLog.i("AudioFocus", "Abandoned")
+        }
+    }
+
+    /** After focus loss, periodically try to re-acquire focus and auto-resume. */
+    private fun startFocusRetry() {
+        focusRetryJob?.cancel()
+        focusRetryJob = serviceScope.launch {
+            val delays = longArrayOf(2_000, 3_000, 5_000, 8_000, 12_000)
+            for (i in delays.indices) {
+                delay(delays[i])
+                if (!wasPlayingBeforeFocusLoss) {
+                    DebugLog.i("AudioFocus", "Retry cancelled — no longer need resume")
+                    return@launch
+                }
+                DebugLog.i("AudioFocus", "Retry ${i + 1}/${delays.size}: re-requesting focus")
+                requestAudioFocus()
+                if (audioFocusRequest != null) {
+                    // Focus granted — resume playback
+                    DebugLog.i("AudioFocus", "Focus re-acquired on retry, resuming")
+                    wasPlayingBeforeFocusLoss = false
+                    pausedByFocusManager = false
+                    mediaSession?.player?.play()
+                    return@launch
+                }
+            }
+            DebugLog.i("AudioFocus", "All retries exhausted, giving up auto-resume")
+            wasPlayingBeforeFocusLoss = false
         }
     }
 
