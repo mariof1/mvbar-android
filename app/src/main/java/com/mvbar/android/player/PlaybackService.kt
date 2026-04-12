@@ -1007,11 +1007,9 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
             DebugLog.i("Auto", "onConnect: package=${controller.packageName} uid=${controller.controllerVersion}")
-            Log.i("mvbar.Auto", "onConnect: package=${controller.packageName}")
 
             if (controller.packageName == "com.google.android.projection.gearhead") {
                 androidAutoConnected = true
-                Log.i("mvbar.Auto", "Android Auto connected")
             }
 
             // If the player has no queue (service restarted or app was killed),
@@ -1037,11 +1035,9 @@ class PlaybackService : MediaLibraryService() {
             session: MediaSession,
             controller: MediaSession.ControllerInfo
         ) {
-            Log.i("mvbar.Auto", "onDisconnected: package=${controller.packageName}")
             if (controller.packageName == "com.google.android.projection.gearhead") {
                 androidAutoConnected = false
                 DebugLog.i("Auto", "Android Auto disconnected — pausing playback")
-                Log.i("mvbar.Auto", "Gearhead disconnected — cancelling retry & pausing")
                 // Cancel focus retry so we don't resume on phone speaker
                 wasPlayingBeforeFocusLoss = false
                 focusRetryJob?.cancel()
@@ -1175,9 +1171,17 @@ class PlaybackService : MediaLibraryService() {
                         parentId == GENRES_ID -> getGenresList()
                         parentId == LANGUAGES_ID -> getLanguagesList()
                         parentId == PODCASTS_ID -> getPodcastsRootChildren()
-                        parentId == PODCAST_CONTINUE_ID -> getContinueListeningEpisodes()
+                        parentId == PODCAST_CONTINUE_ID -> {
+                            val eps = getContinueListeningEpisodes()
+                            browsedTrackCache[PODCAST_CONTINUE_ID] = eps
+                            eps
+                        }
                         parentId == PODCAST_SUBS_ID -> getPodcastsSubscriptionsList()
-                        parentId == PODCAST_NEW_ID -> getNewEpisodesItems()
+                        parentId == PODCAST_NEW_ID -> {
+                            val eps = getNewEpisodesItems()
+                            browsedTrackCache[PODCAST_NEW_ID] = eps
+                            eps
+                        }
                         parentId == AUDIOBOOKS_ID -> getAudiobooksList()
                         parentId == COUNTRIES_ID -> getCountriesList()
                         parentId.startsWith("album:") -> withShuffle(parentId, getAlbumTracks(parentId.removePrefix("album:")))
