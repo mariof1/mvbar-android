@@ -1,6 +1,8 @@
 package com.mvbar.android
 
+import android.content.Intent
 import android.os.Bundle
+import android.provider.SearchRecentSuggestions
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -12,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mvbar.android.player.PlaybackService
 import com.mvbar.android.ui.navigation.MainScreen
 import com.mvbar.android.ui.screens.login.LoginScreen
 import com.mvbar.android.ui.theme.Cyan500
@@ -23,6 +26,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleMediaSearchIntent(intent)
         setContent {
             MvbarTheme {
                 val authVm: AuthViewModel = viewModel()
@@ -71,6 +75,29 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleMediaSearchIntent(intent)
+    }
+
+    private fun handleMediaSearchIntent(intent: Intent?) {
+        val action = intent?.action ?: return
+        if (action == "android.media.action.MEDIA_PLAY_FROM_SEARCH" ||
+            action == "android.intent.action.MEDIA_PLAY_FROM_SEARCH") {
+            val query = intent.getStringExtra("query")
+                ?: intent.getStringExtra(android.app.SearchManager.QUERY)
+                ?: return
+            if (query.isBlank()) return
+            // Forward to PlaybackService voice command handler
+            val svcIntent = Intent(this, PlaybackService::class.java).apply {
+                this.action = PlaybackService.ACTION_VOICE_COMMAND
+                putExtra("command", "play")
+                putExtra("query", query)
+            }
+            startForegroundService(svcIntent)
         }
     }
 }

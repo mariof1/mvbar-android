@@ -5,7 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -558,8 +560,12 @@ private fun SearchableChipSection(
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.heightIn(max = 200.dp)) {
-                            suggestions.take(10).forEach { suggestion ->
+                        Column(
+                            modifier = Modifier
+                                .heightIn(max = 250.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            suggestions.forEach { suggestion ->
                                 val displayText = when (suggestion) {
                                     is Pair<*, *> -> suggestion.second as String
                                     is Int -> suggestion.toString()

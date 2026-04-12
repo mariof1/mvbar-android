@@ -250,6 +250,29 @@ class PlayerManager private constructor(private val context: Context) {
         _state.value = _state.value.copy(queue = _queue.toList())
     }
 
+    /** Append multiple tracks to the end of the queue (e.g. similar tracks radio) */
+    fun appendTracks(tracks: List<Track>) {
+        val ctrl = controller ?: return
+        val items = tracks.map { track ->
+            val streamUrl = ApiClient.streamUrl(track.id)
+            val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+            _queue.add(track)
+            MediaItem.Builder()
+                .setUri(streamUrl)
+                .setMediaId(track.id.toString())
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(track.displayTitle)
+                        .setArtist(track.displayArtist)
+                        .setArtworkUri(ArtworkProvider.buildUri(artUrl))
+                        .build()
+                )
+                .build()
+        }
+        ctrl.addMediaItems(items)
+        _state.value = _state.value.copy(queue = _queue.toList())
+    }
+
     fun playNext(track: Track) {
         val ctrl = controller ?: return
         val insertAt = (ctrl.currentMediaItemIndex + 1).coerceAtMost(_queue.size)

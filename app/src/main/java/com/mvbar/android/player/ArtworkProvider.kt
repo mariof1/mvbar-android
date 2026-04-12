@@ -25,6 +25,10 @@ class ArtworkProvider : ContentProvider() {
 
     companion object {
         const val AUTHORITY = "com.mvbar.android.artwork"
+        /** URLs that returned 404 — skip retrying within this session */
+        private val notFoundCache = java.util.Collections.newSetFromMap(
+            java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+        )
 
         /** Build a content:// URI for a given artwork URL */
         fun buildUri(artUrl: String): Uri {
@@ -67,12 +71,20 @@ class ArtworkProvider : ContentProvider() {
             return ParcelFileDescriptor.open(cacheFile, ParcelFileDescriptor.MODE_READ_ONLY)
         }
 
+        // Skip URLs known to be missing
+        if (artUrl in notFoundCache) return null
+
         // Fetch with auth
         try {
             val request = Request.Builder().url(artUrl).build()
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
-                DebugLog.e("ArtworkProvider", "HTTP ${response.code} for $artUrl")
+                if (response.code == 404) {
+                    notFoundCache.add(artUrl)
+                    DebugLog.d("ArtworkProvider", "Art not found (cached 404): $artUrl")
+                } else {
+                    DebugLog.e("ArtworkProvider", "HTTP ${response.code} for $artUrl")
+                }
                 response.close()
                 return null
             }

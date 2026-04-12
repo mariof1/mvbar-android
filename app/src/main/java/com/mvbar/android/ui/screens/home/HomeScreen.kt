@@ -44,10 +44,11 @@ fun HomeScreen(
     onPlayTrack: (Track, List<Track>) -> Unit,
     onAlbumClick: (String) -> Unit,
     onRefresh: () -> Unit,
+    onInitialLoad: () -> Unit = onRefresh,
     onToggleFavorite: ((Int) -> Unit)? = null,
     onTrackLongPress: ((Track) -> Unit)? = null
 ) {
-    LaunchedEffect(Unit) { onRefresh() }
+    LaunchedEffect(Unit) { onInitialLoad() }
 
     var selectedBucket by remember { mutableStateOf<RecBucket?>(null) }
 
@@ -81,6 +82,7 @@ fun HomeScreen(
                 onPlayTrack = onPlayTrack,
                 onBucketClick = { selectedBucket = it },
                 onAlbumClick = onAlbumClick,
+                onRefresh = onRefresh,
                 onToggleFavorite = onToggleFavorite,
                 onTrackLongPress = onTrackLongPress
             )
@@ -97,30 +99,35 @@ private fun HomeContent(
     onPlayTrack: (Track, List<Track>) -> Unit,
     onBucketClick: (RecBucket) -> Unit,
     onAlbumClick: (String) -> Unit,
+    onRefresh: () -> Unit,
     onToggleFavorite: ((Int) -> Unit)? = null,
     onTrackLongPress: ((Track) -> Unit)? = null
 ) {
     val pullRefreshState = rememberPullToRefreshState()
 
     PullToRefreshBox(
-        isRefreshing = state.isLoading,
-        onRefresh = { /* already auto-loads via LaunchedEffect in parent */ },
+        isRefreshing = state.isLoading || state.isRefreshing,
+        onRefresh = onRefresh,
         state = pullRefreshState,
         modifier = Modifier.fillMaxSize()
     ) {
-        val screenWidthDp = LocalConfiguration.current.screenWidthDp
+        val configuration = LocalConfiguration.current
+        val screenWidthDp = configuration.screenWidthDp
+        val isPhoneLandscape = configuration.smallestScreenWidthDp < 600 &&
+                screenWidthDp > configuration.screenHeightDp
         val bucketColumns = when {
             screenWidthDp > 900 -> 4
-            screenWidthDp > 600 -> 4
+            screenWidthDp > 600 -> if (isPhoneLandscape) 3 else 4
             else -> 2
         }
+        val bucketAspectRatio = if (isPhoneLandscape) 0.85f else 1f
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 140.dp)
         ) {
             // Error state
             if (state.error != null) {
-                item {
+                item(key = "error") {
                     ErrorMessage(
                         message = state.error,
                         onRetry = null,
@@ -131,22 +138,29 @@ private fun HomeContent(
 
             // Recommendation buckets grid
             if (state.buckets.isNotEmpty()) {
-                item {
+                item(key = "recommended_header") {
                     Text(
                         "Recommended",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = if (isPhoneLandscape) MaterialTheme.typography.titleMedium
+                               else MaterialTheme.typography.titleLarge,
                         color = OnSurface,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                        modifier = Modifier.padding(
+                            horizontal = if (isPhoneLandscape) 16.dp else 20.dp,
+                            vertical = if (isPhoneLandscape) 4.dp else 8.dp
+                        )
                     )
                 }
 
                 val rows = state.buckets.chunked(bucketColumns)
-                itemsIndexed(rows) { rowIndex, row ->
+                itemsIndexed(rows, key = { idx, row -> "bucket_row_$idx" }) { rowIndex, row ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(
+                                horizontal = if (isPhoneLandscape) 12.dp else 16.dp,
+                                vertical = if (isPhoneLandscape) 4.dp else 6.dp
+                            ),
+                        horizontalArrangement = Arrangement.spacedBy(if (isPhoneLandscape) 8.dp else 12.dp)
                     ) {
                         for ((colIndex, bucket) in row.withIndex()) {
                             BucketCard(
@@ -158,6 +172,8 @@ private fun HomeContent(
                                     }
                                 },
                                 bucketIndex = rowIndex * bucketColumns + colIndex,
+                                compact = isPhoneLandscape,
+                                artAspectRatio = bucketAspectRatio,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -170,16 +186,20 @@ private fun HomeContent(
 
             // Recently Added
             if (state.recentlyAdded.isNotEmpty()) {
-                item {
-                    Spacer(Modifier.height(24.dp))
+                item(key = "recent_header") {
+                    Spacer(Modifier.height(if (isPhoneLandscape) 12.dp else 24.dp))
                     Text(
                         "Recently Added",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = if (isPhoneLandscape) MaterialTheme.typography.titleMedium
+                               else MaterialTheme.typography.titleLarge,
                         color = OnSurface,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                        modifier = Modifier.padding(
+                            horizontal = if (isPhoneLandscape) 16.dp else 20.dp,
+                            vertical = if (isPhoneLandscape) 4.dp else 8.dp
+                        )
                     )
                 }
-                items(state.recentlyAdded.take(15)) { track ->
+                items(state.recentlyAdded.take(15), key = { "recent_${it.id}" }) { track ->
                     val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
                     TrackListItem(
                         track = trackWithFav,
@@ -193,7 +213,7 @@ private fun HomeContent(
             }
 
             if (state.isLoading) {
-                item {
+                item(key = "loading") {
                     Box(
                         Modifier.fillMaxWidth().padding(32.dp),
                         contentAlignment = Alignment.Center
@@ -215,6 +235,11 @@ private fun BucketDetailView(
     onToggleFavorite: ((Int) -> Unit)? = null,
     onBack: () -> Unit
 ) {
+    val configuration = LocalConfiguration.current
+    val isPhoneLandscape = configuration.smallestScreenWidthDp < 600 &&
+            configuration.screenWidthDp > configuration.screenHeightDp
+    val headerHeight = if (isPhoneLandscape) 160.dp else 280.dp
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 140.dp)
@@ -224,7 +249,7 @@ private fun BucketDetailView(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .height(headerHeight)
             ) {
                 ArtGrid(artPaths = bucket.artPaths)
 

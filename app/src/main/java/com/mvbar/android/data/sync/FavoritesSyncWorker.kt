@@ -37,6 +37,12 @@ class FavoritesSyncWorker(
             DebugLog.i("FavSync", "Background synced ${favs.tracks.size} favorites")
             AudioCacheManager.reCacheFavorites()
             Result.success()
+        } catch (e: retrofit2.HttpException) {
+            DebugLog.e("FavSync", "Server error ${e.code()}, will retry later")
+            if (e.code() in 500..599) Result.retry() else Result.failure()
+        } catch (e: java.io.IOException) {
+            DebugLog.d("FavSync", "Network unavailable, will retry later")
+            Result.retry()
         } catch (e: Exception) {
             DebugLog.e("FavSync", "Background favorites sync failed", e)
             Result.retry()

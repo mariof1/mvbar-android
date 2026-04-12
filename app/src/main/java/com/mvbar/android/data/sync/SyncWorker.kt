@@ -31,6 +31,9 @@ class SyncWorker(
             return Result.retry()
         }
 
+        // Delay start so we don't compete with initial UI loading
+        kotlinx.coroutines.delay(5_000)
+
         val db = MvbarDatabase.getInstance(applicationContext)
         SyncManager.setIsSyncing(true)
         DebugLog.i("SyncWorker", "Starting sync...")
@@ -171,7 +174,7 @@ class SyncWorker(
     private suspend fun syncTracks(db: MvbarDatabase) {
         val api = ApiClient.api
         try {
-            val pageSize = 200
+            val pageSize = 1000
             val allTracks = mutableListOf<TrackEntity>()
             var offset = 0
             while (true) {
@@ -180,6 +183,7 @@ class SyncWorker(
                 SyncManager.setSyncStatus("Syncing tracks... ${allTracks.size} fetched")
                 if (resp.tracks.size < pageSize) break
                 offset += pageSize
+                kotlinx.coroutines.yield()
             }
             db.trackDao().replaceAll(allTracks)
             DebugLog.i("SyncWorker", "Synced ${allTracks.size} tracks")
@@ -193,12 +197,13 @@ class SyncWorker(
         try {
             val all = mutableListOf<ArtistEntity>()
             var offset = 0
-            val pageSize = 200
+            val pageSize = 1000
             while (true) {
                 val resp = api.getArtists(limit = pageSize, offset = offset)
                 all.addAll(resp.artists.map { it.toEntity() })
                 if (resp.artists.size < pageSize) break
                 offset += pageSize
+                kotlinx.coroutines.yield()
             }
             db.browseDao().replaceAllArtists(all)
             DebugLog.i("SyncWorker", "Synced ${all.size} artists")
@@ -212,12 +217,13 @@ class SyncWorker(
         try {
             val all = mutableListOf<AlbumEntity>()
             var offset = 0
-            val pageSize = 200
+            val pageSize = 1000
             while (true) {
                 val resp = api.getAlbums(limit = pageSize, offset = offset)
                 all.addAll(resp.albums.map { it.toEntity() })
                 if (resp.albums.size < pageSize) break
                 offset += pageSize
+                kotlinx.coroutines.yield()
             }
             db.browseDao().replaceAllAlbums(all)
             DebugLog.i("SyncWorker", "Synced ${all.size} albums")
@@ -231,12 +237,13 @@ class SyncWorker(
         try {
             val all = mutableListOf<GenreEntity>()
             var offset = 0
-            val pageSize = 200
+            val pageSize = 1000
             while (true) {
                 val resp = api.getGenres(limit = pageSize, offset = offset)
                 all.addAll(resp.genres.map { it.toEntity() })
                 if (resp.genres.size < pageSize) break
                 offset += pageSize
+                kotlinx.coroutines.yield()
             }
             db.browseDao().replaceAllGenres(all)
             DebugLog.i("SyncWorker", "Synced ${all.size} genres")
@@ -250,12 +257,13 @@ class SyncWorker(
         try {
             val all = mutableListOf<CountryEntity>()
             var offset = 0
-            val pageSize = 200
+            val pageSize = 1000
             while (true) {
                 val resp = api.getCountries(limit = pageSize, offset = offset)
                 all.addAll(resp.countries.map { it.toEntity() })
                 if (resp.countries.size < pageSize) break
                 offset += pageSize
+                kotlinx.coroutines.yield()
             }
             db.browseDao().replaceAllCountries(all)
             DebugLog.i("SyncWorker", "Synced ${all.size} countries")
@@ -269,12 +277,13 @@ class SyncWorker(
         try {
             val all = mutableListOf<LanguageEntity>()
             var offset = 0
-            val pageSize = 200
+            val pageSize = 1000
             while (true) {
                 val resp = api.getLanguages(limit = pageSize, offset = offset)
                 all.addAll(resp.languages.map { it.toEntity() })
                 if (resp.languages.size < pageSize) break
                 offset += pageSize
+                kotlinx.coroutines.yield()
             }
             db.browseDao().replaceAllLanguages(all)
             DebugLog.i("SyncWorker", "Synced ${all.size} languages")

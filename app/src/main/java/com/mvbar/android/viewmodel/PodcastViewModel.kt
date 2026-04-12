@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.local.MvbarDatabase
+import com.mvbar.android.data.local.entity.toModel
 import com.mvbar.android.data.model.*
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.PlayerManager
@@ -15,6 +17,7 @@ import kotlinx.coroutines.launch
 
 class PodcastViewModel(app: Application) : AndroidViewModel(app) {
     private val api get() = ApiClient.api
+    private val db = MvbarDatabase.getInstance(app)
     val playerManager = PlayerManager.getInstance(app)
 
     // Subscriptions list
@@ -63,8 +66,21 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
                 _podcasts.value = r.podcasts
                 DebugLog.i("Podcast", "Loaded ${r.podcasts.size} subscriptions")
             } catch (e: Exception) {
-                DebugLog.e("Podcast", "Failed to load podcasts", e)
-                _error.value = "Failed to load podcasts"
+                DebugLog.e("Podcast", "Failed to load podcasts from API", e)
+                // Fall back to local DB cache
+                if (_podcasts.value.isEmpty()) {
+                    try {
+                        val cached = db.podcastDao().getAllPodcasts().map { it.toModel() }
+                        if (cached.isNotEmpty()) {
+                            _podcasts.value = cached
+                            DebugLog.i("Podcast", "Loaded ${cached.size} podcasts from cache")
+                        } else {
+                            _error.value = "Failed to load podcasts"
+                        }
+                    } catch (_: Exception) {
+                        _error.value = "Failed to load podcasts"
+                    }
+                }
             }
             _isLoading.value = false
         }
@@ -90,8 +106,25 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
                 _episodes.value = r.episodes
                 DebugLog.i("Podcast", "Loaded ${r.episodes.size} episodes for podcast $podcastId")
             } catch (e: Exception) {
-                DebugLog.e("Podcast", "Failed to load podcast detail", e)
-                _error.value = "Failed to load podcast"
+                DebugLog.e("Podcast", "Failed to load podcast detail from API", e)
+                // Fall back to local DB cache
+                if (_episodes.value.isEmpty()) {
+                    try {
+                        val cachedPodcast = db.podcastDao().getAllPodcasts()
+                            .find { it.id == podcastId }?.toModel()
+                        val cachedEpisodes = db.podcastDao().getEpisodes(podcastId)
+                            .map { it.toModel() }
+                        if (cachedPodcast != null) _selectedPodcast.value = cachedPodcast
+                        if (cachedEpisodes.isNotEmpty()) {
+                            _episodes.value = cachedEpisodes
+                            DebugLog.i("Podcast", "Loaded ${cachedEpisodes.size} episodes from cache")
+                        } else {
+                            _error.value = "Failed to load podcast"
+                        }
+                    } catch (_: Exception) {
+                        _error.value = "Failed to load podcast"
+                    }
+                }
             }
             _isLoading.value = false
         }

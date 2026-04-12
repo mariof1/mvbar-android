@@ -1,11 +1,15 @@
 package com.mvbar.android.player
 
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -58,6 +62,56 @@ class PlaybackService : MediaLibraryService() {
     /** Flag: re-enable shuffle after the tapped track starts playing */
     private var pendingShuffleRestore = false
 
+    // ── Audio focus management ──
+    private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var wasPlayingBeforeFocusLoss = false
+    private var resumeJob: Job? = null
+    /** True when we paused the player due to focus loss (prevents abandon on our own pause) */
+    private var pausedByFocusManager = false
+
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        val player = mediaSession?.player ?: return@OnAudioFocusChangeListener
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                DebugLog.i("AudioFocus", "GAIN — restoring volume")
+                player.volume = 1.0f
+                if (wasPlayingBeforeFocusLoss) {
+                    wasPlayingBeforeFocusLoss = false
+                    resumeJob?.cancel()
+                    resumeJob = serviceScope.launch {
+                        delay(300) // small delay for audio routing to settle
+                        DebugLog.i("AudioFocus", "Resuming playback after focus gain")
+                        pausedByFocusManager = false
+                        player.play()
+                    }
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                DebugLog.i("AudioFocus", "LOSS (permanent)")
+                resumeJob?.cancel()
+                if (player.isPlaying) {
+                    wasPlayingBeforeFocusLoss = true
+                    pausedByFocusManager = true
+                    player.pause()
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                DebugLog.i("AudioFocus", "LOSS_TRANSIENT")
+                resumeJob?.cancel()
+                if (player.isPlaying) {
+                    wasPlayingBeforeFocusLoss = true
+                    pausedByFocusManager = true
+                    player.pause()
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                DebugLog.i("AudioFocus", "LOSS_TRANSIENT_CAN_DUCK — ducking")
+                player.volume = 0.2f
+            }
+        }
+    }
+
     companion object {
         private const val ROOT_ID = "[root]"
         private const val FOR_YOU_ID = "[foryou]"
@@ -74,6 +128,8 @@ class PlaybackService : MediaLibraryService() {
         private const val SUGGESTED_ROOT_ID = "[suggested]"
         private const val RECENT_ROOT_ID = "[recent_root]"
 
+        const val ACTION_VOICE_COMMAND = "com.mvbar.android.VOICE_COMMAND"
+
         private fun categoryIdToConstant(key: String): String = when (key) {
             "foryou" -> FOR_YOU_ID
             "recent" -> RECENT_ID
@@ -87,6 +143,189 @@ class PlaybackService : MediaLibraryService() {
             "audiobooks" -> AUDIOBOOKS_ID
             "countries" -> COUNTRIES_ID
             else -> key
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_VOICE_COMMAND) {
+            handleVoiceCommand(intent)
+            return START_NOT_STICKY
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun handleVoiceCommand(intent: Intent) {
+        val command = intent.getStringExtra("command") ?: return
+        val query = intent.getStringExtra("query") ?: ""
+        DebugLog.i("Voice", "Voice command: '$command' query='$query'")
+
+        when (command) {
+            "search", "play" -> {
+                if (query.isBlank()) {
+                    DebugLog.w("Voice", "Empty search query")
+                    return
+                }
+                serviceScope.launch {
+                    try {
+                        val results = ApiClient.api.search(query, limit = 20)
+                        if (results.hits.isEmpty()) {
+                            DebugLog.w("Voice", "No results for '$query'")
+                            return@launch
+                        }
+                        val player = mediaSession?.player ?: return@launch
+                        val items = results.hits.map { trackToMediaItem(it) }
+                            .map { resolveStreamUri(it) }
+
+                        // Play the first match
+                        player.setMediaItems(items.take(1), 0, 0L)
+                        player.shuffleModeEnabled = false
+                        player.prepare()
+                        player.play()
+                        DebugLog.i("Voice", "Playing '${results.hits.first().displayTitle}' by ${results.hits.first().displayArtist}")
+
+                        // Fetch similar tracks and append
+                        val trackId = results.hits.first().id
+                        try {
+                            val similar = ApiClient.api.getSimilarTracks(trackId)
+                            if (similar.tracks.isNotEmpty()) {
+                                val similarItems = similar.tracks.map { trackToMediaItem(it) }
+                                    .map { resolveStreamUri(it) }
+                                player.addMediaItems(similarItems)
+                                DebugLog.i("Voice", "Queued ${similar.tracks.size} similar tracks")
+                            }
+                        } catch (e: Exception) {
+                            DebugLog.w("Voice", "Similar tracks failed", e)
+                        }
+                    } catch (e: Exception) {
+                        DebugLog.e("Voice", "Search failed for '$query'", e)
+                    }
+                }
+            }
+            "pause" -> {
+                mediaSession?.player?.pause()
+                DebugLog.i("Voice", "Paused")
+            }
+            "resume", "unpause" -> {
+                mediaSession?.player?.play()
+                DebugLog.i("Voice", "Resumed")
+            }
+            "next", "skip" -> {
+                mediaSession?.player?.seekToNextMediaItem()
+                DebugLog.i("Voice", "Skipped to next")
+            }
+            "previous", "prev" -> {
+                mediaSession?.player?.seekToPreviousMediaItem()
+                DebugLog.i("Voice", "Skipped to previous")
+            }
+            "shuffle" -> {
+                val player = mediaSession?.player ?: return
+                if (query.isBlank()) {
+                    // Toggle shuffle on current queue
+                    player.shuffleModeEnabled = !player.shuffleModeEnabled
+                    DebugLog.i("Voice", "Shuffle ${if (player.shuffleModeEnabled) "ON" else "OFF"}")
+                } else {
+                    // Shuffle a specific category
+                    serviceScope.launch {
+                        try {
+                            when (query.lowercase()) {
+                                "favorites", "favourites" -> {
+                                    val resp = ApiClient.api.getFavorites()
+                                    if (resp.tracks.isNotEmpty()) {
+                                        val items = resp.tracks.map { trackToMediaItem(it) }
+                                            .map { resolveStreamUri(it) }
+                                        player.setMediaItems(items, 0, 0L)
+                                        player.shuffleModeEnabled = true
+                                        player.prepare()
+                                        player.play()
+                                        DebugLog.i("Voice", "Shuffling ${resp.tracks.size} favorites")
+                                    }
+                                }
+                                else -> {
+                                    // Treat as search + shuffle
+                                    val results = ApiClient.api.search(query, limit = 50)
+                                    if (results.hits.isNotEmpty()) {
+                                        val items = results.hits.map { trackToMediaItem(it) }
+                                            .map { resolveStreamUri(it) }
+                                        player.setMediaItems(items, 0, 0L)
+                                        player.shuffleModeEnabled = true
+                                        player.prepare()
+                                        player.play()
+                                        DebugLog.i("Voice", "Shuffling ${results.hits.size} results for '$query'")
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            DebugLog.e("Voice", "Shuffle command failed", e)
+                        }
+                    }
+                }
+            }
+            "playlist" -> {
+                if (query.isBlank()) {
+                    DebugLog.w("Voice", "No playlist name specified")
+                    return
+                }
+                serviceScope.launch {
+                    try {
+                        val player = mediaSession?.player ?: return@launch
+                        val queryLower = query.lowercase()
+
+                        // Try regular playlists first
+                        val playlists = ApiClient.api.getPlaylists()
+                        val match = playlists.playlists.firstOrNull {
+                            it.name.lowercase().contains(queryLower)
+                        }
+                        if (match != null) {
+                            val resp = ApiClient.api.getPlaylistItems(match.id)
+                            val tracks = resp.items.mapNotNull { it.track }
+                            if (tracks.isEmpty()) {
+                                DebugLog.w("Voice", "Playlist '${match.name}' is empty")
+                                return@launch
+                            }
+                            val items = tracks.map { trackToMediaItem(it) }
+                                .map { resolveStreamUri(it) }
+                            player.setMediaItems(items, 0, 0L)
+                            player.shuffleModeEnabled = false
+                            player.prepare()
+                            player.play()
+                            DebugLog.i("Voice", "Playing playlist '${match.name}' (${tracks.size} tracks)")
+                            return@launch
+                        }
+
+                        // Try smart playlists
+                        val smartPlaylists = ApiClient.api.getSmartPlaylists()
+                        val smartMatch = smartPlaylists.items.firstOrNull {
+                            it.name.lowercase().contains(queryLower)
+                        }
+                        if (smartMatch != null) {
+                            val resp = ApiClient.api.getSmartPlaylist(smartMatch.id)
+                            if (resp.tracks.isEmpty()) {
+                                DebugLog.w("Voice", "Smart playlist '${smartMatch.name}' is empty")
+                                return@launch
+                            }
+                            val items = resp.tracks.map { trackToMediaItem(it) }
+                                .map { resolveStreamUri(it) }
+                            player.setMediaItems(items, 0, 0L)
+                            player.shuffleModeEnabled = false
+                            player.prepare()
+                            player.play()
+                            DebugLog.i("Voice", "Playing smart playlist '${smartMatch.name}' (${resp.tracks.size} tracks)")
+                            return@launch
+                        }
+
+                        DebugLog.w("Voice", "No playlist matching '$query' found")
+                    } catch (e: Exception) {
+                        DebugLog.e("Voice", "Playlist command failed", e)
+                    }
+                }
+            }
+            "what", "nowplaying" -> {
+                val track = mediaSession?.player?.currentMediaItem?.mediaMetadata
+                val title = track?.title ?: "Nothing"
+                val artist = track?.artist ?: "Unknown"
+                DebugLog.i("Voice", "Now playing: $title by $artist")
+            }
+            else -> DebugLog.w("Voice", "Unknown command: '$command'")
         }
     }
 
@@ -131,7 +370,7 @@ class PlaybackService : MediaLibraryService() {
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                     .setUsage(C.USAGE_MEDIA)
                     .build(),
-                true
+                false // We manage audio focus ourselves for reliable resume
             )
             .setHandleAudioBecomingNoisy(true)
             .setSeekForwardIncrementMs(15_000)
@@ -212,6 +451,36 @@ class PlaybackService : MediaLibraryService() {
             }
         })
 
+        // Audio focus: request when playing, abandon when user pauses
+        player.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                val reasonStr = when (reason) {
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "user"
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> "focus_loss"
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> "noisy"
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE -> "remote"
+                    else -> "other($reason)"
+                }
+                DebugLog.i("AudioFocus", "playWhenReady=$playWhenReady reason=$reasonStr")
+
+                if (playWhenReady) {
+                    requestAudioFocus()
+                    pausedByFocusManager = false
+                } else if (!pausedByFocusManager) {
+                    // User or system paused (not our focus handler) — abandon focus
+                    wasPlayingBeforeFocusLoss = false
+                    abandonAudioFocus()
+                }
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED || state == Player.STATE_IDLE) {
+                    wasPlayingBeforeFocusLoss = false
+                    abandonAudioFocus()
+                }
+            }
+        })
+
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent,
@@ -220,7 +489,31 @@ class PlaybackService : MediaLibraryService() {
 
         val libraryCallback = LibraryCallback()
 
-        mediaSession = MediaLibrarySession.Builder(this, player, libraryCallback)
+        // Wrap player so prev/next seek ±15s for podcasts/audiobooks
+        val forwardingPlayer = object : ForwardingPlayer(player) {
+            private fun isPodcastOrAudiobook(): Boolean {
+                val id = wrappedPlayer.currentMediaItem?.mediaId ?: return false
+                return id.startsWith("ep:") || id.startsWith("ab:")
+            }
+
+            override fun seekToNext() {
+                if (isPodcastOrAudiobook()) seekForward() else super.seekToNext()
+            }
+
+            override fun seekToPrevious() {
+                if (isPodcastOrAudiobook()) seekBack() else super.seekToPrevious()
+            }
+
+            override fun seekToNextMediaItem() {
+                if (isPodcastOrAudiobook()) seekForward() else super.seekToNextMediaItem()
+            }
+
+            override fun seekToPreviousMediaItem() {
+                if (isPodcastOrAudiobook()) seekBack() else super.seekToPreviousMediaItem()
+            }
+        }
+
+        mediaSession = MediaLibrarySession.Builder(this, forwardingPlayer, libraryCallback)
             .setSessionActivity(pendingIntent)
             .setBitmapLoader(AuthBitmapLoader())
             .build()
@@ -364,6 +657,8 @@ class PlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         // Save playback state and episode progress before shutting down
         progressSaveJob?.cancel()
+        resumeJob?.cancel()
+        abandonAudioFocus()
         mediaSession?.player?.let { player ->
             saveEpisodeProgress(player)
             // Save queue snapshot synchronously so it's available on next launch
@@ -539,10 +834,18 @@ class PlaybackService : MediaLibraryService() {
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
 
+        private var lastCustomLayout: List<CommandButton>? = null
+
         fun updateCustomLayout(session: MediaSession) {
             val layout = if (isPodcastOrAudiobook(session.player.currentMediaItem))
                 buildPodcastLayout() else buildMusicLayout(session.player)
-            session.setCustomLayout(layout)
+            // Only push to AA if the layout actually changed
+            val layoutIds = layout.map { it.sessionCommand?.customAction ?: it.playerCommand.toString() }
+            val lastIds = lastCustomLayout?.map { it.sessionCommand?.customAction ?: it.playerCommand.toString() }
+            if (layoutIds != lastIds) {
+                lastCustomLayout = layout
+                session.setCustomLayout(layout)
+            }
         }
 
         override fun onGetLibraryRoot(
@@ -629,7 +932,9 @@ class PlaybackService : MediaLibraryService() {
                         else -> emptyList()
                     }
                     DebugLog.i("Auto", "onGetChildren: parentId=$parentId → ${items.size} items")
-                    LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
+                    // Return content style hints so AA renders children appropriately
+                    val childStyle = contentStyleForParent(parentId)
+                    LibraryResult.ofItemList(ImmutableList.copyOf(items), childStyle ?: params)
                 } catch (e: Exception) {
                     DebugLog.e("Auto", "Browse error for $parentId", e)
                     LibraryResult.ofItemList(ImmutableList.of(), params)
@@ -790,6 +1095,36 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /** Return content style LibraryParams for children of a given parentId */
+    private fun contentStyleForParent(parentId: String): LibraryParams? {
+        val extras = Bundle()
+        when (parentId) {
+            // For You buckets: compact grid (smaller tiles with artwork)
+            FOR_YOU_ID, SUGGESTED_ROOT_ID -> {
+                extras.putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 2)  // grid
+                extras.putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 2) // grid
+            }
+            // Root categories: list style
+            ROOT_ID -> {
+                extras.putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 1) // list
+                extras.putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1)  // list
+            }
+            // Albums / Artists / Countries: grid thumbnails
+            ALBUMS_ID, ARTISTS_ID, COUNTRIES_ID -> {
+                extras.putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 2) // grid
+                extras.putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 2)  // grid
+            }
+            // Track lists (favorites, recent, playlists, genres, etc.): compact list
+            RECENT_ID, FAVORITES_ID, PLAYLISTS_ID, GENRES_ID, LANGUAGES_ID,
+            PODCASTS_ID, AUDIOBOOKS_ID -> {
+                extras.putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1)  // list
+                extras.putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 1) // list
+            }
+            else -> return null
+        }
+        return LibraryParams.Builder().setExtras(extras).build()
+    }
+
     // Browse tree builders
 
     private suspend fun getRootChildren(): List<MediaItem> {
@@ -839,26 +1174,49 @@ class PlaybackService : MediaLibraryService() {
      * otherwise tries the API with a short timeout. On poor/no connection
      * the user sees cached data immediately instead of waiting.
      */
+    /** In-memory cache for API results to avoid re-fetching on every AA browse */
+    private val apiResultCache = mutableMapOf<String, Pair<Long, List<*>>>()
+    private val API_CACHE_TTL_MS = 60_000L // 1 minute
+
     private suspend fun <T : List<*>> apiOrCache(
         tag: String,
         apiCall: suspend () -> T,
         cacheCall: suspend () -> T
     ): T {
-        val cached = try { cacheCall() } catch (_: Exception) { null }
-        // If cache has data, return it immediately.
-        // Fire a background API refresh so next load picks up fresh data.
-        if (cached != null && cached.isNotEmpty()) {
-            DebugLog.d("Auto", "$tag: serving ${cached.size} items from cache")
-            return cached
+        // Check in-memory cache first (fastest)
+        val memCached = apiResultCache[tag]
+        if (memCached != null && System.currentTimeMillis() - memCached.first < API_CACHE_TTL_MS) {
+            @Suppress("UNCHECKED_CAST")
+            val result = memCached.second as T
+            if (result.isNotEmpty()) {
+                DebugLog.d("Auto", "$tag: serving ${result.size} items from memory cache")
+                return result
+            }
         }
-        // No cache — must try API (with a short timeout so poor connection doesn't block)
-        return try {
+
+        // Try API with short timeout
+        val apiResult = try {
             kotlinx.coroutines.withTimeout(5_000) { apiCall() }
         } catch (e: Exception) {
-            DebugLog.w("Auto", "$tag: API failed (${e.message}), returning ${cached?.size ?: 0} cached items")
-            @Suppress("UNCHECKED_CAST")
-            cached ?: emptyList<Nothing>() as T
+            DebugLog.w("Auto", "$tag: API failed (${e.message})")
+            null
         }
+
+        if (apiResult != null && apiResult.isNotEmpty()) {
+            apiResultCache[tag] = System.currentTimeMillis() to apiResult
+            DebugLog.d("Auto", "$tag: serving ${apiResult.size} items from API")
+            return apiResult
+        }
+
+        // Fall back to DB cache
+        val dbCached = try { cacheCall() } catch (_: Exception) { null }
+        if (dbCached != null && dbCached.isNotEmpty()) {
+            DebugLog.d("Auto", "$tag: serving ${dbCached.size} items from DB cache")
+            return dbCached
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        return emptyList<Nothing>() as T
     }
 
     /**
@@ -1082,14 +1440,14 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getAlbumTracks(albumName: String): List<MediaItem> {
-        return apiOrCache("Album tracks",
+        return apiOrCache("Album tracks:$albumName",
             apiCall = { ApiClient.api.getAlbumTracks(albumName).tracks.map { trackToMediaItem(it) } },
             cacheCall = { db.trackDao().getByAlbum(albumName).map { trackToMediaItem(it.toModel()) } }
         )
     }
 
     private suspend fun getArtistTracks(artistId: Int): List<MediaItem> {
-        return apiOrCache("Artist tracks",
+        return apiOrCache("Artist tracks:$artistId",
             apiCall = { ApiClient.api.getArtistTracks(artistId).tracks.map { trackToMediaItem(it) } },
             cacheCall = {
                 val artists = db.browseDao().getArtists(200, 0)
@@ -1101,7 +1459,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getPlaylistTracks(playlistId: Int): List<MediaItem> {
-        return apiOrCache("Playlist tracks",
+        return apiOrCache("Playlist tracks:$playlistId",
             apiCall = {
                 ApiClient.api.getPlaylistItems(playlistId).items.mapNotNull { it.track?.let { t -> trackToMediaItem(t) } }
             },
@@ -1126,7 +1484,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getGenreTracks(genreName: String): List<MediaItem> {
-        return apiOrCache("Genre tracks",
+        return apiOrCache("Genre tracks:$genreName",
             apiCall = { ApiClient.api.getGenreTracks(genreName, limit = 100).tracks.map { trackToMediaItem(it) } },
             cacheCall = { db.trackDao().getByGenre(genreName, 100, 0).map { trackToMediaItem(it.toModel()) } }
         )
@@ -1270,7 +1628,7 @@ class PlaybackService : MediaLibraryService() {
                 )
                 .build()
         }
-        return apiOrCache("Podcast episodes",
+        return apiOrCache("Podcast episodes:$podcastId",
             apiCall = {
                 val response = ApiClient.api.getPodcastDetail(podcastId)
                 response.episodes.map { buildEpisodeItem(it, response.podcast?.title) }
@@ -1326,7 +1684,7 @@ class PlaybackService : MediaLibraryService() {
                 )
                 .build()
         }
-        return apiOrCache("Audiobook chapters",
+        return apiOrCache("Audiobook chapters:$audiobookId",
             apiCall = {
                 val response = ApiClient.api.getAudiobookDetail(audiobookId)
                 val book = response.audiobook ?: return@apiOrCache emptyList()
@@ -1511,6 +1869,39 @@ class PlaybackService : MediaLibraryService() {
                     player.currentPosition.coerceAtLeast(0L)
                 )
             } catch (_: Exception) {}
+        }
+    }
+
+    // ── Audio focus request / abandon ──
+
+    private fun requestAudioFocus() {
+        if (audioFocusRequest != null) return // already holding focus
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .build()
+            )
+            .setOnAudioFocusChangeListener(audioFocusChangeListener)
+            .setAcceptsDelayedFocusGain(true)
+            .build()
+        val result = audioManager.requestAudioFocus(request)
+        if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED ||
+            result == AudioManager.AUDIOFOCUS_REQUEST_DELAYED
+        ) {
+            audioFocusRequest = request
+            DebugLog.i("AudioFocus", "Requested — ${if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) "granted" else "delayed"}")
+        } else {
+            DebugLog.w("AudioFocus", "Request denied ($result)")
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        audioFocusRequest?.let {
+            audioManager.abandonAudioFocusRequest(it)
+            audioFocusRequest = null
+            DebugLog.i("AudioFocus", "Abandoned")
         }
     }
 

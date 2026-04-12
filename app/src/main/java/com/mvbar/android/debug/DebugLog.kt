@@ -20,15 +20,10 @@ object DebugLog {
     private const val LOG_FILE_NAME = "debug_log.txt"
     private const val PREFS_NAME = "mvbar_debug"
     private const val KEY_ENABLED = "debug_enabled"
-    private const val KEY_UPLOAD_URL = "upload_server_url"
     private val entries = ConcurrentLinkedDeque<LogEntry>()
 
     @Volatile
     var enabled: Boolean = false
-
-    /** Server URL for log uploads (e.g. "http://10.10.100.5:9999") */
-    @Volatile
-    var uploadServerUrl: String = ""
 
     /** File for persisting log entries across crashes */
     private var logFile: File? = null
@@ -37,7 +32,6 @@ object DebugLog {
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         enabled = prefs.getBoolean(KEY_ENABLED, false)
-        uploadServerUrl = prefs.getString(KEY_UPLOAD_URL, "") ?: ""
 
         logFile = File(context.filesDir, LOG_FILE_NAME)
 
@@ -67,7 +61,6 @@ object DebugLog {
     fun save(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_ENABLED, enabled)
-            .putString(KEY_UPLOAD_URL, uploadServerUrl)
             .apply()
     }
 
@@ -167,20 +160,27 @@ object DebugLog {
         })
     }
 
-    /** Upload log to the configured server. Returns success message or throws. */
+    /** Upload log to the main mvbar server. Returns success message or throws. */
     suspend fun uploadLog(): String = withContext(Dispatchers.IO) {
-        val serverUrl = uploadServerUrl.trimEnd('/')
-        if (serverUrl.isBlank()) throw IllegalStateException("Upload server URL not set")
+        val serverUrl = com.mvbar.android.data.api.ApiClient.getBaseUrl().trimEnd('/')
+        if (serverUrl.isBlank() || serverUrl == "http://localhost") {
+            throw IllegalStateException("Not connected to server")
+        }
 
         val logText = getLogText()
         val device = "${Build.MANUFACTURER} ${Build.MODEL}"
+        val token = com.mvbar.android.data.api.ApiClient.getToken()
 
-        val url = URL("$serverUrl/upload")
+        val url = URL("$serverUrl/api/logs/upload")
         val conn = url.openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "text/plain; charset=utf-8")
             conn.setRequestProperty("X-Device", device)
+            if (token != null) {
+                conn.setRequestProperty("Authorization", "Bearer $token")
+                conn.setRequestProperty("Cookie", "mvbar_token=$token")
+            }
             conn.connectTimeout = 10_000
             conn.readTimeout = 10_000
             conn.doOutput = true

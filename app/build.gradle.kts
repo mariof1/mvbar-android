@@ -18,10 +18,20 @@ android {
         versionName = "1.0.0"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file("mvbar-release.jks")
+            storePassword = "Kl1ng0n5"
+            keyAlias = "mvbar"
+            keyPassword = "Kl1ng0n5"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

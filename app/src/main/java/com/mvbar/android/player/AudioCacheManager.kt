@@ -163,7 +163,7 @@ object AudioCacheManager {
                     if (!isActive) break
                     if (shouldSkipDownload()) break
                     val url = ApiClient.streamUrl(track.id)
-                    if (cache?.isCached(url, 0, Long.MAX_VALUE) == true) continue
+                    if (isTrackCached(track.id)) continue
                     try {
                         cacheUrl(c, url)
                         cached++
@@ -187,7 +187,7 @@ object AudioCacheManager {
         prefetchScope.launch {
             if (shouldSkipDownload()) return@launch
             val url = ApiClient.streamUrl(trackId)
-            if (cache?.isCached(url, 0, Long.MAX_VALUE) == true) return@launch
+            if (isTrackCached(trackId)) return@launch
             try {
                 cacheUrl(c, url)
                 precacheArtworkById(trackId)
@@ -247,8 +247,8 @@ object AudioCacheManager {
 
                 val url = ApiClient.streamUrl(track.id)
                 // Skip if already fully cached
+                if (isTrackCached(track.id)) continue
                 val key = url
-                if (cache?.isCached(key, 0, Long.MAX_VALUE) == true) continue
 
                 try {
                     DebugLog.d("Cache", "Prefetching track ${track.id}: ${track.displayTitle}")
@@ -300,7 +300,7 @@ object AudioCacheManager {
                 if (shouldSkipDownload()) break
 
                 val url = ApiClient.streamUrl(track.id)
-                if (cache?.isCached(url, 0, Long.MAX_VALUE) == true) continue
+                if (isTrackCached(track.id)) continue
 
                 try {
                     cacheUrl(c, url)
@@ -353,7 +353,7 @@ object AudioCacheManager {
                 if (!isActive) break
                 if (shouldSkipDownload()) break
 
-                if (cache?.isCached(url, 0, Long.MAX_VALUE) == true) continue
+                if (isEpisodeCached(epId)) continue
 
                 try {
                     cacheUrl(c, url)
