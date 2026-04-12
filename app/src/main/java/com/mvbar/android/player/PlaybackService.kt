@@ -124,8 +124,9 @@ class PlaybackService : MediaLibraryService() {
                     player.pause()
                 }
                 audioFocusRequest = null
-                // Retry to re-acquire focus after permanent loss
-                if (shouldResume) {
+                // Only retry when not connected to Android Auto — if AA is
+                // active, focus loss means the user left the car.
+                if (shouldResume && !androidAutoConnected) {
                     startFocusRetry()
                 }
             }
@@ -141,7 +142,8 @@ class PlaybackService : MediaLibraryService() {
                 }
                 // Keep audioFocusRequest alive — we'll get GAIN when the other app finishes
                 // Also start retry as safety net in case GAIN never arrives
-                if (wasPlayingBeforeFocusLoss) {
+                // But skip retry if AA is connected — focus loss means leaving the car
+                if (wasPlayingBeforeFocusLoss && !androidAutoConnected) {
                     startFocusRetry()
                 }
             }
