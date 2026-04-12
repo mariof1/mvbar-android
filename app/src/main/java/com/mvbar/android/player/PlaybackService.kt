@@ -763,10 +763,22 @@ class PlaybackService : MediaLibraryService() {
                     val p = mediaSession?.player ?: return
                     p.shuffleModeEnabled = true
                     DebugLog.i("Player", "Shuffle restored after track started")
-                    // Update the AA shuffle button icon
+                }
+                // Refresh available commands when player becomes ready —
+                // ExoPlayer may not report COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM
+                // until the media is actually loaded and seekable.
+                if (state == Player.STATE_READY) {
                     mediaSession?.let { session ->
                         libraryCallback.updateCustomLayout(session)
                     }
+                }
+            }
+
+            override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
+                // Player capabilities changed (e.g. media became seekable) —
+                // propagate to all connected controllers so seek bar works.
+                mediaSession?.let { session ->
+                    libraryCallback.updateCustomLayout(session)
                 }
             }
         })
