@@ -491,11 +491,17 @@ class PlaybackService : MediaLibraryService() {
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED || state == Player.STATE_IDLE) {
-                    wasPlayingBeforeFocusLoss = false
-                    focusRetryJob?.cancel()
-                    abandonAudioFocus()
+                val stateStr = when (state) {
+                    Player.STATE_IDLE -> "IDLE"
+                    Player.STATE_BUFFERING -> "BUFFERING"
+                    Player.STATE_READY -> "READY"
+                    Player.STATE_ENDED -> "ENDED"
+                    else -> "UNKNOWN($state)"
                 }
+                DebugLog.i("AudioFocus", "playbackState=$stateStr")
+                // Don't abandon focus on STATE_ENDED/IDLE — it fires during queue
+                // restore and causes the car to stop routing audio. Focus is only
+                // released when the user explicitly pauses (onPlayWhenReadyChanged).
             }
         })
 
@@ -807,6 +813,21 @@ class PlaybackService : MediaLibraryService() {
                 .setAvailableSessionCommands(sessionCommands)
                 .setCustomLayout(layout)
                 .build()
+        }
+
+        override fun onDisconnected(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ) {
+            // When Android Auto (gearhead) disconnects, pause playback so music
+            // doesn't continue through the phone speaker after exiting the car.
+            if (controller.packageName == "com.google.android.projection.gearhead") {
+                DebugLog.i("Auto", "Android Auto disconnected — pausing playback")
+                val player = session.player
+                if (player.isPlaying || player.playWhenReady) {
+                    player.pause()
+                }
+            }
         }
 
         override fun onCustomCommand(
