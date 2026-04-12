@@ -91,7 +91,7 @@ class AuthBitmapLoader : BitmapLoader {
 
         // For content:// URIs with our ArtworkProvider, extract the real URL
         val httpUrl = if (uri.scheme == "content" && uri.authority == ArtworkProvider.AUTHORITY) {
-            uri.getQueryParameter("url")
+            ArtworkProvider.extractArtUrl(uri)
         } else if (uri.scheme == "https" || uri.scheme == "http") {
             url
         } else {

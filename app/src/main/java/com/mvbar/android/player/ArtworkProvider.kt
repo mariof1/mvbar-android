@@ -30,13 +30,31 @@ class ArtworkProvider : ContentProvider() {
             java.util.concurrent.ConcurrentHashMap<String, Boolean>()
         )
 
-        /** Build a content:// URI for a given artwork URL */
+        /**
+         * Build a content:// URI for a given artwork URL.
+         *
+         * Keep both the path-encoded and query-encoded forms for compatibility:
+         * Android Auto is more reliable with a concrete path segment, while older
+         * saved state may still contain the legacy ?url= form.
+         */
         fun buildUri(artUrl: String): Uri {
             return Uri.Builder()
                 .scheme("content")
                 .authority(AUTHORITY)
+                .encodedPath("/${Uri.encode(artUrl)}")
                 .appendQueryParameter("url", artUrl)
                 .build()
+        }
+
+        /** Accept both legacy query-based and newer path-based artwork URIs. */
+        fun extractArtUrl(uri: Uri): String? {
+            val queryUrl = uri.getQueryParameter("url")
+            if (!queryUrl.isNullOrBlank()) return queryUrl
+
+            val encodedPath = uri.encodedPath?.removePrefix("/")
+            return encodedPath
+                ?.takeIf { it.isNotBlank() }
+                ?.let(Uri::decode)
         }
     }
 
@@ -60,7 +78,7 @@ class ArtworkProvider : ContentProvider() {
     override fun onCreate(): Boolean = true
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
-        val artUrl = uri.getQueryParameter("url") ?: return null
+        val artUrl = extractArtUrl(uri) ?: return null
 
         // Use a hash-based filename for caching
         val cacheKey = md5(artUrl)
