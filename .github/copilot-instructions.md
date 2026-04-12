@@ -8,7 +8,8 @@
 
 ### Command line
 - Debug APK: `./gradlew assembleDebug`
-- Release APK: `./gradlew assembleRelease` (requires `mvbar-release.jks` in project root)
+- **Release APK** (preferred): `./gradlew assembleRelease` — always build release. The signing keystore `mvbar-release.jks` must be in the project root (gitignored, never commit it). If missing, copy from `C:\Users\mariusz.faldasz\StudioProjects\mvbar-android\mvbar-release.jks`.
+- Install on device: `adb install -r app/build/outputs/apk/release/app-release.apk`
 - Lint: `./gradlew lint`
 - All checks: `./gradlew check`
 
@@ -73,6 +74,14 @@ Coil with a custom auth-aware OkHttp client (configured in `MvbarApp`). Auth tok
 
 ### Theme
 Dark theme only — background `#0A0A0A`, accent cyan `#06B6D4`. Uses `Theme.Mvbar` (Material NoActionBar) with transparent status/navigation bars for edge-to-edge display.
+
+## Android Auto testing
+
+### Desktop Head Unit (DHU)
+- DHU is installed at: `C:\Users\mariusz.faldasz\AppData\Local\Android\Sdk\extras\google\auto\desktop-head-unit.exe`
+- The phone connects via ADB over WiFi. List devices with `adb devices`, then connect to the available device.
+- To test Android Auto: start DHU with `desktop-head-unit.exe` while the phone is connected via ADB.
+- The `PlaybackService` implements `MediaBrowserService` for Auto; browse tree and voice commands can be tested through DHU.
 
 ## Infrastructure context
 
