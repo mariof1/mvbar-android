@@ -1544,7 +1544,13 @@ class PlaybackService : MediaLibraryService() {
         val buildBucketItems = { buckets: List<com.mvbar.android.data.model.RecBucket> ->
             cachedBuckets = buckets
             buckets.mapIndexed { index, bucket ->
-                val artUri = bucket.artPaths.firstOrNull()?.let { ApiClient.artPathUrl(it) }
+                val artUri = if (bucket.artPaths.size > 1) {
+                    // Composite 2×2 grid from up to 4 artworks
+                    val fullUrls = bucket.artPaths.take(4).map { ApiClient.artPathUrl(it) }
+                    ArtworkProvider.buildGridUri(fullUrls)
+                } else {
+                    bucket.artPaths.firstOrNull()?.let { ArtworkProvider.buildUri(ApiClient.artPathUrl(it)) }
+                }
                 MediaItem.Builder()
                     .setMediaId("bucket:$index")
                     .setMediaMetadata(
@@ -1554,7 +1560,7 @@ class PlaybackService : MediaLibraryService() {
                             .setIsBrowsable(false)
                             .setIsPlayable(true)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
-                            .apply { artUri?.let { setArtworkUri(ArtworkProvider.buildUri(it)) } }
+                            .apply { artUri?.let { setArtworkUri(it) } }
                             .build()
                     )
                     .build()
