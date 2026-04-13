@@ -1985,13 +1985,15 @@ class PlaybackService : MediaLibraryService() {
                 append(episode.durationFormatted)
             }
         }
+        val podcastName = episode.podcastTitle ?: fallbackTitle
         return MediaItem.Builder()
             .setMediaId("ep:${episode.id}")
             .setUri(streamUrl)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(episode.title)
-                    .setArtist(subtitle.ifEmpty { episode.podcastTitle ?: fallbackTitle })
+                    .setArtist(subtitle.ifEmpty { podcastName })
+                    .setAlbumTitle(podcastName)
                     .setArtworkUri(ArtworkProvider.buildUri(artUri))
                     .setIsBrowsable(false)
                     .setIsPlayable(true)

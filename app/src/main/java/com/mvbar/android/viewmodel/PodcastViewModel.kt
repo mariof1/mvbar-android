@@ -221,11 +221,14 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
 
         // Create a pseudo-track for the episode so the player can handle it
         // Negative ID distinguishes podcast episodes from music tracks
+        val podcastName = episode.podcastTitle
+            ?: _selectedPodcast.value?.title
+            ?: "Podcast"
         val pseudoTrack = Track(
             id = -episode.id,
             title = episode.title,
-            artist = episode.podcastTitle,
-            album = episode.podcastTitle
+            artist = podcastName,
+            album = podcastName
         )
         playerManager.playTracks(listOf(pseudoTrack), 0)
 
