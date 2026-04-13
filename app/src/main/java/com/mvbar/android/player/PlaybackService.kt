@@ -93,6 +93,7 @@ class PlaybackService : MediaLibraryService() {
                 DebugLog.i("AudioFocus", "AUDIO_BECOMING_NOISY — cancelling retry")
                 wasPlayingBeforeFocusLoss = false
                 focusRetryJob?.cancel()
+                androidAutoConnected = false // BT disconnected — truly left the car
                 // ExoPlayer's handleAudioBecomingNoisy already pauses
             }
         }
@@ -1059,12 +1060,11 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo
         ) {
             if (controller.packageName == "com.google.android.projection.gearhead") {
-                androidAutoConnected = false
-                DebugLog.i("Auto", "Android Auto session disconnected (playback unaffected — audio route handles pause)")
-                // Do NOT pause here. Wireless AA reconnects the media session
-                // every ~5 min; audio continues via BT independently.
-                // If the user truly leaves the car, AUDIO_BECOMING_NOISY or
-                // audio focus loss will pause playback when BT disconnects.
+                // Do NOT clear androidAutoConnected here. Wireless AA reconnects
+                // the media session every ~5 min; clearing the flag would let the
+                // focus-retry logic fight Google Assistant / nav voice prompts.
+                // The flag is cleared by AUDIO_BECOMING_NOISY when BT truly disconnects.
+                DebugLog.i("Auto", "Android Auto session disconnected (flag kept — waiting for audio route change)")
             }
         }
 
