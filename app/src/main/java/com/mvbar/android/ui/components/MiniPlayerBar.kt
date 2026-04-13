@@ -1,6 +1,7 @@
 package com.mvbar.android.ui.components
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -17,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.ui.theme.*
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @Composable
@@ -45,9 +48,15 @@ fun MiniPlayerBar(
         track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
     }
 
-    var offsetX by remember { mutableFloatStateOf(0f) }
+    val offsetX = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val dismissThresholdPx = with(density) { 120.dp.toPx() }
+    val dismissThresholdPx = with(density) { 100.dp.toPx() }
+    val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+    // Velocity (px/s) above which a fast fling dismisses regardless of distance
+    val flingVelocityThreshold = with(density) { 800.dp.toPx() }
+    var dismissed by remember { mutableStateOf(false) }
+    var velocityTracker by remember { mutableFloatStateOf(0f) }
 
     // Floating pill design
     Surface(
@@ -56,22 +65,44 @@ fun MiniPlayerBar(
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .height(64.dp)
             .graphicsLayer {
-                translationX = offsetX
-                alpha = 1f - (abs(offsetX) / dismissThresholdPx).coerceIn(0f, 1f) * 0.4f
+                translationX = offsetX.value
+                alpha = 1f - (abs(offsetX.value) / dismissThresholdPx).coerceIn(0f, 1f) * 0.4f
             }
             .pointerInput(onDismiss) {
                 if (onDismiss != null) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
-                            if (abs(offsetX) > dismissThresholdPx) {
-                                onDismiss()
+                            if (dismissed) return@detectHorizontalDragGestures
+                            val currentOffset = offsetX.value
+                            val velocity = velocityTracker
+                            val shouldDismiss = abs(currentOffset) > dismissThresholdPx ||
+                                    abs(velocity) > flingVelocityThreshold
+                            if (shouldDismiss) {
+                                dismissed = true
+                                val target = if (currentOffset >= 0) screenWidthPx else -screenWidthPx
+                                scope.launch {
+                                    offsetX.animateTo(
+                                        target,
+                                        animationSpec = tween(200, easing = FastOutLinearInEasing)
+                                    )
+                                    onDismiss()
+                                }
+                            } else {
+                                scope.launch {
+                                    offsetX.animateTo(0f, animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessMedium
+                                    ))
+                                }
                             }
-                            offsetX = 0f
                         },
-                        onDragCancel = { offsetX = 0f },
+                        onDragCancel = {
+                            scope.launch { offsetX.snapTo(0f) }
+                        },
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
-                            offsetX += dragAmount
+                            velocityTracker = dragAmount * 60f // approximate px/s from per-frame delta
+                            scope.launch { offsetX.snapTo(offsetX.value + dragAmount) }
                         }
                     )
                 }
