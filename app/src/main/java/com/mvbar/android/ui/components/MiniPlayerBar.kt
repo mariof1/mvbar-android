@@ -48,13 +48,17 @@ fun MiniPlayerBar(
         track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
     }
 
-    val offsetX = remember { Animatable(0f) }
+    // Swipe-to-dismiss: raw state tracks finger synchronously during drag,
+    // Animatable only used for end-state animations (snap-back / slide-out)
+    var rawOffset by remember { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    val animOffset = remember { Animatable(0f) }
+    val displayOffset = if (isDragging) rawOffset else animOffset.value
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val dismissThresholdPx = with(density) { 100.dp.toPx() }
     val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
-    // Velocity (px/s) above which a fast fling dismisses regardless of distance
-    val flingVelocityThreshold = with(density) { 800.dp.toPx() }
+    val flingVelocityThreshold = with(density) { 600.dp.toPx() }
     var dismissed by remember { mutableStateOf(false) }
     var velocityTracker by remember { mutableFloatStateOf(0f) }
 
@@ -65,31 +69,38 @@ fun MiniPlayerBar(
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .height(64.dp)
             .graphicsLayer {
-                translationX = offsetX.value
-                alpha = 1f - (abs(offsetX.value) / dismissThresholdPx).coerceIn(0f, 1f) * 0.4f
+                translationX = displayOffset
+                alpha = 1f - (abs(displayOffset) / dismissThresholdPx).coerceIn(0f, 1f) * 0.4f
             }
             .pointerInput(onDismiss) {
                 if (onDismiss != null) {
                     detectHorizontalDragGestures(
+                        onDragStart = {
+                            isDragging = true
+                            rawOffset = animOffset.value
+                        },
                         onDragEnd = {
+                            isDragging = false
                             if (dismissed) return@detectHorizontalDragGestures
-                            val currentOffset = offsetX.value
+                            val current = rawOffset
                             val velocity = velocityTracker
-                            val shouldDismiss = abs(currentOffset) > dismissThresholdPx ||
+                            val shouldDismiss = abs(current) > dismissThresholdPx ||
                                     abs(velocity) > flingVelocityThreshold
                             if (shouldDismiss) {
                                 dismissed = true
-                                val target = if (currentOffset >= 0) screenWidthPx else -screenWidthPx
+                                val target = if (current >= 0) screenWidthPx else -screenWidthPx
                                 scope.launch {
-                                    offsetX.animateTo(
+                                    animOffset.snapTo(current)
+                                    animOffset.animateTo(
                                         target,
-                                        animationSpec = tween(200, easing = FastOutLinearInEasing)
+                                        animationSpec = tween(150, easing = FastOutLinearInEasing)
                                     )
                                     onDismiss()
                                 }
                             } else {
                                 scope.launch {
-                                    offsetX.animateTo(0f, animationSpec = spring(
+                                    animOffset.snapTo(current)
+                                    animOffset.animateTo(0f, animationSpec = spring(
                                         dampingRatio = Spring.DampingRatioMediumBouncy,
                                         stiffness = Spring.StiffnessMedium
                                     ))
@@ -97,12 +108,18 @@ fun MiniPlayerBar(
                             }
                         },
                         onDragCancel = {
-                            scope.launch { offsetX.snapTo(0f) }
+                            isDragging = false
+                            scope.launch {
+                                animOffset.snapTo(rawOffset)
+                                animOffset.animateTo(0f, animationSpec = spring(
+                                    stiffness = Spring.StiffnessHigh
+                                ))
+                            }
                         },
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
-                            velocityTracker = dragAmount * 60f // approximate px/s from per-frame delta
-                            scope.launch { offsetX.snapTo(offsetX.value + dragAmount) }
+                            velocityTracker = dragAmount * 60f
+                            rawOffset += dragAmount
                         }
                     )
                 }
