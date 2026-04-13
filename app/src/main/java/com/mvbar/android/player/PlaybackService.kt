@@ -78,10 +78,6 @@ class PlaybackService : MediaLibraryService() {
     private var pausedByFocusManager = false
     /** True while Android Auto (gearhead) is connected */
     private var androidAutoConnected = false
-    /** True when AA disconnect triggered the pause — prevents immediate focus abandonment */
-    private var pausedByAutoDisconnect = false
-    /** Job that delays the AA-disconnect pause, allowing brief reconnects to cancel it */
-    private var autoDisconnectJob: Job? = null
     /** Job that eventually releases foreground after extended pause */
     private var foregroundTimeoutJob: Job? = null
 
@@ -624,18 +620,11 @@ class PlaybackService : MediaLibraryService() {
                     focusRetryJob?.cancel() // user manually resumed — cancel auto-retry
                     requestAudioFocus()
                     pausedByFocusManager = false
-                    pausedByAutoDisconnect = false
                 } else if (!pausedByFocusManager) {
-                    if (pausedByAutoDisconnect) {
-                        // AA disconnect paused us — keep focus & notification alive
-                        pausedByAutoDisconnect = false
-                        scheduleForegroundTimeout()
-                    } else {
-                        // User or system paused — abandon focus & cancel retry
-                        wasPlayingBeforeFocusLoss = false
-                        focusRetryJob?.cancel()
-                        abandonAudioFocus()
-                    }
+                    // User or system paused — abandon focus & cancel retry
+                    wasPlayingBeforeFocusLoss = false
+                    focusRetryJob?.cancel()
+                    abandonAudioFocus()
                 }
             }
 
@@ -1044,7 +1033,6 @@ class PlaybackService : MediaLibraryService() {
 
             if (controller.packageName == "com.google.android.projection.gearhead") {
                 androidAutoConnected = true
-                autoDisconnectJob?.cancel() // cancel pending disconnect pause
             }
 
             // If the player has no queue (service restarted or app was killed),
@@ -1072,28 +1060,11 @@ class PlaybackService : MediaLibraryService() {
         ) {
             if (controller.packageName == "com.google.android.projection.gearhead") {
                 androidAutoConnected = false
-                // Wireless AA briefly disconnects/reconnects every ~5 min.
-                // Delay pause by 5 s so reconnects are seamless.
-                val player = session.player
-                if (player.isPlaying || player.playWhenReady) {
-                    DebugLog.i("Auto", "Android Auto disconnected — waiting 5 s before pausing")
-                    autoDisconnectJob?.cancel()
-                    autoDisconnectJob = serviceScope.launch {
-                        delay(5_000L)
-                        if (!androidAutoConnected) {
-                            DebugLog.i("Auto", "AA did not reconnect — pausing playback")
-                            wasPlayingBeforeFocusLoss = false
-                            focusRetryJob?.cancel()
-                            pausedByAutoDisconnect = true
-                            pausedByFocusManager = false
-                            player.pause()
-                        } else {
-                            DebugLog.i("Auto", "AA reconnected within grace period — keeping playback")
-                        }
-                    }
-                } else {
-                    DebugLog.i("Auto", "Android Auto disconnected (not playing)")
-                }
+                DebugLog.i("Auto", "Android Auto session disconnected (playback unaffected — audio route handles pause)")
+                // Do NOT pause here. Wireless AA reconnects the media session
+                // every ~5 min; audio continues via BT independently.
+                // If the user truly leaves the car, AUDIO_BECOMING_NOISY or
+                // audio focus loss will pause playback when BT disconnects.
             }
         }
 
