@@ -660,32 +660,41 @@ class PlaybackService : MediaLibraryService() {
             }
 
             override fun seekToNext() {
-                if (isPodcastOrAudiobook()) seekForward() else super.seekToNext()
+                if (isPodcastOrAudiobook()) {
+                    DebugLog.i("Player", "seekToNext → seekForward (podcast/audiobook)")
+                    seekForward()
+                } else super.seekToNext()
             }
 
             override fun seekToPrevious() {
-                if (isPodcastOrAudiobook()) seekBack() else super.seekToPrevious()
+                if (isPodcastOrAudiobook()) {
+                    DebugLog.i("Player", "seekToPrevious → seekBack (podcast/audiobook)")
+                    seekBack()
+                } else super.seekToPrevious()
             }
 
             override fun seekToNextMediaItem() {
-                if (isPodcastOrAudiobook()) seekForward() else super.seekToNextMediaItem()
+                if (isPodcastOrAudiobook()) {
+                    DebugLog.i("Player", "seekToNextMediaItem → seekForward (podcast/audiobook)")
+                    seekForward()
+                } else super.seekToNextMediaItem()
             }
 
             override fun seekToPreviousMediaItem() {
-                if (isPodcastOrAudiobook()) seekBack() else super.seekToPreviousMediaItem()
+                if (isPodcastOrAudiobook()) {
+                    DebugLog.i("Player", "seekToPreviousMediaItem → seekBack (podcast/audiobook)")
+                    seekBack()
+                } else super.seekToPreviousMediaItem()
             }
 
             override fun getAvailableCommands(): Player.Commands {
                 val commands = super.getAvailableCommands()
-                if (!isPodcastOrAudiobook()) {
-                    return commands
-                }
-                return commands.buildUpon()
-                    .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
-                    .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-                    .remove(Player.COMMAND_SEEK_TO_NEXT)
-                    .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
-                    .build()
+                // Keep COMMAND_SEEK_TO_NEXT/PREVIOUS even for podcasts so that
+                // steering-wheel / hardware buttons still work — the overrides
+                // above convert them to seekForward()/seekBack().
+                // The on-screen AA UI is controlled by getMediaButtons() which
+                // shows ±15s buttons instead of next/prev.
+                return commands
             }
         }
 
@@ -1016,14 +1025,10 @@ class PlaybackService : MediaLibraryService() {
                 .build()
 
         private fun buildPlayerCommands(player: Player): Player.Commands {
-            val isPodcastOrBook = isPodcastOrAudiobook(player.currentMediaItem)
+            // Keep all standard commands including seek next/prev — the
+            // ForwardingPlayer overrides convert them to ±15s for podcasts.
+            // getMediaButtons() controls the on-screen UI separately.
             return player.availableCommands
-                .buildUpon()
-                .removeIf(Player.COMMAND_SEEK_TO_PREVIOUS, isPodcastOrBook)
-                .removeIf(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM, isPodcastOrBook)
-                .removeIf(Player.COMMAND_SEEK_TO_NEXT, isPodcastOrBook)
-                .removeIf(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM, isPodcastOrBook)
-                .build()
         }
 
         override fun onConnect(
