@@ -10,6 +10,7 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.KeyEvent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
@@ -903,21 +904,70 @@ class PlaybackService : MediaLibraryService() {
             customLayout: ImmutableList<CommandButton>,
             showPauseButton: Boolean
         ): ImmutableList<CommandButton> {
-            if (specialPlaybackTarget(session.player.currentMediaItem) == null) {
-                return super.getMediaButtons(session, playerCommands, customLayout, showPauseButton)
+            val isPodcast = specialPlaybackTarget(session.player.currentMediaItem) != null
+            val buttons = ImmutableList.builder<CommandButton>()
+
+            if (isPodcast) {
+                // Podcast/audiobook: ⏪15s · ⏯ · ⏩15s in compact
+                customLayout
+                    .firstOrNull { it.sessionCommand?.customAction == CUSTOM_ACTION_SEEK_BACK_15 }
+                    ?.let { buttons.add(notificationCustomButton(it, compactViewIndex = 0)) }
+                if (playerCommands.contains(Player.COMMAND_PLAY_PAUSE)) {
+                    buttons.add(playPauseNotificationButton(showPauseButton))
+                }
+                customLayout
+                    .firstOrNull { it.sessionCommand?.customAction == CUSTOM_ACTION_SEEK_FORWARD_15 }
+                    ?.let { buttons.add(notificationCustomButton(it, compactViewIndex = 2)) }
+                return buttons.build()
             }
 
-            val buttons = ImmutableList.builder<CommandButton>()
-            customLayout
-                .firstOrNull { it.sessionCommand?.customAction == CUSTOM_ACTION_SEEK_BACK_15 }
-                ?.let { buttons.add(notificationCustomButton(it, compactViewIndex = 0)) }
+            // Music: ⏮ · ⏯ · ⏭ in compact, then Love / Shuffle / Repeat in expanded.
+            // We build the full list explicitly so custom buttons don't end up
+            // in the compact slots on lock-screen / AA.
+            if (playerCommands.contains(Player.COMMAND_SEEK_TO_PREVIOUS) ||
+                playerCommands.contains(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+            ) {
+                buttons.add(standardButton(
+                    CommandButton.ICON_PREVIOUS,
+                    Player.COMMAND_SEEK_TO_PREVIOUS,
+                    getString(androidx.media3.session.R.string.media3_controls_seek_to_previous_description),
+                    compactViewIndex = 0
+                ))
+            }
             if (playerCommands.contains(Player.COMMAND_PLAY_PAUSE)) {
                 buttons.add(playPauseNotificationButton(showPauseButton))
             }
-            customLayout
-                .firstOrNull { it.sessionCommand?.customAction == CUSTOM_ACTION_SEEK_FORWARD_15 }
-                ?.let { buttons.add(notificationCustomButton(it, compactViewIndex = 2)) }
+            if (playerCommands.contains(Player.COMMAND_SEEK_TO_NEXT) ||
+                playerCommands.contains(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+            ) {
+                buttons.add(standardButton(
+                    CommandButton.ICON_NEXT,
+                    Player.COMMAND_SEEK_TO_NEXT,
+                    getString(androidx.media3.session.R.string.media3_controls_seek_to_next_description),
+                    compactViewIndex = 2
+                ))
+            }
+            // Add music custom buttons (love/shuffle/repeat) for the expanded
+            // notification / AA extra-buttons row — no compact view index so
+            // they don't displace the transport row on the lock screen.
+            customLayout.forEach { buttons.add(it) }
             return buttons.build()
+        }
+
+        private fun standardButton(
+            iconId: Int,
+            playerCommand: Int,
+            description: String,
+            compactViewIndex: Int
+        ): CommandButton {
+            val extras = Bundle().apply {
+                putInt(DefaultMediaNotificationProvider.COMMAND_KEY_COMPACT_VIEW_INDEX, compactViewIndex)
+            }
+            return CommandButton.Builder(iconId)
+                .setPlayerCommand(playerCommand)
+                .setDisplayName(description)
+                .setExtras(extras)
+                .build()
         }
 
         private fun notificationCustomButton(
@@ -1025,10 +1075,62 @@ class PlaybackService : MediaLibraryService() {
                 .build()
 
         private fun buildPlayerCommands(player: Player): Player.Commands {
-            // Keep all standard commands including seek next/prev — the
-            // ForwardingPlayer overrides convert them to ±15s for podcasts.
-            // getMediaButtons() controls the on-screen UI separately.
+            // For podcasts/audiobooks: strip COMMAND_SEEK_TO_NEXT/PREVIOUS so
+            // that Android Auto and the Android 13+ lock-screen media controls
+            // don't render a prev/next transport row alongside our custom
+            // ±15s buttons (otherwise we get 5 misplaced icons). Steering-wheel
+            // hardware keys are handled separately in onMediaButtonEvent() by
+            // intercepting KEYCODE_MEDIA_NEXT/PREVIOUS/FF/REWIND, so removing
+            // the commands here doesn't break the hardware controls.
+            val isPodcastOrBook = isPodcastOrAudiobook(player.currentMediaItem)
             return player.availableCommands
+                .buildUpon()
+                .removeIf(Player.COMMAND_SEEK_TO_PREVIOUS, isPodcastOrBook)
+                .removeIf(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM, isPodcastOrBook)
+                .removeIf(Player.COMMAND_SEEK_TO_NEXT, isPodcastOrBook)
+                .removeIf(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM, isPodcastOrBook)
+                .build()
+        }
+
+        /**
+         * Intercept hardware media key events before Media3 dispatches them to
+         * the player. For podcasts/audiobooks we want MEDIA_NEXT/PREVIOUS (as
+         * sent by Android Auto steering-wheel buttons and wired/BT headsets)
+         * to act as ±15s seeks, not queue navigation. This runs regardless of
+         * the advertised Player.Commands, so we can keep the AA/lock-screen UI
+         * clean while still handling the hardware keys.
+         */
+        override fun onMediaButtonEvent(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+            intent: Intent
+        ): Boolean {
+            if (!isPodcastOrAudiobook(session.player.currentMediaItem)) {
+                return super.onMediaButtonEvent(session, controllerInfo, intent)
+            }
+            val keyEvent: KeyEvent? = androidx.core.content.IntentCompat.getParcelableExtra(
+                intent, Intent.EXTRA_KEY_EVENT, KeyEvent::class.java
+            )
+            if (keyEvent == null || keyEvent.action != KeyEvent.ACTION_DOWN) {
+                return super.onMediaButtonEvent(session, controllerInfo, intent)
+            }
+            return when (keyEvent.keyCode) {
+                KeyEvent.KEYCODE_MEDIA_NEXT,
+                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+                KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD -> {
+                    DebugLog.i("Player", "onMediaButtonEvent NEXT/FF → seekForward (podcast)")
+                    session.player.seekForward()
+                    true
+                }
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+                KeyEvent.KEYCODE_MEDIA_REWIND,
+                KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD -> {
+                    DebugLog.i("Player", "onMediaButtonEvent PREV/RW → seekBack (podcast)")
+                    session.player.seekBack()
+                    true
+                }
+                else -> super.onMediaButtonEvent(session, controllerInfo, intent)
+            }
         }
 
         override fun onConnect(
