@@ -199,13 +199,12 @@ fun MiniPlayerBar(
             }
             
             // Thin progress bar at bottom of pill
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp),
-                color = if (isPodcast) Orange500 else Cyan500,
-                trackColor = Color.Transparent,
+            GlowingProgressLine(
+                progress = progress,
+                accent = if (isPodcast) Orange500 else Cyan500,
+                accentHighlight = if (isPodcast) Orange400 else Cyan400,
+                heightDp = 2,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }

@@ -50,6 +50,12 @@ android {
 }
 
 dependencies {
+    implementation(project(":shared"))
+
+    // Wearable Data Layer (for paired Wear OS device)
+    implementation("com.google.android.gms:play-services-wearable:18.2.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+
     // Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)

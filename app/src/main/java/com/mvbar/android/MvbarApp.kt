@@ -49,6 +49,9 @@ class MvbarApp : Application(), ImageLoaderFactory {
         SyncManager.init(this)
         SyncManager.schedulePeriodic(this)
         SyncManager.scheduleFavoritesSync(this)
+
+        // Mirror player state onto the Wearable Data Layer for paired Wear OS apps.
+        com.mvbar.android.wearbridge.WearStatePublisher.start(this)
     }
 
     override fun newImageLoader(): ImageLoader {

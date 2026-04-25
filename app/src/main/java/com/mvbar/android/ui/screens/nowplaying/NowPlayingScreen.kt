@@ -49,6 +49,8 @@ import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.ui.components.ArtworkImage
+import com.mvbar.android.ui.components.GlowingProgressLine
+import com.mvbar.android.ui.components.GlowingSeekbar
 import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.theme.*
 
@@ -255,10 +257,14 @@ fun NowPlayingScreen(
                             var dragProgress by remember { mutableFloatStateOf(0f) }
                             val currentProgress = if (isDragging) dragProgress else if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
 
-                            Slider(value = currentProgress, onValueChange = { isDragging = true; dragProgress = it },
-                                onValueChangeFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
-                                colors = SliderDefaults.colors(thumbColor = Cyan500, activeTrackColor = Cyan500, inactiveTrackColor = WhiteOverlay15),
-                                modifier = Modifier.fillMaxWidth())
+                            GlowingSeekbar(
+                                progress = currentProgress,
+                                onProgressChange = { isDragging = true; dragProgress = it },
+                                onSeekFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
+                                accent = if (state.isPodcastMode || state.isAudiobookMode) Orange500 else Cyan500,
+                                accentHighlight = if (state.isPodcastMode || state.isAudiobookMode) Orange400 else Cyan400,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 val displayPosition = if (isDragging) (dragProgress * state.duration).toLong() else state.position
                                 Text(formatTime(displayPosition), style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
@@ -336,10 +342,14 @@ fun NowPlayingScreen(
                                     var dragProgress by remember { mutableFloatStateOf(0f) }
                                     val currentProgress = if (isDragging) dragProgress else if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
 
-                                    Slider(value = currentProgress, onValueChange = { isDragging = true; dragProgress = it },
-                                        onValueChangeFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
-                                        colors = SliderDefaults.colors(thumbColor = Cyan500, activeTrackColor = Cyan500, inactiveTrackColor = WhiteOverlay15),
-                                        modifier = Modifier.fillMaxWidth())
+                                    GlowingSeekbar(
+                                progress = currentProgress,
+                                onProgressChange = { isDragging = true; dragProgress = it },
+                                onSeekFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
+                                accent = if (state.isPodcastMode || state.isAudiobookMode) Orange500 else Cyan500,
+                                accentHighlight = if (state.isPodcastMode || state.isAudiobookMode) Orange400 else Cyan400,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         val displayPosition = if (isDragging) (dragProgress * state.duration).toLong() else state.position
                                         Text(formatTime(displayPosition), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
@@ -483,13 +493,14 @@ fun NowPlayingScreen(
                     val currentProgress = if (isDragging) dragProgress
                         else if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
 
-                    Slider(
-                        value = currentProgress,
-                        onValueChange = { isDragging = true; dragProgress = it },
-                        onValueChangeFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
-                        colors = SliderDefaults.colors(thumbColor = Cyan500, activeTrackColor = Cyan500, inactiveTrackColor = WhiteOverlay15),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    GlowingSeekbar(
+                                progress = currentProgress,
+                                onProgressChange = { isDragging = true; dragProgress = it },
+                                onSeekFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
+                                accent = if (state.isPodcastMode || state.isAudiobookMode) Orange500 else Cyan500,
+                                accentHighlight = if (state.isPodcastMode || state.isAudiobookMode) Orange400 else Cyan400,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         val displayPosition = if (isDragging) (dragProgress * state.duration).toLong() else state.position
                         Text(formatTime(displayPosition), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
@@ -572,13 +583,14 @@ fun NowPlayingScreen(
                     val currentProgress = if (isDragging) dragProgress
                         else if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
 
-                    Slider(
-                        value = currentProgress,
-                        onValueChange = { isDragging = true; dragProgress = it },
-                        onValueChangeFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
-                        colors = SliderDefaults.colors(thumbColor = Cyan500, activeTrackColor = Cyan500, inactiveTrackColor = WhiteOverlay15),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    GlowingSeekbar(
+                                progress = currentProgress,
+                                onProgressChange = { isDragging = true; dragProgress = it },
+                                onSeekFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
+                                accent = if (state.isPodcastMode || state.isAudiobookMode) Orange500 else Cyan500,
+                                accentHighlight = if (state.isPodcastMode || state.isAudiobookMode) Orange400 else Cyan400,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         val displayPosition = if (isDragging) (dragProgress * state.duration).toLong() else state.position
                         Text(formatTime(displayPosition), style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)

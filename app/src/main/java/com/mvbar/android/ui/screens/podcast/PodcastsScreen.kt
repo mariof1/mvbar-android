@@ -328,14 +328,12 @@ fun EpisodeListItem(
             // Progress bar
             if (episode.positionMs > 0 && !episode.played && episode.durationMs != null) {
                 Spacer(Modifier.height(4.dp))
-                LinearProgressIndicator(
-                    progress = { episode.progressPercent / 100f },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp)),
-                    color = Orange500,
-                    trackColor = WhiteOverlay10
+                com.mvbar.android.ui.components.GlowingProgressLine(
+                    progress = episode.progressPercent / 100f,
+                    accent = Orange500,
+                    accentHighlight = Orange400,
+                    heightDp = 3,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }

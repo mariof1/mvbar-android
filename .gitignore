@@ -5,9 +5,12 @@
 .DS_Store
 /build
 /app/build
+/shared/build
+/wear/build
 /captures
 .externalNativeBuild
 .cxx
 local.properties
 *.jks
 *.keystore
+.kotlin/

@@ -55,5 +55,20 @@
             android:authorities="com.mvbar.android.artwork"
             android:exported="true"
             android:grantUriPermissions="true" />
+
+        <!-- Wear OS companion: receives play/pause/etc commands from the
+             watch. The phone-app capability is declared in
+             res/values/wear.xml so a paired watch can discover us. -->
+        <service
+            android:name=".wearbridge.WearCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/mvbar/cmd/" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

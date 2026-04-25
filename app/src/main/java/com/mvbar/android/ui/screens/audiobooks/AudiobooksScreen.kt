@@ -138,14 +138,14 @@ private fun AudiobookGridItem(audiobook: Audiobook, onClick: () -> Unit) {
             // Progress bar at bottom
             val percent = audiobook.progressPercent
             if (percent > 0 && !audiobook.isFinished) {
-                LinearProgressIndicator(
-                    progress = { percent / 100f },
+                com.mvbar.android.ui.components.GlowingProgressLine(
+                    progress = percent / 100f,
+                    accent = Cyan500,
+                    accentHighlight = Cyan400,
+                    heightDp = 4,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp)
-                        .align(Alignment.BottomCenter),
-                    color = Cyan400,
-                    trackColor = BackgroundDark.copy(alpha = 0.6f)
+                        .align(Alignment.BottomCenter)
                 )
             }
         }

@@ -1,0 +1,57 @@
+package com.mvbar.android.wearbridge
+
+import android.content.Context
+import com.google.android.gms.wearable.DataClient
+import com.google.android.gms.wearable.PutDataMapRequest
+import com.google.android.gms.wearable.Wearable
+import com.mvbar.android.player.PlayerManager
+import com.mvbar.android.player.PlayerState
+import com.mvbar.android.shared.WearProtocol
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+
+/**
+ * Mirrors the phone PlayerState onto the Wearable DataClient so paired
+ * watches can show a now-playing UI. Idempotent.
+ */
+object WearStatePublisher {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var job: Job? = null
+
+    fun start(context: Context) {
+        if (job != null) return
+        val app = context.applicationContext
+        val client = Wearable.getDataClient(app)
+        val pm = PlayerManager.getInstance(app)
+        job = scope.launch {
+            pm.state.collectLatest { state ->
+                runCatching { publish(client, state) }
+            }
+        }
+    }
+
+    private suspend fun publish(client: DataClient, state: PlayerState) {
+        val req = PutDataMapRequest.create(WearProtocol.PATH_NOW_PLAYING).apply {
+            val track = state.currentTrack
+            dataMap.putString(WearProtocol.KEY_TITLE, track?.title.orEmpty())
+            dataMap.putString(WearProtocol.KEY_ARTIST, track?.artist.orEmpty())
+            dataMap.putString(WearProtocol.KEY_ALBUM, track?.album.orEmpty())
+            dataMap.putLong(WearProtocol.KEY_DURATION_MS, state.duration)
+            dataMap.putLong(WearProtocol.KEY_POSITION_MS, state.position)
+            dataMap.putBoolean(WearProtocol.KEY_IS_PLAYING, state.isPlaying)
+            dataMap.putBoolean(WearProtocol.KEY_IS_PODCAST, state.isPodcastMode)
+            dataMap.putBoolean(WearProtocol.KEY_IS_AUDIOBOOK, state.isAudiobookMode)
+            dataMap.putBoolean(WearProtocol.KEY_FAVORITE, state.isFavorite)
+            state.artworkUrl?.let { dataMap.putString(WearProtocol.KEY_ARTWORK, it) }
+            dataMap.putLong(WearProtocol.KEY_TIMESTAMP, System.currentTimeMillis())
+        }.asPutDataRequest().setUrgent()
+
+        client.putDataItem(req).await()
+    }
+}
+
