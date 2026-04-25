@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -92,4 +93,22 @@ dependencies {
 
     // Image loading (artwork from phone)
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // Networking (standalone playback over Wi-Fi/LTE)
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-kotlinx-serialization:2.11.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
+
+    // DataStore for cached auth/token
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Media3 ExoPlayer (standalone playback over Wi-Fi/LTE on the watch)
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
+    implementation("androidx.media3:media3-datasource-okhttp:1.4.1")
+    implementation("androidx.media3:media3-datasource:1.4.1")
+    implementation("androidx.media3:media3-session:1.4.1")
+    implementation("androidx.media3:media3-database:1.4.1")
 }

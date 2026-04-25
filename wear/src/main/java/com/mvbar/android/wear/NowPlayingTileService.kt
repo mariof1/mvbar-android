@@ -41,7 +41,7 @@ class NowPlayingTileService : TileService() {
     ): ListenableFuture<TileBuilders.Tile> {
         // Make sure the repository is listening so the cached state is fresh.
         NowPlayingRepository.attach(applicationContext)
-        val state = NowPlayingRepository.state.value
+        val state = preferLocalState()
 
         val tile = TileBuilders.Tile.Builder()
             .setResourcesVersion(RESOURCES_VERSION)
@@ -150,6 +150,22 @@ class NowPlayingTileService : TileService() {
                     .build()
             )
             .build()
+    }
+
+    private fun preferLocalState(): NowPlayingState {
+        val local = com.mvbar.android.wear.player.WearPlayerHolder.state.value
+        if (local.isActive) {
+            val item = local.item!!
+            return NowPlayingState(
+                title = item.title,
+                artist = item.subtitle,
+                durationMs = local.durationMs,
+                positionMs = local.positionMs,
+                isPlaying = local.isPlaying,
+                isPodcast = item.isPodcast
+            )
+        }
+        return NowPlayingRepository.state.value
     }
 
     private fun argbAccent(accent: Int, alpha: Int): Int =

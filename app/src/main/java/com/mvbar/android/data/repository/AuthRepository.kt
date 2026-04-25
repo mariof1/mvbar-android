@@ -8,6 +8,7 @@ import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.GoogleTokenRequest
 import com.mvbar.android.data.model.LoginRequest
 import com.mvbar.android.data.model.User
+import com.mvbar.android.wearbridge.WearStatePublisher
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
@@ -48,6 +49,7 @@ class AuthRepository(private val context: Context) {
                         prefs[KEY_EMAIL] = user.email
                         prefs[KEY_ROLE] = user.role
                     }
+                    WearStatePublisher.publishAuth(context)
                     Result.success(user)
                 } else {
                     Result.failure(Exception("No token received"))
@@ -77,6 +79,7 @@ class AuthRepository(private val context: Context) {
                         prefs[KEY_EMAIL] = user.email
                         prefs[KEY_ROLE] = user.role
                     }
+                    WearStatePublisher.publishAuth(context)
                     Result.success(user)
                 } else {
                     Result.failure(Exception("No token received"))

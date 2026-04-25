@@ -4,15 +4,14 @@ import android.content.Context
 
 /**
  * Tiny wrapper around SharedPreferences for the auth token + server
- * URL replicated from the phone. Used by future standalone-playback
- * code; today nothing on the watch consumes the token, but we already
- * persist it so when we add direct network access the bootstrap is
- * trivial.
+ * URL replicated from the phone.
  */
 object AuthTokenStore {
     private const val PREFS = "mvbar_auth"
     private const val KEY_TOKEN = "token"
     private const val KEY_SERVER = "server_url"
+
+    data class Snapshot(val token: String?, val serverUrl: String?)
 
     fun save(context: Context, token: String, serverUrl: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().apply {
@@ -22,9 +21,15 @@ object AuthTokenStore {
         }
     }
 
-    fun token(context: Context): String? =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_TOKEN, null)
+    fun get(context: Context): Snapshot {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return Snapshot(
+            token = prefs.getString(KEY_TOKEN, null),
+            serverUrl = prefs.getString(KEY_SERVER, null)
+        )
+    }
 
-    fun serverUrl(context: Context): String? =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_SERVER, null)
+    fun token(context: Context): String? = get(context).token
+    fun serverUrl(context: Context): String? = get(context).serverUrl
 }
+
