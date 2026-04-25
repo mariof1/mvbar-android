@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,10 +24,12 @@ import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import com.mvbar.android.wear.net.WearApiClient
+import com.mvbar.android.wear.player.WearPlayerHolder
 import com.mvbar.android.wear.ui.AlbumDetailScreen
 import com.mvbar.android.wear.ui.AlbumsScreen
 import com.mvbar.android.wear.ui.Backend
-import com.mvbar.android.wear.ui.HomeScreen
+import com.mvbar.android.wear.ui.EpisodesScreen
+import com.mvbar.android.wear.ui.LibraryScreen
 import com.mvbar.android.wear.ui.PairingScreen
 import com.mvbar.android.wear.ui.PlaylistTracksScreen
 import com.mvbar.android.wear.ui.QueueScreen
@@ -41,12 +44,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NowPlayingRepository.attach(applicationContext)
-
-        setContent {
-            MaterialTheme {
-                MvbarWearApp()
-            }
-        }
+        setContent { MaterialTheme { MvbarWearApp() } }
     }
 }
 
@@ -56,6 +54,7 @@ private fun MvbarWearApp() {
     val nav = rememberSwipeDismissableNavController()
     val backend = remember { Backend.get(ctx.applicationContext) }
     var configured by remember { mutableStateOf(WearApiClient.isConfigured(ctx.applicationContext)) }
+    val playerState by WearPlayerHolder.state.collectAsState()
 
     LaunchedEffect(Unit) {
         kotlinx.coroutines.flow.flow {
@@ -66,6 +65,18 @@ private fun MvbarWearApp() {
         }.collect { configured = it }
     }
 
+    // Auto-jump to Now Playing when playback starts (e.g. from Tile, voice).
+    var lastSeenActive by remember { mutableStateOf(playerState.isActive) }
+    LaunchedEffect(playerState.isActive) {
+        if (playerState.isActive && !lastSeenActive) {
+            val current = nav.currentDestination?.route
+            if (current != null && current != "now_playing" && current != "queue") {
+                nav.navigate("now_playing")
+            }
+        }
+        lastSeenActive = playerState.isActive
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize().background(WearTheme.Background),
         timeText = { TimeText() }
@@ -74,21 +85,20 @@ private fun MvbarWearApp() {
             PairingScreen()
             return@Scaffold
         }
-        SwipeDismissableNavHost(navController = nav, startDestination = "home") {
-            composable("home") {
-                HomeScreen(
+        SwipeDismissableNavHost(navController = nav, startDestination = "library") {
+            composable("library") {
+                LibraryScreen(
                     backend = backend,
                     onOpenNowPlaying = { nav.navigate("now_playing") },
                     onOpenSettings = { nav.navigate("settings") },
                     onOpenAlbums = { nav.navigate("albums") },
                     onOpenSmartPlaylists = { nav.navigate("smart_playlists") },
-                    onOpenPlaylist = { id, name ->
-                        nav.navigate("playlist/$id/${Uri.encode(name)}")
-                    },
+                    onOpenPlaylist = { id, name -> nav.navigate("playlist/$id/${Uri.encode(name)}") },
                     onOpenTrackList = { title, loader ->
                         TrackListBuffer.set(title, loader)
                         nav.navigate("tracklist")
-                    }
+                    },
+                    onOpenPodcast = { id -> nav.navigate("podcast/$id") }
                 )
             }
             composable("now_playing") {
@@ -100,9 +110,7 @@ private fun MvbarWearApp() {
             composable("settings") {
                 SettingsScreen(
                     onBack = { nav.popBackStack() },
-                    onSignOut = {
-                        nav.popBackStack("home", inclusive = false)
-                    }
+                    onSignOut = { nav.popBackStack("library", inclusive = false) }
                 )
             }
             composable("albums") {
@@ -161,6 +169,18 @@ private fun MvbarWearApp() {
                     backend = backend,
                     playlistId = id,
                     title = name,
+                    onBack = { nav.popBackStack() },
+                    onOpenNowPlaying = { nav.navigate("now_playing") }
+                )
+            }
+            composable(
+                "podcast/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.IntType })
+            ) { entry ->
+                val id = entry.arguments?.getInt("id") ?: 0
+                EpisodesScreen(
+                    backend = backend,
+                    podcastId = id,
                     onBack = { nav.popBackStack() },
                     onOpenNowPlaying = { nav.navigate("now_playing") }
                 )
