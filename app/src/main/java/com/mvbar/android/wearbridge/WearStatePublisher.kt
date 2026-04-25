@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
+import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.player.PlayerManager
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.shared.WearProtocol
@@ -22,6 +23,8 @@ import kotlinx.coroutines.tasks.await
 object WearStatePublisher {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
+    private var lastPublishedToken: String? = null
+    private var lastPublishedServer: String? = null
 
     fun start(context: Context) {
         if (job != null) return
@@ -30,9 +33,35 @@ object WearStatePublisher {
         val pm = PlayerManager.getInstance(app)
         job = scope.launch {
             pm.state.collectLatest { state ->
-                runCatching { publish(client, state) }
+                runCatching {
+                    publishAuthIfChanged(client)
+                    publish(client, state)
+                }
             }
         }
+    }
+
+    /** Force-publish auth credentials (e.g. just after login). */
+    fun publishAuth(context: Context) {
+        scope.launch {
+            runCatching {
+                publishAuthIfChanged(Wearable.getDataClient(context.applicationContext))
+            }
+        }
+    }
+
+    private suspend fun publishAuthIfChanged(client: DataClient) {
+        val token = ApiClient.getToken()
+        val server = ApiClient.getBaseUrl()
+        if (token == lastPublishedToken && server == lastPublishedServer) return
+        lastPublishedToken = token
+        lastPublishedServer = server
+        val req = PutDataMapRequest.create(WearProtocol.PATH_AUTH).apply {
+            dataMap.putString(WearProtocol.KEY_AUTH_TOKEN, token.orEmpty())
+            dataMap.putString(WearProtocol.KEY_SERVER_URL, server)
+            dataMap.putLong(WearProtocol.KEY_TIMESTAMP, System.currentTimeMillis())
+        }.asPutDataRequest().setUrgent()
+        client.putDataItem(req).await()
     }
 
     private suspend fun publish(client: DataClient, state: PlayerState) {
@@ -54,4 +83,5 @@ object WearStatePublisher {
         client.putDataItem(req).await()
     }
 }
+
 
