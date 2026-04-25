@@ -31,7 +31,7 @@ import com.mvbar.android.wear.player.PlayableItem
 import com.mvbar.android.wear.player.WearPlayerHolder
 
 @Composable
-fun PodcastsTab(backend: Backend, onOpenNowPlaying: () -> Unit) {
+fun PodcastsTab(backend: Backend, onOpenNowPlaying: () -> Unit, onOpenSettings: () -> Unit) {
     var podcasts by remember { mutableStateOf<List<Podcast>>(emptyList()) }
     var newEpisodes by remember { mutableStateOf<List<Episode>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -52,6 +52,7 @@ fun PodcastsTab(backend: Backend, onOpenNowPlaying: () -> Unit) {
     ScalingLazyColumn(modifier = Modifier
         .fillMaxSize()
         .background(WearTheme.Background)) {
+        item { NowPlayingHeaderChip(onOpenNowPlaying) }
         if (loading) {
             item { Text("Loading…", color = WearTheme.OnSurfaceDim) }
         } else {
@@ -82,6 +83,7 @@ fun PodcastsTab(backend: Backend, onOpenNowPlaying: () -> Unit) {
             items(podcasts) { p ->
                 PodcastChip(backend, p, onClick = { openedPodcastId = p.id })
             }
+            item { SettingsHeaderChip(onOpenSettings) }
         }
     }
 }

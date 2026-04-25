@@ -37,6 +37,7 @@ import com.mvbar.android.wear.player.WearPlayerHolder
 fun MusicTab(
     backend: Backend,
     onOpenNowPlaying: () -> Unit,
+    onOpenSettings: () -> Unit,
     onOpenAlbums: () -> Unit,
     onOpenSmart: () -> Unit,
     onOpenPlaylist: (Int, String) -> Unit,
@@ -57,6 +58,7 @@ fun MusicTab(
     }
 
     ScalingLazyColumn(modifier = Modifier.fillMaxSize().background(WearTheme.Background)) {
+        item { NowPlayingHeaderChip(onOpenNowPlaying) }
         item {
             HubChip("Search", Icons.Default.Mic, WearTheme.Cyan, primary = true) { openedSearch = true }
         }
@@ -100,6 +102,7 @@ fun MusicTab(
                 )
             }
         }
+        item { SettingsHeaderChip(onOpenSettings) }
     }
 }
 

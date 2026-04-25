@@ -36,23 +36,20 @@ fun HomeScreen(
     Column(modifier = Modifier.fillMaxSize().background(WearTheme.Background)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 8.dp, end = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
             TabPill(tab == 0, WearTheme.Orange, Icons.Default.Podcasts, "Pods") { tab = 0 }
+            Spacer(Modifier.width(8.dp))
             TabPill(tab == 1, WearTheme.Cyan, Icons.Default.MusicNote, "Music") { tab = 1 }
-            Button(
-                onClick = onOpenSettings,
-                colors = ButtonDefaults.secondaryButtonColors(backgroundColor = WearTheme.Surface),
-                modifier = Modifier.size(28.dp)
-            ) { Icon(Icons.Default.Settings, contentDescription = "Settings", tint = WearTheme.OnSurfaceDim) }
         }
         Box(modifier = Modifier.weight(1f)) {
             when (tab) {
-                0 -> PodcastsTab(backend, onOpenNowPlaying)
+                0 -> PodcastsTab(backend, onOpenNowPlaying, onOpenSettings)
                 1 -> MusicTab(
                     backend = backend,
                     onOpenNowPlaying = onOpenNowPlaying,
+                    onOpenSettings = onOpenSettings,
                     onOpenAlbums = onOpenAlbums,
                     onOpenSmart = onOpenSmartPlaylists,
                     onOpenPlaylist = onOpenPlaylist,
