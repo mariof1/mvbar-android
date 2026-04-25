@@ -29,6 +29,29 @@ class Backend private constructor(val context: Context, val api: MvbarWearApi) {
     suspend fun favorites(): List<Track> =
         runCatching { api.favorites().tracks }.getOrDefault(emptyList())
 
+    suspend fun history(): List<Track> =
+        runCatching { api.history().tracks }.getOrDefault(emptyList())
+
+    suspend fun recordPlay(id: Int) {
+        runCatching { api.recordPlay(id) }
+    }
+
+    suspend fun setFavorite(id: Int, fav: Boolean) {
+        runCatching { if (fav) api.addFavorite(id) else api.removeFavorite(id) }
+    }
+
+    suspend fun albums(): List<com.mvbar.android.wear.net.Album> =
+        runCatching { api.albums().albums }.getOrDefault(emptyList())
+
+    suspend fun albumTracks(name: String): List<Track> =
+        runCatching { api.albumTracks(name).tracks }.getOrDefault(emptyList())
+
+    suspend fun smartPlaylists(): List<com.mvbar.android.wear.net.SmartPlaylistInfo> =
+        runCatching { api.smartPlaylists().items }.getOrDefault(emptyList())
+
+    suspend fun smartPlaylistTracks(id: Int): List<Track> =
+        runCatching { api.smartPlaylist(id).tracks }.getOrDefault(emptyList())
+
     suspend fun podcasts(): List<Podcast> =
         runCatching { api.podcasts().podcasts }.getOrDefault(emptyList())
 

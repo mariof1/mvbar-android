@@ -35,6 +35,32 @@ interface MvbarWearApi {
     @DELETE("api/favorites/{id}")
     suspend fun removeFavorite(@Path("id") id: Int)
 
+    @GET("api/history")
+    suspend fun history(@Query("limit") limit: Int = 50): HistoryResponse
+
+    @POST("api/history/{id}")
+    suspend fun recordPlay(@Path("id") id: Int)
+
+    // Albums
+    @GET("api/browse/albums")
+    suspend fun albums(
+        @Query("limit") limit: Int = 100,
+        @Query("offset") offset: Int = 0
+    ): AlbumsListWrapper
+
+    @GET("api/browse/album")
+    suspend fun albumTracks(@Query("album") album: String): AlbumDetailResponse
+
+    // Smart playlists
+    @GET("api/smart-playlists")
+    suspend fun smartPlaylists(): SmartPlaylistsResponse
+
+    @GET("api/smart-playlists/{id}")
+    suspend fun smartPlaylist(
+        @Path("id") id: Int,
+        @Query("limit") limit: Int = 200
+    ): SmartPlaylistResponse
+
     // Podcasts
     @GET("api/podcasts")
     suspend fun podcasts(): PodcastsResponse

@@ -19,23 +19,24 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Local-on-watch playback state holder. Stays alive for the process and
- * fronts a MediaController bound to WearPlaybackService.
- *
- * Responsibilities:
- *  - Build streaming URLs from items + auth token.
- *  - Expose a small StateFlow used by both the Now Playing screen and Tile.
+ * Local-on-watch playback state holder with queue support. Backed by a
+ * MediaController bound to WearPlaybackService.
  */
 object WearPlayerHolder {
 
     data class State(
-        val item: PlayableItem? = null,
+        val queue: List<PlayableItem> = emptyList(),
+        val index: Int = 0,
         val isPlaying: Boolean = false,
         val positionMs: Long = 0,
         val durationMs: Long = 0,
-        val bufferingPercent: Int = 0
+        val bufferingPercent: Int = 0,
+        val isFavorite: Boolean = false
     ) {
+        val item: PlayableItem? get() = queue.getOrNull(index)
         val isActive: Boolean get() = item != null
+        val hasPrevious: Boolean get() = index > 0
+        val hasNext: Boolean get() = index < queue.size - 1
     }
 
     private val _state = MutableStateFlow(State())
@@ -49,7 +50,7 @@ object WearPlayerHolder {
     fun ensureController(context: Context) {
         if (controller != null) return
         val app = context.applicationContext
-        // Make sure the service is started so the MediaSession exists.
+        cachedContext = app
         app.startService(Intent(app, WearPlaybackService::class.java))
         val token = SessionToken(app, ComponentName(app, WearPlaybackService::class.java))
         val future = MediaController.Builder(app, token).buildAsync()
@@ -59,6 +60,7 @@ object WearPlayerHolder {
             c.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) { syncState() }
                 override fun onIsPlayingChanged(isPlaying: Boolean) { syncState() }
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { syncState() }
                 override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) { syncState() }
             })
             startPolling()
@@ -79,7 +81,9 @@ object WearPlayerHolder {
     private fun syncState() {
         val c = controller ?: return
         val cur = _state.value
+        val newIndex = c.currentMediaItemIndex.coerceIn(0, (cur.queue.size - 1).coerceAtLeast(0))
         _state.value = cur.copy(
+            index = newIndex,
             isPlaying = c.isPlaying,
             positionMs = c.currentPosition.coerceAtLeast(0),
             durationMs = c.duration.takeIf { it > 0 } ?: cur.durationMs,
@@ -87,38 +91,70 @@ object WearPlayerHolder {
         )
     }
 
+    /** Play a single item — replaces queue. */
     fun play(context: Context, item: PlayableItem) {
+        playQueue(context, listOf(item), 0)
+    }
+
+    /** Play a list starting at startIndex. */
+    fun playQueue(context: Context, items: List<PlayableItem>, startIndex: Int) {
+        if (items.isEmpty()) return
         ensureController(context)
         val store = AuthTokenStore.get(context.applicationContext)
         val base = store.serverUrl ?: return
-        val url = streamUrl(base, item) ?: return
+        val mediaItems = items.mapNotNull { it.toMediaItem(base) }
+        if (mediaItems.isEmpty()) return
 
-        val media = MediaItem.Builder()
-            .setUri(url)
-            .setMediaId("${if (item.isPodcast) "ep" else "tr"}-${item.id}")
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(item.title)
-                    .setArtist(item.subtitle)
-                    .setIsPlayable(true)
-                    .build()
-            )
-            .build()
+        _state.value = State(
+            queue = items,
+            index = startIndex.coerceIn(0, items.size - 1),
+            durationMs = items.getOrNull(startIndex)?.durationMs ?: 0,
+            isFavorite = (items.getOrNull(startIndex) as? PlayableItem.Music)?.track?.isFavorite ?: false
+        )
 
-        _state.value = State(item = item, durationMs = item.durationMs ?: 0)
-        // Wait for controller; if it's not ready yet, retry briefly.
         scope.launch {
             var tries = 0
             while (controller == null && tries < 20) {
-                kotlinx.coroutines.delay(50)
-                tries++
+                kotlinx.coroutines.delay(50); tries++
             }
             controller?.apply {
-                setMediaItem(media)
+                setMediaItems(mediaItems, startIndex, 0L)
                 prepare()
                 play()
             }
         }
+    }
+
+    fun addToQueue(item: PlayableItem) {
+        val store = AuthTokenStore.get(controllerCtx() ?: return)
+        val base = store.serverUrl ?: return
+        val mi = item.toMediaItem(base) ?: return
+        controller?.addMediaItem(mi)
+        _state.value = _state.value.copy(queue = _state.value.queue + item)
+    }
+
+    fun playNext(item: PlayableItem) {
+        val store = AuthTokenStore.get(controllerCtx() ?: return)
+        val base = store.serverUrl ?: return
+        val mi = item.toMediaItem(base) ?: return
+        val c = controller ?: return
+        val pos = c.currentMediaItemIndex + 1
+        c.addMediaItem(pos, mi)
+        val cur = _state.value
+        val newQueue = cur.queue.toMutableList().apply { add(pos.coerceAtMost(size), item) }
+        _state.value = cur.copy(queue = newQueue)
+    }
+
+    fun removeFromQueue(index: Int) {
+        controller?.removeMediaItem(index)
+        val cur = _state.value
+        if (index in cur.queue.indices) {
+            _state.value = cur.copy(queue = cur.queue.toMutableList().also { it.removeAt(index) })
+        }
+    }
+
+    fun seekToQueueIndex(index: Int) {
+        controller?.seekTo(index, 0L)
     }
 
     fun togglePlayPause() {
@@ -126,14 +162,44 @@ object WearPlayerHolder {
         if (c.isPlaying) c.pause() else c.play()
     }
 
+    fun seekTo(positionMs: Long) {
+        controller?.seekTo(positionMs.coerceAtLeast(0))
+    }
+
     fun seekBy(deltaMs: Long) {
         val c = controller ?: return
         c.seekTo((c.currentPosition + deltaMs).coerceAtLeast(0))
     }
 
+    fun next() { controller?.seekToNextMediaItem() }
+    fun previous() { controller?.seekToPreviousMediaItem() }
+
+    fun setFavoriteLocal(fav: Boolean) {
+        _state.value = _state.value.copy(isFavorite = fav)
+    }
+
     fun stop() {
         controller?.stop()
         _state.value = State()
+    }
+
+    private fun controllerCtx(): Context? = cachedContext
+
+    @Volatile private var cachedContext: Context? = null
+
+    private fun PlayableItem.toMediaItem(base: String): MediaItem? {
+        val url = streamUrl(base, this) ?: return null
+        return MediaItem.Builder()
+            .setUri(url)
+            .setMediaId("${if (isPodcast) "ep" else "tr"}-${id}")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(title)
+                    .setArtist(subtitle)
+                    .setIsPlayable(true)
+                    .build()
+            )
+            .build()
     }
 
     private fun streamUrl(base: String, item: PlayableItem): String? {

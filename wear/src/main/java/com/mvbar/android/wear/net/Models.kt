@@ -23,10 +23,23 @@ data class Track(
 
 @Serializable
 data class Album(
-    val id: Int = 0,
-    val title: String = "",
+    val album: String? = null,
+    val name: String? = null,
     val artist: String? = null,
+    @SerialName("display_artist") val displayArtist: String? = null,
+    @SerialName("album_artist") val albumArtist: String? = null,
+    @SerialName("track_count") val trackCount: Int = 0,
+    val year: Int? = null,
     @SerialName("art_path") val artPath: String? = null
+) {
+    val displayName: String get() = album ?: name ?: ""
+    val displayArtistName: String get() = displayArtist ?: albumArtist ?: artist ?: ""
+}
+
+@Serializable
+data class SmartPlaylistInfo(
+    val id: Int = 0,
+    val name: String = ""
 )
 
 @Serializable
@@ -98,4 +111,38 @@ data class SearchResults(
     val tracks: List<Track> = emptyList(),
     val albums: List<Album> = emptyList(),
     val playlists: List<Playlist> = emptyList()
+)
+
+@Serializable
+data class AlbumsListWrapper(
+    val ok: Boolean = false,
+    val albums: List<Album> = emptyList(),
+    val total: Int = 0
+)
+
+@Serializable
+data class AlbumDetailResponse(
+    val ok: Boolean = false,
+    val album: Album? = null,
+    val tracks: List<Track> = emptyList()
+)
+
+@Serializable
+data class SmartPlaylistsResponse(
+    val ok: Boolean = false,
+    val items: List<SmartPlaylistInfo> = emptyList()
+)
+
+@Serializable
+data class SmartPlaylistResponse(
+    val ok: Boolean = false,
+    val id: Int = 0,
+    val name: String = "",
+    val tracks: List<Track> = emptyList()
+)
+
+@Serializable
+data class HistoryResponse(
+    val ok: Boolean = false,
+    val tracks: List<Track> = emptyList()
 )
