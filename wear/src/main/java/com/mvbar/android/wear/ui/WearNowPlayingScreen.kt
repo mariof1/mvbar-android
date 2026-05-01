@@ -10,12 +10,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,158 +98,169 @@ private fun LocalNowPlaying(state: WearPlayerHolder.State, onOpenQueue: () -> Un
     }
 
     Box(modifier = Modifier.fillMaxSize().background(WearTheme.Background)) {
-        // Blurred background
+        // Blurred background art
         if (artUrl != null && Build.VERSION.SDK_INT >= 31) {
             AsyncImage(
                 model = artUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().blur(36.dp).alpha(0.45f)
+                modifier = Modifier.fillMaxSize().blur(40.dp).alpha(0.55f)
             )
         }
-        Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)))
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xC8000000)))
 
+        // Tightly packed centered column. Round-screen safe insets on the
+        // sides; secondary actions row is inset further so the side circles
+        // don't get clipped at the bottom edge.
         Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.Center
         ) {
-            // Top: artwork + title/artist
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+            // Artwork with gradient fallback so the screen never looks empty.
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(accent.copy(alpha = 0.55f), accent.copy(alpha = 0.15f))
+                        )
+                    ),
+                contentAlignment = Alignment.Center
             ) {
                 if (artUrl != null) {
                     AsyncImage(
                         model = artUrl,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(60.dp).clip(RoundedCornerShape(10.dp))
+                        modifier = Modifier.fillMaxSize()
                     )
-                    Spacer(Modifier.height(6.dp))
+                } else {
+                    Icon(
+                        Icons.Default.MusicNote,
+                        contentDescription = null,
+                        tint = WearTheme.OnSurface.copy(alpha = 0.85f),
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
-                Text(
-                    item.title,
-                    color = WearTheme.OnSurface,
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.caption1,
-                    maxLines = 1,
-                    textAlign = TextAlign.Center,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    item.subtitle,
-                    color = WearTheme.OnSurfaceDim,
-                    style = MaterialTheme.typography.caption2,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                item.title,
+                color = WearTheme.OnSurface,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.title3,
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                item.subtitle,
+                color = WearTheme.OnSurfaceDim,
+                style = MaterialTheme.typography.caption2,
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            // Progress
+            val dur = state.durationMs.coerceAtLeast(1)
+            val progress = (state.positionMs.toFloat() / dur).coerceIn(0f, 1f)
+            GlowingProgressBar(progress, accent)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(formatMs(state.positionMs), color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption3)
+                Text(formatMs(state.durationMs), color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption3)
             }
 
-            // Middle: progress + transport
-            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                val dur = state.durationMs.coerceAtLeast(1)
-                val progress = (state.positionMs.toFloat() / dur).coerceIn(0f, 1f)
-                GlowingProgressBar(progress, accent)
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 1.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+            Spacer(Modifier.height(8.dp))
+
+            // Transport
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Button(
+                    onClick = { WearPlayerHolder.previous() },
+                    enabled = state.hasPrevious,
+                    colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
+                    modifier = Modifier.size(36.dp).clip(CircleShape)
+                ) { Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = WearTheme.OnSurface) }
+                Spacer(Modifier.width(10.dp))
+                Button(
+                    onClick = { WearPlayerHolder.togglePlayPause() },
+                    colors = ButtonDefaults.primaryButtonColors(backgroundColor = accent),
+                    modifier = Modifier.size(52.dp).clip(CircleShape)
                 ) {
-                    Text(formatMs(state.positionMs), color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption3)
-                    Text(formatMs(state.durationMs), color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption3)
+                    Icon(
+                        if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (state.isPlaying) "Pause" else "Play",
+                        tint = WearTheme.OnSurface,
+                        modifier = Modifier.size(26.dp)
+                    )
                 }
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Button(
-                        onClick = { WearPlayerHolder.previous() },
-                        enabled = state.hasPrevious,
-                        colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
-                        modifier = Modifier.size(36.dp).clip(CircleShape)
-                    ) { Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = WearTheme.OnSurface) }
-                    Spacer(Modifier.width(10.dp))
-                    Button(
-                        onClick = { WearPlayerHolder.togglePlayPause() },
-                        colors = ButtonDefaults.primaryButtonColors(backgroundColor = accent),
-                        modifier = Modifier.size(56.dp).clip(CircleShape)
-                    ) {
-                        Icon(
-                            if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (state.isPlaying) "Pause" else "Play",
-                            tint = WearTheme.OnSurface,
-                            modifier = Modifier.size(28.dp)
+                Spacer(Modifier.width(10.dp))
+                Button(
+                    onClick = { WearPlayerHolder.next() },
+                    enabled = state.hasNext,
+                    colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
+                    modifier = Modifier.size(36.dp).clip(CircleShape)
+                ) { Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = WearTheme.OnSurface) }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // Secondary actions — inset so circles aren't clipped by the
+            // round screen near the bottom.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (item is PlayableItem.Music) {
+                    SmallCircleAction(
+                        icon = if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        tint = if (state.isFavorite) WearTheme.Pink else WearTheme.OnSurface,
+                        description = "Favorite",
+                        onClick = {
+                            val music = item
+                            val newFav = !state.isFavorite
+                            WearPlayerHolder.setFavoriteLocal(newFav)
+                            kotlinx.coroutines.MainScope().launch {
+                                backend.setFavorite(music.track.id, newFav)
+                            }
+                        }
+                    )
+                } else {
+                    Spacer(Modifier.size(28.dp))
+                }
+                SmallCircleAction(
+                    icon = Icons.Default.VolumeUp,
+                    tint = WearTheme.OnSurface,
+                    description = "Volume",
+                    onClick = {
+                        val audio = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                        audio.adjustStreamVolume(
+                            AudioManager.STREAM_MUSIC,
+                            AudioManager.ADJUST_SAME,
+                            AudioManager.FLAG_SHOW_UI
                         )
                     }
-                    Spacer(Modifier.width(10.dp))
-                    Button(
-                        onClick = { WearPlayerHolder.next() },
-                        enabled = state.hasNext,
-                        colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
-                        modifier = Modifier.size(36.dp).clip(CircleShape)
-                    ) { Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = WearTheme.OnSurface) }
-                }
-            }
-
-            // Bottom: secondary actions
-            SecondaryActionsRow(
-                state = state,
-                isMusic = item is PlayableItem.Music,
-                onToggleFavorite = {
-                    val music = item as? PlayableItem.Music ?: return@SecondaryActionsRow
-                    val newFav = !state.isFavorite
-                    WearPlayerHolder.setFavoriteLocal(newFav)
-                    kotlinx.coroutines.MainScope().launch { backend.setFavorite(music.track.id, newFav) }
-                },
-                onOpenQueue = onOpenQueue
-            )
-        }
-    }
-}
-
-@Composable
-private fun SecondaryActionsRow(
-    state: WearPlayerHolder.State,
-    isMusic: Boolean,
-    onToggleFavorite: () -> Unit,
-    onOpenQueue: () -> Unit
-) {
-    val ctx = LocalContext.current
-    val audio = remember { ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (isMusic) {
-            SmallCircleAction(
-                icon = if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                tint = if (state.isFavorite) WearTheme.Pink else WearTheme.OnSurface,
-                description = "Favorite",
-                onClick = onToggleFavorite
-            )
-        }
-        SmallCircleAction(
-            icon = Icons.Default.VolumeUp,
-            tint = WearTheme.OnSurface,
-            description = "Volume",
-            onClick = {
-                // Bring up the system volume slider — supports rotary on Wear OS.
-                audio.adjustStreamVolume(
-                    AudioManager.STREAM_MUSIC,
-                    AudioManager.ADJUST_SAME,
-                    AudioManager.FLAG_SHOW_UI
+                )
+                SmallCircleAction(
+                    icon = Icons.Default.QueueMusic,
+                    tint = WearTheme.OnSurface,
+                    description = "Queue",
+                    onClick = onOpenQueue
                 )
             }
-        )
-        SmallCircleAction(
-            icon = Icons.Default.QueueMusic,
-            tint = WearTheme.OnSurface,
-            description = "Queue",
-            onClick = onOpenQueue
-        )
+        }
     }
 }
 
@@ -261,9 +274,9 @@ private fun SmallCircleAction(
     Button(
         onClick = onClick,
         colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
-        modifier = Modifier.size(32.dp).clip(CircleShape)
+        modifier = Modifier.size(28.dp).clip(CircleShape)
     ) {
-        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(14.dp))
     }
 }
 
