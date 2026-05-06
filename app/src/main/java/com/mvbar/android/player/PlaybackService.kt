@@ -2305,6 +2305,12 @@ class PlaybackService : MediaLibraryService() {
                 kotlinx.coroutines.delay(30_000)
                 if (player.isPlaying) {
                     saveEpisodeProgress(player)
+                    // Also refresh the playback snapshot so a service kill
+                    // (no onDestroy) doesn't leave us with a stale position
+                    // on the next AA reconnect — would otherwise cause the
+                    // podcast to "restart from the beginning" after a long
+                    // gap (e.g. drive home after work).
+                    savePlaybackSnapshot(player)
                 }
             }
         }
@@ -2442,9 +2448,30 @@ class PlaybackService : MediaLibraryService() {
                     builder.setMediaMetadata(metaBuilder.build())
                     resolveStreamUri(builder.build())
                 }
+                // Prefer the freshest episode position from local DB over the
+                // potentially stale snapshot positionMs — protects against
+                // service kills where onDestroy didn't run.
+                var startPos = saved.positionMs
+                val currentItem = saved.entries.getOrNull(saved.index)
+                if (currentItem != null) {
+                    val target = specialPlaybackTarget(
+                        MediaItem.Builder().setMediaId(currentItem.mediaId).build()
+                    )
+                    if (target?.kind == SpecialPlaybackKind.PODCAST && target.episodeId != null) {
+                        try {
+                            val ep = db.podcastDao().getEpisodesByIds(listOf(target.episodeId))
+                                .firstOrNull()
+                            val dbPos = ep?.positionMs ?: 0L
+                            if (dbPos > startPos) {
+                                DebugLog.i("Player", "Using fresher DB episode position: ${dbPos}ms (snapshot was ${startPos}ms)")
+                                startPos = dbPos
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
                 val wasShuffling = player.shuffleModeEnabled
                 if (wasShuffling) player.shuffleModeEnabled = false
-                player.setMediaItems(items, saved.index, saved.positionMs)
+                player.setMediaItems(items, saved.index, startPos)
                 player.prepare()
                 // Don't auto-play — let the user press play on the head unit
                 if (wasShuffling) player.shuffleModeEnabled = true
