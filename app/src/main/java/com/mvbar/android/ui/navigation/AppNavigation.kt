@@ -288,6 +288,8 @@ fun MainScreen(
 
     // Add to playlist dialog
     showAddToPlaylist?.let { track ->
+        // Refresh playlists each time the dialog is shown so the list is never stale/empty
+        LaunchedEffect(track) { mainVm.loadPlaylists() }
         AddToPlaylistDialog(
             playlists = playlists,
             onDismiss = { showAddToPlaylist = null },

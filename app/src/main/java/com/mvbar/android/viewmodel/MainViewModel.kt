@@ -135,6 +135,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch { playerManager.connect() }
+        // Pre-load playlists so the Add-to-Playlist dialog is never empty
+        loadPlaylists()
         // Sync favorite state whenever the current track changes
         viewModelScope.launch {
             var lastTrackId: Int? = null
@@ -375,6 +377,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 repo.addToPlaylist(playlistId, track.id)
+                // Refresh detail if this playlist is currently open (mirrors removeFromPlaylist)
+                val open = _selectedPlaylist.value
+                if (open != null && open.id == playlistId) loadPlaylistDetail(open)
             } catch (e: Exception) {
                 DebugLog.e("Playlist", "Add track failed", e)
             }
