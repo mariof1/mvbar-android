@@ -353,7 +353,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _playlistLoading.value = true
             try {
                 val resp = repo.getPlaylistItems(playlist.id)
-                _playlistTracks.value = resp.items.mapNotNull { it.track }
+                _playlistTracks.value = resp.items.mapNotNull { it.toTrack() }
             } catch (e: Exception) {
                 DebugLog.e("Playlist", "Load items failed", e)
             } finally {

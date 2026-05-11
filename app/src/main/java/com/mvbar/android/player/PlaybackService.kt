@@ -1871,7 +1871,7 @@ class PlaybackService : MediaLibraryService() {
     private suspend fun getPlaylistTracks(playlistId: Int): List<MediaItem> {
         return apiOrCache("Playlist tracks:$playlistId",
             apiCall = {
-                ApiClient.api.getPlaylistItems(playlistId).items.mapNotNull { it.track?.let { t -> trackToMediaItem(t) } }
+                ApiClient.api.getPlaylistItems(playlistId).items.mapNotNull { it.toTrack()?.let { t -> trackToMediaItem(t) } }
             },
             cacheCall = {
                 db.playlistDao().getItems(playlistId).mapNotNull {

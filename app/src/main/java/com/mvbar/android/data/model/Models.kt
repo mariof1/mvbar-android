@@ -126,8 +126,29 @@ data class PlaylistItem(
     val id: Int = 0,
     @SerialName("track_id") val trackId: Int = 0,
     val position: Int = 0,
+    // Server returns flat fields (title/artist/album/duration_ms directly on each item)
+    val title: String? = null,
+    val artist: String? = null,
+    val album: String? = null,
+    @SerialName("duration_ms") val durationMs: Double? = null,
+    @SerialName("art_path") val artPath: String? = null,
+    // Legacy nested track (kept for forward-compat if server is ever updated)
     val track: Track? = null
-)
+) {
+    /** Always returns a usable Track regardless of whether server sends flat or nested. */
+    fun toTrack(): Track? {
+        if (track != null) return track
+        if (title == null && trackId == 0) return null
+        return Track(
+            id = trackId,
+            title = title,
+            artist = artist,
+            album = album,
+            durationMs = durationMs,
+            artPath = artPath
+        )
+    }
+}
 
 @Serializable
 data class SearchResults(
