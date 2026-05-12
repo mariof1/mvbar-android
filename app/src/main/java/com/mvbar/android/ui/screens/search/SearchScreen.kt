@@ -3,6 +3,7 @@ package com.mvbar.android.ui.screens.search
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -49,6 +50,8 @@ fun SearchScreen(
     onAlbumClick: (SearchAlbum) -> Unit,
     onPlaylistClick: (SearchPlaylist) -> Unit,
     onTrackLongPress: ((Track) -> Unit)? = null,
+    onArtistLongPress: ((SearchArtist) -> Unit)? = null,
+    onAlbumLongPress: ((SearchAlbum) -> Unit)? = null,
     favoriteIds: Set<Int> = emptySet(),
     onToggleFavorite: ((Int) -> Unit)? = null,
     onClose: () -> Unit,
@@ -145,7 +148,11 @@ fun SearchScreen(
                 if (artists.isNotEmpty()) {
                     item { SectionHeader("Artists") }
                     items(artists.take(4)) { artist ->
-                        ArtistSearchRow(artist = artist, onClick = { onArtistClick(artist) })
+                        ArtistSearchRow(
+                            artist = artist,
+                            onClick = { onArtistClick(artist) },
+                            onLongPress = onArtistLongPress?.let { { it(artist) } }
+                        )
                     }
                 }
 
@@ -154,7 +161,11 @@ fun SearchScreen(
                 if (albums.isNotEmpty()) {
                     item { SectionHeader("Albums") }
                     items(albums.take(4)) { album ->
-                        AlbumSearchRow(album = album, onClick = { onAlbumClick(album) })
+                        AlbumSearchRow(
+                            album = album,
+                            onClick = { onAlbumClick(album) },
+                            onLongPress = onAlbumLongPress?.let { { it(album) } }
+                        )
                     }
                 }
 
@@ -244,12 +255,13 @@ private fun SectionHeader(title: String) {
     )
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ArtistSearchRow(artist: SearchArtist, onClick: () -> Unit) {
+private fun ArtistSearchRow(artist: SearchArtist, onClick: () -> Unit, onLongPress: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
             .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -298,12 +310,13 @@ private fun ArtistSearchRow(artist: SearchArtist, onClick: () -> Unit) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun AlbumSearchRow(album: SearchAlbum, onClick: () -> Unit) {
+private fun AlbumSearchRow(album: SearchAlbum, onClick: () -> Unit, onLongPress: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
             .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

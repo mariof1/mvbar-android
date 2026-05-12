@@ -31,6 +31,7 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.NetworkMonitor
+import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Artist
 import com.mvbar.android.data.model.Playlist
 import com.mvbar.android.data.model.SmartPlaylistFilters
@@ -95,6 +96,11 @@ enum class BottomTab(
     FAVORITES("favorites", "Favorites", Icons.Filled.Favorite, Icons.Outlined.FavoriteBorder)
 }
 
+sealed class CollectionRef {
+    data class AlbumByName(val name: String, val artist: String? = null, val artUrl: String? = null, val trackCount: Int = 0) : CollectionRef()
+    data class ArtistById(val id: Int, val name: String, val artUrl: String? = null, val trackCount: Int = 0, val albumCount: Int = 0) : CollectionRef()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
@@ -110,6 +116,9 @@ fun MainScreen(
     var showNowPlaying by remember { mutableStateOf(false) }
     var contextTrack by remember { mutableStateOf<Track?>(null) }
     var showAddToPlaylist by remember { mutableStateOf<Track?>(null) }
+    var contextCollection by remember { mutableStateOf<CollectionRef?>(null) }
+    var collectionTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var showAddCollectionToPlaylist by remember { mutableStateOf(false) }
     var showSubscribeDialog by remember { mutableStateOf(false) }
 
     val currentRoute by navController.currentBackStackEntryAsState()
@@ -276,6 +285,15 @@ fun MainScreen(
                 }
             },
             onTrackLongPress = { contextTrack = it },
+            onArtistLongPress = { sa ->
+                val artUrl = sa.artPath?.let { ApiClient.artPathUrl(it) + (sa.artHash?.let { h -> "?h=$h" } ?: "") }
+                contextCollection = CollectionRef.ArtistById(sa.id, sa.name, artUrl, sa.trackCount, sa.albumCount)
+            },
+            onAlbumLongPress = { sb ->
+                val artUrl = sb.artPath?.let { ApiClient.artPathUrl(it) + (sb.artHash?.let { h -> "?h=$h" } ?: "") }
+                    ?: sb.artTrackId?.let { ApiClient.trackArtUrl(it) }
+                contextCollection = CollectionRef.AlbumByName(sb.album, sb.displayArtist, artUrl, sb.trackCount)
+            },
             favoriteIds = favoriteIds,
             onToggleFavorite = { mainVm.toggleFavorite(it) },
             onClose = { showSearch = false; mainVm.clearSearch() },
@@ -296,6 +314,28 @@ fun MainScreen(
             onSelect = { playlistId ->
                 mainVm.addToPlaylist(playlistId, track)
                 ToastManager.show("Added to playlist", ToastIcon.PLAYLIST)
+            },
+            onCreateAndAdd = { name ->
+                mainVm.createPlaylistAndAddTracks(name, listOf(track))
+                ToastManager.show("Added to new playlist", ToastIcon.PLAYLIST)
+            }
+        )
+    }
+
+    // Collection (album/artist) add-to-playlist dialog
+    if (showAddCollectionToPlaylist) {
+        LaunchedEffect(showAddCollectionToPlaylist) { mainVm.loadPlaylists() }
+        val tracksSnapshot = collectionTracks
+        AddToPlaylistDialog(
+            playlists = playlists,
+            onDismiss = { showAddCollectionToPlaylist = false },
+            onSelect = { playlistId ->
+                mainVm.addTracksToPlaylist(playlistId, tracksSnapshot)
+                ToastManager.show("Added ${tracksSnapshot.size} tracks to playlist", ToastIcon.PLAYLIST)
+            },
+            onCreateAndAdd = { name ->
+                mainVm.createPlaylistAndAddTracks(name, tracksSnapshot)
+                ToastManager.show("Added ${tracksSnapshot.size} tracks to new playlist", ToastIcon.PLAYLIST)
             }
         )
     }
@@ -341,6 +381,65 @@ fun MainScreen(
                     try { navController.navigate("album?name=${Uri.encode(albumName)}") }
                     catch (_: Exception) {}
                 }
+            }
+        )
+    }
+
+    // Collection (album/artist) context menu bottom sheet
+    contextCollection?.let { ref ->
+        LaunchedEffect(ref) {
+            collectionTracks = when (ref) {
+                is CollectionRef.AlbumByName -> mainVm.fetchAlbumTracks(ref.name)
+                is CollectionRef.ArtistById -> mainVm.fetchArtistTracks(ref.id)
+            }
+        }
+        val title = when (ref) {
+            is CollectionRef.AlbumByName -> ref.name
+            is CollectionRef.ArtistById -> ref.name
+        }
+        val subtitle = when (ref) {
+            is CollectionRef.AlbumByName -> ref.artist
+            is CollectionRef.ArtistById -> null
+        }
+        val artUrl = when (ref) {
+            is CollectionRef.AlbumByName -> ref.artUrl
+            is CollectionRef.ArtistById -> ref.artUrl
+        }
+        val placeholder = when (ref) {
+            is CollectionRef.AlbumByName -> Icons.Filled.Album
+            is CollectionRef.ArtistById -> Icons.Filled.Person
+        }
+        val effectiveCount = when (ref) {
+            is CollectionRef.AlbumByName -> if (collectionTracks.isNotEmpty()) collectionTracks.size else ref.trackCount
+            is CollectionRef.ArtistById -> if (collectionTracks.isNotEmpty()) collectionTracks.size else ref.trackCount
+        }
+        CollectionBottomSheet(
+            title = title,
+            subtitle = subtitle,
+            artworkUrl = artUrl,
+            placeholderIcon = placeholder,
+            trackCount = effectiveCount,
+            onDismiss = { contextCollection = null },
+            onPlayAll = {
+                if (collectionTracks.isNotEmpty()) {
+                    mainVm.playTrack(collectionTracks.first(), collectionTracks)
+                }
+            },
+            onPlayNext = {
+                if (collectionTracks.isNotEmpty()) {
+                    mainVm.playerManager.playNextMany(collectionTracks)
+                    ToastManager.show("${collectionTracks.size} tracks will play next", ToastIcon.QUEUE)
+                }
+            },
+            onAddToQueue = {
+                if (collectionTracks.isNotEmpty()) {
+                    mainVm.playerManager.appendTracks(collectionTracks)
+                    ToastManager.show("Added ${collectionTracks.size} tracks to queue", ToastIcon.QUEUE)
+                }
+            },
+            onAddToPlaylist = {
+                contextCollection = null
+                showAddCollectionToPlaylist = true
             }
         )
     }
@@ -647,7 +746,21 @@ fun MainScreen(
                         onLoadMoreAlbums = { browseVm.loadMoreAlbums() },
                         onLoadMoreGenres = { browseVm.loadMoreGenres() },
                         onLoadMoreCountries = { browseVm.loadMoreCountries() },
-                        onLoadMoreLanguages = { browseVm.loadMoreLanguages() }
+                        onLoadMoreLanguages = { browseVm.loadMoreLanguages() },
+                        onArtistLongPress = { artist ->
+                            val id = artist.id ?: return@BrowseScreen
+                            val artUrl = ApiClient.artistArtUrl(id)
+                            contextCollection = CollectionRef.ArtistById(id, artist.name, artUrl, artist.trackCount, artist.albumCount)
+                        },
+                        onAlbumLongPress = { album ->
+                            val artUrl = album.artPath?.let { ApiClient.artPathUrl(it) }
+                            contextCollection = CollectionRef.AlbumByName(
+                                name = album.displayName,
+                                artist = album.displayArtist ?: album.albumArtist ?: album.artist,
+                                artUrl = artUrl,
+                                trackCount = album.trackCount
+                            )
+                        }
                     )
                 }
 
@@ -678,6 +791,28 @@ fun MainScreen(
                             catch (_: Exception) {}
                         },
                         onTrackLongPress = { contextTrack = it },
+                        onMore = {
+                            val a = selectedArtist
+                            val id = a?.id ?: id
+                            val name = a?.name ?: ""
+                            val artUrl = if (id > 0) ApiClient.artistArtUrl(id) else null
+                            contextCollection = CollectionRef.ArtistById(
+                                id = id,
+                                name = name,
+                                artUrl = artUrl,
+                                trackCount = a?.trackCount ?: artistTracks.size,
+                                albumCount = a?.albumCount ?: artistAlbums.size
+                            )
+                        },
+                        onAlbumLongPress = { album ->
+                            val artUrl = album.artPath?.let { ApiClient.artPathUrl(it) }
+                            contextCollection = CollectionRef.AlbumByName(
+                                name = album.displayName,
+                                artist = album.displayArtist ?: album.albumArtist ?: album.artist,
+                                artUrl = artUrl,
+                                trackCount = album.trackCount
+                            )
+                        },
                         favoriteIds = favoriteIds,
                         onToggleFavorite = { mainVm.toggleFavorite(it) },
                         hasMoreTracks = hasMoreArtistTracks,
@@ -709,6 +844,18 @@ fun MainScreen(
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onPlayAll = { if (albumTracks.isNotEmpty()) mainVm.playTrack(albumTracks.first(), albumTracks) },
                         onTrackLongPress = { contextTrack = it },
+                        onMore = {
+                            val a = selectedAlbum
+                            val artUrl = a?.artPath?.let { ApiClient.artPathUrl(it) }
+                                ?: albumTracks.firstOrNull()?.id?.let { ApiClient.trackArtUrl(it) }
+                            contextCollection = CollectionRef.AlbumByName(
+                                name = name,
+                                artist = a?.displayArtist ?: a?.artist
+                                    ?: albumTracks.firstOrNull()?.let { it.albumArtist ?: it.artist },
+                                artUrl = artUrl,
+                                trackCount = albumTracks.size
+                            )
+                        },
                         favoriteIds = favoriteIds,
                         onToggleFavorite = { mainVm.toggleFavorite(it) }
                     )

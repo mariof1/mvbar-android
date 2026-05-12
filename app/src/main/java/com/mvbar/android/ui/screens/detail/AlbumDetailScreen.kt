@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,6 +38,7 @@ fun AlbumDetailScreen(
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: () -> Unit,
     onTrackLongPress: ((Track) -> Unit)? = null,
+    onMore: (() -> Unit)? = null,
     favoriteIds: Set<Int> = emptySet(),
     onToggleFavorite: ((Int) -> Unit)? = null
 ) {
@@ -95,6 +97,11 @@ fun AlbumDetailScreen(
                     Icon(Icons.Filled.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(2.dp))
                     Text("Play All", color = Color.Black, style = MaterialTheme.typography.labelSmall)
+                }
+                onMore?.let {
+                    IconButton(onClick = it, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "More options", tint = OnSurfaceDim)
+                    }
                 }
             }
         }

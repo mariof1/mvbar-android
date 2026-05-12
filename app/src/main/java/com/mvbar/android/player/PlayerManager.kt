@@ -334,6 +334,31 @@ class PlayerManager private constructor(private val context: Context) {
         _state.value = _state.value.copy(queue = _queue.toList())
     }
 
+    /** Insert multiple tracks right after the current one, preserving order. */
+    fun playNextMany(tracks: List<Track>) {
+        val ctrl = controller ?: return
+        if (tracks.isEmpty()) return
+        val baseIndex = (ctrl.currentMediaItemIndex + 1).coerceAtMost(_queue.size)
+        val items = tracks.mapIndexed { offset, track ->
+            _queue.add(baseIndex + offset, track)
+            val streamUrl = ApiClient.streamUrl(track.id)
+            val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+            MediaItem.Builder()
+                .setUri(streamUrl)
+                .setMediaId(track.id.toString())
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(track.displayTitle)
+                        .setArtist(track.displayArtist)
+                        .setArtworkUri(ArtworkProvider.buildUri(artUrl))
+                        .build()
+                )
+                .build()
+        }
+        ctrl.addMediaItems(baseIndex, items)
+        _state.value = _state.value.copy(queue = _queue.toList())
+    }
+
     fun removeFromQueue(index: Int) {
         val ctrl = controller ?: return
         if (index < 0 || index >= _queue.size) return

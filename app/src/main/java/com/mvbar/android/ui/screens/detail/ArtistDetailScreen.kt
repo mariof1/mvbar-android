@@ -3,6 +3,7 @@ package com.mvbar.android.ui.screens.detail
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -14,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
@@ -48,6 +50,8 @@ fun ArtistDetailScreen(
     onPlayAll: () -> Unit,
     onAlbumClick: ((String) -> Unit)? = null,
     onTrackLongPress: ((Track) -> Unit)? = null,
+    onMore: (() -> Unit)? = null,
+    onAlbumLongPress: ((Album) -> Unit)? = null,
     favoriteIds: Set<Int> = emptySet(),
     onToggleFavorite: ((Int) -> Unit)? = null,
     hasMoreTracks: Boolean = false,
@@ -115,6 +119,11 @@ fun ArtistDetailScreen(
                     Spacer(Modifier.width(2.dp))
                     Text("Play All", color = Color.Black, style = MaterialTheme.typography.labelSmall)
                 }
+                onMore?.let {
+                    IconButton(onClick = it, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "More options", tint = OnSurfaceDim)
+                    }
+                }
             }
         }
 
@@ -129,7 +138,7 @@ fun ArtistDetailScreen(
                 )
             }
             item {
-                AlbumRow(albums = albums, onAlbumClick = onAlbumClick)
+                AlbumRow(albums = albums, onAlbumClick = onAlbumClick, onAlbumLongPress = onAlbumLongPress)
             }
         }
 
@@ -144,7 +153,7 @@ fun ArtistDetailScreen(
                 )
             }
             item {
-                AlbumRow(albums = appearsOn, onAlbumClick = onAlbumClick)
+                AlbumRow(albums = appearsOn, onAlbumClick = onAlbumClick, onAlbumLongPress = onAlbumLongPress)
             }
         }
 
@@ -189,10 +198,12 @@ fun ArtistDetailScreen(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun AlbumRow(
     albums: List<Album>,
-    onAlbumClick: ((String) -> Unit)?
+    onAlbumClick: ((String) -> Unit)?,
+    onAlbumLongPress: ((Album) -> Unit)? = null
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -202,7 +213,10 @@ private fun AlbumRow(
             Card(
                 modifier = Modifier
                     .width(140.dp)
-                    .clickable { onAlbumClick?.invoke(album.displayName) },
+                    .combinedClickable(
+                        onClick = { onAlbumClick?.invoke(album.displayName) },
+                        onLongClick = onAlbumLongPress?.let { { it(album) } }
+                    ),
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = CardDark)
             ) {

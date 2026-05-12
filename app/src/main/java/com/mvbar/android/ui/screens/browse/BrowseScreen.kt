@@ -40,7 +40,9 @@ fun BrowseScreen(
     onLoadMoreAlbums: () -> Unit = {},
     onLoadMoreGenres: () -> Unit = {},
     onLoadMoreCountries: () -> Unit = {},
-    onLoadMoreLanguages: () -> Unit = {}
+    onLoadMoreLanguages: () -> Unit = {},
+    onArtistLongPress: ((Artist) -> Unit)? = null,
+    onAlbumLongPress: ((Album) -> Unit)? = null
 ) {
     LaunchedEffect(Unit) {
         if (state.artists.isEmpty() && state.albums.isEmpty() && !state.isLoading) {
@@ -77,8 +79,8 @@ fun BrowseScreen(
             }
         } else {
             when (state.selectedTab) {
-                0 -> ArtistsGrid(state.artists, state.hasMoreArtists, state.isLoadingMore, onArtistClick, onLoadMoreArtists)
-                1 -> AlbumsGrid(state.albums, state.hasMoreAlbums, state.isLoadingMore, onAlbumClick, onLoadMoreAlbums)
+                0 -> ArtistsGrid(state.artists, state.hasMoreArtists, state.isLoadingMore, onArtistClick, onLoadMoreArtists, onArtistLongPress)
+                1 -> AlbumsGrid(state.albums, state.hasMoreAlbums, state.isLoadingMore, onAlbumClick, onLoadMoreAlbums, onAlbumLongPress)
                 2 -> GenresGrid(state.genres, state.hasMoreGenres, state.isLoadingMore, onGenreClick, onLoadMoreGenres)
                 3 -> CountriesGrid(state.countries, state.hasMoreCountries, state.isLoadingMore, onCountryClick, onLoadMoreCountries)
                 4 -> LanguagesGrid(state.languages, state.hasMoreLanguages, state.isLoadingMore, onLanguageClick, onLoadMoreLanguages)
@@ -93,7 +95,8 @@ private fun ArtistsGrid(
     hasMore: Boolean,
     isLoadingMore: Boolean,
     onClick: (Artist) -> Unit,
-    onLoadMore: () -> Unit
+    onLoadMore: () -> Unit,
+    onLongPress: ((Artist) -> Unit)? = null
 ) {
     val gridState = rememberLazyGridState()
 
@@ -114,7 +117,7 @@ private fun ArtistsGrid(
         modifier = Modifier.fillMaxSize()
     ) {
         items(artists) { artist ->
-            ArtistCard(artist = artist, onClick = { onClick(artist) })
+            ArtistCard(artist = artist, onClick = { onClick(artist) }, onLongPress = onLongPress?.let { { it(artist) } })
         }
         if (isLoadingMore) {
             item {
@@ -134,7 +137,8 @@ private fun AlbumsGrid(
     hasMore: Boolean,
     isLoadingMore: Boolean,
     onClick: (Album) -> Unit,
-    onLoadMore: () -> Unit
+    onLoadMore: () -> Unit,
+    onLongPress: ((Album) -> Unit)? = null
 ) {
     val gridState = rememberLazyGridState()
 
@@ -154,7 +158,7 @@ private fun AlbumsGrid(
         modifier = Modifier.fillMaxSize()
     ) {
         items(albums) { album ->
-            AlbumCard(album = album, onClick = { onClick(album) })
+            AlbumCard(album = album, onClick = { onClick(album) }, onLongPress = onLongPress?.let { { it(album) } })
         }
         if (isLoadingMore) {
             item {

@@ -380,10 +380,63 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // Refresh detail if this playlist is currently open (mirrors removeFromPlaylist)
                 val open = _selectedPlaylist.value
                 if (open != null && open.id == playlistId) loadPlaylistDetail(open)
+                // Always refresh the playlists list so itemCount stays current
+                loadPlaylists()
             } catch (e: Exception) {
                 DebugLog.e("Playlist", "Add track failed", e)
             }
         }
+    }
+
+    fun addTracksToPlaylist(playlistId: Int, tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                repo.addTracksToPlaylist(playlistId, tracks.map { it.id })
+                val open = _selectedPlaylist.value
+                if (open != null && open.id == playlistId) loadPlaylistDetail(open)
+                loadPlaylists()
+            } catch (e: Exception) {
+                DebugLog.e("Playlist", "Add tracks failed", e)
+            }
+        }
+    }
+
+    fun createPlaylistAndAddTracks(name: String, tracks: List<Track>) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val resp = repo.createPlaylist(name.trim())
+                loadPlaylists()
+                val newId = resp.playlist?.id ?: run {
+                    DebugLog.e("Playlist", "Create returned no id")
+                    return@launch
+                }
+                if (tracks.isNotEmpty()) {
+                    repo.addTracksToPlaylist(newId, tracks.map { it.id })
+                    loadPlaylists()
+                }
+            } catch (e: Exception) {
+                DebugLog.e("Playlist", "Create+add failed", e)
+            }
+        }
+    }
+
+    /** Fetch all tracks for an album by display name. */
+    suspend fun fetchAlbumTracks(albumName: String): List<Track> = try {
+        repo.getAlbumTracks(albumName).tracks
+    } catch (e: Exception) {
+        DebugLog.e("Collection", "fetchAlbumTracks failed", e)
+        emptyList()
+    }
+
+    /** Fetch all tracks for an artist (paginated; uses large page). */
+    suspend fun fetchArtistTracks(artistId: Int): List<Track> = try {
+        if (artistId <= 0) emptyList()
+        else repo.getArtistTracks(artistId, limit = 1000, offset = 0).tracks
+    } catch (e: Exception) {
+        DebugLog.e("Collection", "fetchArtistTracks failed", e)
+        emptyList()
     }
 
     fun removeFromPlaylist(playlistId: Int, trackId: Int) {

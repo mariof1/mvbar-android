@@ -64,8 +64,12 @@ fun CreatePlaylistDialog(
 fun AddToPlaylistDialog(
     playlists: List<com.mvbar.android.data.model.Playlist>,
     onDismiss: () -> Unit,
-    onSelect: (Int) -> Unit
+    onSelect: (Int) -> Unit,
+    onCreateAndAdd: ((String) -> Unit)? = null
 ) {
+    var creating by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SurfaceContainerDark,
@@ -74,9 +78,9 @@ fun AddToPlaylistDialog(
         },
         text = {
             Column {
-                if (playlists.isEmpty()) {
+                if (playlists.isEmpty() && !creating) {
                     Text("No playlists yet", color = OnSurfaceDim)
-                } else {
+                } else if (!creating) {
                     playlists.forEach { playlist ->
                         TextButton(
                             onClick = {
@@ -98,12 +102,54 @@ fun AddToPlaylistDialog(
                         }
                     }
                 }
+                if (onCreateAndAdd != null) {
+                    if (creating) {
+                        OutlinedTextField(
+                            value = newName,
+                            onValueChange = { newName = it },
+                            label = { Text("Playlist name") },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Cyan500,
+                                unfocusedBorderColor = OnSurfaceDim,
+                                focusedLabelColor = Cyan500,
+                                cursorColor = Cyan500,
+                                focusedTextColor = OnSurface,
+                                unfocusedTextColor = OnSurface
+                            ),
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                        )
+                    } else {
+                        TextButton(
+                            onClick = { creating = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("+ New Playlist", color = Cyan500, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
             }
         },
-        confirmButton = {},
+        confirmButton = {
+            if (creating && onCreateAndAdd != null) {
+                TextButton(
+                    onClick = {
+                        if (newName.isNotBlank()) {
+                            onCreateAndAdd(newName.trim())
+                            onDismiss()
+                        }
+                    },
+                    enabled = newName.isNotBlank()
+                ) {
+                    Text("Create & Add", color = if (newName.isNotBlank()) Cyan500 else OnSurfaceDim)
+                }
+            }
+        },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = OnSurfaceDim)
+            TextButton(onClick = {
+                if (creating) { creating = false; newName = "" } else onDismiss()
+            }) {
+                Text(if (creating) "Back" else "Cancel", color = OnSurfaceDim)
             }
         }
     )

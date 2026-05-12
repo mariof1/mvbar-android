@@ -139,6 +139,9 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun createPlaylist(name: String) = api.createPlaylist(mapOf("name" to name))
     suspend fun addToPlaylist(playlistId: Int, trackId: Int) =
         api.addToPlaylist(playlistId, mapOf("trackId" to trackId))
+    suspend fun addTracksToPlaylist(playlistId: Int, trackIds: List<Int>) {
+        trackIds.forEach { api.addToPlaylist(playlistId, mapOf("trackId" to it)) }
+    }
     suspend fun removeFromPlaylist(playlistId: Int, trackId: Int) =
         api.removeFromPlaylist(playlistId, trackId)
 
