@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -91,7 +92,8 @@ fun NowPlayingScreen(
     onShuffleAllTracks: (Track?) -> Unit = {},
     initialQueueOpen: Boolean = false,
     onQueueOpenChanged: (Boolean) -> Unit = {},
-    onSearch: () -> Unit = {}
+    onSearch: () -> Unit = {},
+    onAddToPlaylist: (() -> Unit)? = null
 ) {
     val track = state.currentTrack ?: return
     var showLyrics by remember { mutableStateOf(false) }
@@ -233,6 +235,11 @@ fun NowPlayingScreen(
                                         Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim, modifier = Modifier.size(28.dp))
                                     }
                                     if (!state.isPodcastMode && !state.isAudiobookMode) {
+                                        onAddToPlaylist?.let {
+                                            IconButton(onClick = it) {
+                                                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to Playlist", tint = OnSurfaceDim, modifier = Modifier.size(28.dp))
+                                            }
+                                        }
                                         IconButton(onClick = { showLyrics = !showLyrics }) {
                                             Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim, modifier = Modifier.size(28.dp))
                                         }
@@ -313,6 +320,11 @@ fun NowPlayingScreen(
                                         Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                                     }
                                     if (!state.isPodcastMode && !state.isAudiobookMode) {
+                                        onAddToPlaylist?.let {
+                                            IconButton(onClick = it) {
+                                                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to Playlist", tint = OnSurfaceDim)
+                                            }
+                                        }
                                         IconButton(onClick = { showLyrics = !showLyrics }) {
                                             Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
                                         }
@@ -459,6 +471,11 @@ fun NowPlayingScreen(
                             Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                         }
                         if (!state.isPodcastMode && !state.isAudiobookMode) {
+                            onAddToPlaylist?.let {
+                                IconButton(onClick = it) {
+                                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to Playlist", tint = OnSurfaceDim)
+                                }
+                            }
                             IconButton(onClick = { showLyrics = !showLyrics }) {
                                 Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
                             }

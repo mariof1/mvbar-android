@@ -252,58 +252,6 @@ fun MainScreen(
         }
     }
 
-    // Search overlay
-    if (showSearch) {
-        SearchScreen(
-            results = searchResults,
-            isLoading = searchLoading,
-            currentTrackId = currentTrackId,
-            onSearch = { mainVm.search(it) },
-            onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
-            onArtistClick = { artist ->
-                showSearch = false
-                mainVm.clearSearch()
-                navController.navigate("artist/${artist.id}")
-            },
-            onAlbumClick = { album ->
-                showSearch = false
-                mainVm.clearSearch()
-                try { navController.navigate("album?name=${Uri.encode(album.album)}") }
-                catch (_: Exception) {}
-            },
-            onPlaylistClick = { playlist ->
-                showSearch = false
-                mainVm.clearSearch()
-                if (playlist.kind == "smart") {
-                    mainVm.loadSmartPlaylistDetail(playlist.id)
-                    navController.navigate("smart-playlist/${playlist.id}")
-                } else {
-                    playlists.find { it.id == playlist.id }?.let { p ->
-                        mainVm.loadPlaylistDetail(p)
-                        navController.navigate("playlist/${playlist.id}")
-                    }
-                }
-            },
-            onTrackLongPress = { contextTrack = it },
-            onArtistLongPress = { sa ->
-                val artUrl = sa.artPath?.let { ApiClient.artPathUrl(it) + (sa.artHash?.let { h -> "?h=$h" } ?: "") }
-                contextCollection = CollectionRef.ArtistById(sa.id, sa.name, artUrl, sa.trackCount, sa.albumCount)
-            },
-            onAlbumLongPress = { sb ->
-                val artUrl = sb.artPath?.let { ApiClient.artPathUrl(it) + (sb.artHash?.let { h -> "?h=$h" } ?: "") }
-                    ?: sb.artTrackId?.let { ApiClient.trackArtUrl(it) }
-                contextCollection = CollectionRef.AlbumByName(sb.album, sb.displayArtist, artUrl, sb.trackCount)
-            },
-            favoriteIds = favoriteIds,
-            onToggleFavorite = { mainVm.toggleFavorite(it) },
-            onClose = { showSearch = false; mainVm.clearSearch() },
-            hasMore = hasMoreSearch,
-            isLoadingMore = isLoadingMoreSearch,
-            onLoadMore = { mainVm.loadMoreSearchResults() }
-        )
-        return
-    }
-
     // Add to playlist dialog
     showAddToPlaylist?.let { track ->
         // Refresh playlists each time the dialog is shown so the list is never stale/empty
@@ -1276,7 +1224,58 @@ fun MainScreen(
                 onShuffleAllTracks = { mainVm.playShuffledAllTracks(it) },
                 initialQueueOpen = mainVm.queuePanelOpen,
                 onQueueOpenChanged = { mainVm.queuePanelOpen = it },
-                onSearch = { showNowPlaying = false; showSearch = true }
+                onSearch = { showNowPlaying = false; showSearch = true },
+                onAddToPlaylist = playerState.currentTrack?.let { t -> { showAddToPlaylist = t } }
+            )
+        }
+
+        if (showSearch) {
+            SearchScreen(
+                results = searchResults,
+                isLoading = searchLoading,
+                currentTrackId = currentTrackId,
+                onSearch = { mainVm.search(it) },
+                onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
+                onArtistClick = { artist ->
+                    showSearch = false
+                    mainVm.clearSearch()
+                    navController.navigate("artist/${artist.id}")
+                },
+                onAlbumClick = { album ->
+                    showSearch = false
+                    mainVm.clearSearch()
+                    try { navController.navigate("album?name=${Uri.encode(album.album)}") }
+                    catch (_: Exception) {}
+                },
+                onPlaylistClick = { playlist ->
+                    showSearch = false
+                    mainVm.clearSearch()
+                    if (playlist.kind == "smart") {
+                        mainVm.loadSmartPlaylistDetail(playlist.id)
+                        navController.navigate("smart-playlist/${playlist.id}")
+                    } else {
+                        playlists.find { it.id == playlist.id }?.let { p ->
+                            mainVm.loadPlaylistDetail(p)
+                            navController.navigate("playlist/${playlist.id}")
+                        }
+                    }
+                },
+                onTrackLongPress = { contextTrack = it },
+                onArtistLongPress = { sa ->
+                    val artUrl = sa.artPath?.let { ApiClient.artPathUrl(it) + (sa.artHash?.let { h -> "?h=$h" } ?: "") }
+                    contextCollection = CollectionRef.ArtistById(sa.id, sa.name, artUrl, sa.trackCount, sa.albumCount)
+                },
+                onAlbumLongPress = { sb ->
+                    val artUrl = sb.artPath?.let { ApiClient.artPathUrl(it) + (sb.artHash?.let { h -> "?h=$h" } ?: "") }
+                        ?: sb.artTrackId?.let { ApiClient.trackArtUrl(it) }
+                    contextCollection = CollectionRef.AlbumByName(sb.album, sb.displayArtist, artUrl, sb.trackCount)
+                },
+                favoriteIds = favoriteIds,
+                onToggleFavorite = { mainVm.toggleFavorite(it) },
+                onClose = { showSearch = false; mainVm.clearSearch() },
+                hasMore = hasMoreSearch,
+                isLoadingMore = isLoadingMoreSearch,
+                onLoadMore = { mainVm.loadMoreSearchResults() }
             )
         }
 
