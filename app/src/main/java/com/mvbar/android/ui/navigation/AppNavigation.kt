@@ -935,6 +935,15 @@ fun MainScreen(
                         onRemoveTrack = { trackId ->
                             selectedPlaylist?.let { mainVm.removeFromPlaylist(it.id, trackId) }
                         },
+                        onRename = { newName ->
+                            selectedPlaylist?.let { mainVm.renamePlaylist(it.id, newName) }
+                        },
+                        onDelete = {
+                            selectedPlaylist?.let {
+                                mainVm.deletePlaylist(it.id)
+                                navController.popBackStack()
+                            }
+                        },
                         onTrackLongPress = { contextTrack = it },
                         favoriteIds = favoriteIds,
                         onToggleFavorite = { mainVm.toggleFavorite(it) }

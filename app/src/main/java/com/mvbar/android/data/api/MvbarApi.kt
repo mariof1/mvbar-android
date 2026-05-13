@@ -130,6 +130,15 @@ interface MvbarApi {
     @POST("api/playlists")
     suspend fun createPlaylist(@Body body: Map<String, String>): CreatePlaylistResponse
 
+    @PATCH("api/playlists/{id}")
+    suspend fun renamePlaylist(
+        @Path("id") id: Int,
+        @Body body: Map<String, String>
+    ): retrofit2.Response<okhttp3.ResponseBody>
+
+    @DELETE("api/playlists/{id}")
+    suspend fun deletePlaylist(@Path("id") id: Int): Response<Unit>
+
     @POST("api/playlists/{id}/items")
     suspend fun addToPlaylist(@Path("id") id: Int, @Body body: Map<String, Int>): Response<Unit>
 

@@ -137,6 +137,8 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun getPlaylists() = api.getPlaylists()
     suspend fun getPlaylistItems(id: Int) = api.getPlaylistItems(id)
     suspend fun createPlaylist(name: String) = api.createPlaylist(mapOf("name" to name))
+    suspend fun renamePlaylist(id: Int, name: String) = api.renamePlaylist(id, mapOf("name" to name))
+    suspend fun deletePlaylist(id: Int) = api.deletePlaylist(id)
     suspend fun addToPlaylist(playlistId: Int, trackId: Int) =
         api.addToPlaylist(playlistId, mapOf("trackId" to trackId))
     suspend fun addTracksToPlaylist(playlistId: Int, trackIds: List<Int>) {

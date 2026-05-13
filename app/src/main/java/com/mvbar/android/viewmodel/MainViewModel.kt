@@ -373,6 +373,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun renamePlaylist(id: Int, name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                repo.renamePlaylist(id, trimmed)
+                val open = _selectedPlaylist.value
+                if (open != null && open.id == id) {
+                    _selectedPlaylist.value = open.copy(name = trimmed)
+                }
+                loadPlaylists()
+            } catch (e: Exception) {
+                DebugLog.e("Playlist", "Rename failed", e)
+            }
+        }
+    }
+
+    fun deletePlaylist(id: Int) {
+        viewModelScope.launch {
+            try {
+                repo.deletePlaylist(id)
+                loadPlaylists()
+            } catch (e: Exception) {
+                DebugLog.e("Playlist", "Delete failed", e)
+            }
+        }
+    }
+
     fun addToPlaylist(playlistId: Int, track: Track) {
         viewModelScope.launch {
             try {

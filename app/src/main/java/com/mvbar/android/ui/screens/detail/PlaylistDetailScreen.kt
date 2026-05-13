@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,11 +36,16 @@ fun PlaylistDetailScreen(
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: () -> Unit,
     onRemoveTrack: (Int) -> Unit,
+    onRename: ((String) -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
     onTrackLongPress: ((Track) -> Unit)? = null,
     favoriteIds: Set<Int> = emptySet(),
     onToggleFavorite: ((Int) -> Unit)? = null
 ) {
     val name = playlist?.name ?: "Playlist"
+    var showRename by remember { mutableStateOf(false) }
+    var renameText by remember(playlist?.id) { mutableStateOf(name) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -75,6 +81,25 @@ fun PlaylistDetailScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = OnSurfaceSubtle
                     )
+                }
+                if (onRename != null && playlist != null) {
+                    IconButton(
+                        onClick = {
+                            renameText = playlist.name
+                            showRename = true
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Filled.Edit, "Rename", tint = Cyan500, modifier = Modifier.size(20.dp))
+                    }
+                }
+                if (onDelete != null && playlist != null) {
+                    IconButton(
+                        onClick = { showDeleteConfirm = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Filled.Delete, "Delete", tint = Pink500, modifier = Modifier.size(20.dp))
+                    }
                 }
                 if (tracks.isNotEmpty()) {
                     Button(
@@ -126,5 +151,51 @@ fun PlaylistDetailScreen(
                 }
             }
         }
+    }
+
+    if (showRename && playlist != null && onRename != null) {
+        AlertDialog(
+            onDismissRequest = { showRename = false },
+            title = { Text("Rename Playlist") },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true,
+                    label = { Text("Name") }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val n = renameText.trim()
+                        if (n.isNotEmpty() && n != playlist.name) onRename(n)
+                        showRename = false
+                    }
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRename = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showDeleteConfirm && playlist != null && onDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Playlist") },
+            text = { Text("Delete \"${playlist.name}\"? This cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDelete()
+                    }
+                ) { Text("Delete", color = Pink500) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            }
+        )
     }
 }
