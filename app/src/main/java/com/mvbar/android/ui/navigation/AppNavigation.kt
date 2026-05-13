@@ -479,6 +479,8 @@ fun MainScreen(
                     currentTab == "browse" || currentTab?.startsWith("artist/") == true ||
                         currentTab?.startsWith("album") == true || currentTab?.startsWith("genre/") == true ||
                         currentTab?.startsWith("country/") == true || currentTab?.startsWith("language/") == true -> "Browse"
+                    currentTab == "create-smart-playlist" -> "New Smart Playlist"
+                    currentTab?.startsWith("edit-smart-playlist") == true -> "Edit Smart Playlist"
                     currentTab == "library" || currentTab == "history" ||
                         currentTab?.startsWith("playlist/") == true ||
                         currentTab?.startsWith("smart-playlist") == true -> "Library"
@@ -496,6 +498,8 @@ fun MainScreen(
                     currentTab?.startsWith("language/") == true ||
                     currentTab?.startsWith("playlist/") == true ||
                     currentTab?.startsWith("smart-playlist/") == true ||
+                    currentTab == "create-smart-playlist" ||
+                    currentTab?.startsWith("edit-smart-playlist") == true ||
                     currentTab?.startsWith("podcast/") == true ||
                     currentTab?.startsWith("audiobook/") == true ||
                     currentTab == "history" ||

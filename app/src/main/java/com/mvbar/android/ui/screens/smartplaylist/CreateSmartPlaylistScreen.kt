@@ -1,22 +1,23 @@
 package com.mvbar.android.ui.screens.smartplaylist
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -37,13 +38,23 @@ private val SORT_OPTIONS = listOf(
     "recently_played" to "Recently Played",
     "newest_added" to "Newest Added",
     "oldest_added" to "Oldest Added",
-    "title_asc" to "Title A→Z",
-    "title_desc" to "Title Z→A",
-    "artist_asc" to "Artist A→Z",
-    "album_asc" to "Album A→Z"
+    "title_asc" to "Title (A-Z)",
+    "title_desc" to "Title (Z-A)",
+    "artist_asc" to "Artist",
+    "album_asc" to "Album"
 )
 
 private val SLIDER_STEPS = listOf(25, 50, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000)
+
+// Card tint colors (approximating Tailwind slate/emerald/red used on web)
+private val CardSlateBg = Color(0x4D1E293B)        // slate-800 @ 30%
+private val CardSlateBorder = Color(0x4D334155)    // slate-700 @ 30%
+private val CardEmeraldBg = Color(0x33064E3B)      // emerald-900 @ 20%
+private val CardEmeraldBorder = Color(0x80065F46)  // emerald-800 @ 50%
+private val EmeraldAccent = Color(0xFF34D399)      // emerald-400
+private val CardRedBg = Color(0x337F1D1D)          // red-900 @ 20%
+private val CardRedBorder = Color(0x80991B1B)      // red-800 @ 50%
+private val RedAccent = Color(0xFFF87171)          // red-400
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -52,7 +63,6 @@ fun CreateSmartPlaylistScreen(
     onBack: () -> Unit,
     onCreate: (name: String, sort: String, filters: SmartPlaylistFilters) -> Unit,
     onSuggest: (suspend (kind: String, query: String) -> SuggestResponse)? = null,
-    // Edit mode
     editId: Int? = null,
     initialName: String = "",
     initialSort: String = "random",
@@ -70,7 +80,6 @@ fun CreateSmartPlaylistScreen(
     }
     var sortExpanded by remember { mutableStateOf(false) }
 
-    // Include filters
     val includeArtists = remember { mutableStateListOf<Pair<Int, String>>().apply { addAll(initialArtistNames.filter { it.first in initialFilters.include.artists.toSet() }) } }
     var includeArtistsMode by remember { mutableStateOf(initialFilters.include.artistsMode) }
     val includeAlbums = remember { mutableStateListOf<String>().apply { addAll(initialFilters.include.albums) } }
@@ -79,14 +88,12 @@ fun CreateSmartPlaylistScreen(
     val includeYears = remember { mutableStateListOf<Int>().apply { addAll(initialFilters.include.years) } }
     val includeCountries = remember { mutableStateListOf<String>().apply { addAll(initialFilters.include.countries) } }
 
-    // Exclude filters
     val excludeArtists = remember { mutableStateListOf<Pair<Int, String>>().apply { addAll(initialArtistNames.filter { it.first in initialFilters.exclude.artists.toSet() }) } }
     val excludeAlbums = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.albums) } }
     val excludeGenres = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.genres) } }
     val excludeYears = remember { mutableStateListOf<Int>().apply { addAll(initialFilters.exclude.years) } }
     val excludeCountries = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.countries) } }
 
-    // Duration
     var durationMin by remember { mutableStateOf(initialFilters.duration?.min?.toString() ?: "") }
     var durationMax by remember { mutableStateOf(initialFilters.duration?.max?.toString() ?: "") }
 
@@ -113,66 +120,44 @@ fun CreateSmartPlaylistScreen(
         maxResults = SLIDER_STEPS[maxResultsIndex]
     )
 
-    Scaffold(
-        containerColor = BackgroundDark,
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(if (isEdit) "Edit Smart Playlist" else "New Smart Playlist", color = OnSurface) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = {
-                            if (name.isNotBlank()) {
-                                val filters = buildFilters()
-                                if (isEdit && editId != null) {
-                                    onUpdate?.invoke(editId, name.trim(), selectedSort, filters)
-                                } else {
-                                    onCreate(name.trim(), selectedSort, filters)
-                                }
-                                onBack()
-                            }
-                        },
-                        enabled = name.isNotBlank()
-                    ) {
-                        Icon(
-                            Icons.Filled.Check, "Create",
-                            tint = if (name.isNotBlank()) Cyan500 else OnSurfaceDim
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = BackgroundDark
-                )
-            )
+    fun submit() {
+        if (name.isBlank()) return
+        val filters = buildFilters()
+        if (isEdit && editId != null) {
+            onUpdate?.invoke(editId, name.trim(), selectedSort, filters)
+        } else {
+            onCreate(name.trim(), selectedSort, filters)
         }
-    ) { padding ->
-        LazyColumn(
+        onBack()
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(vertical = 16.dp)
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Name
-            item {
+            // General card
+            SectionCard(
+                bg = CardSlateBg,
+                border = CardSlateBorder,
+                title = "General",
+                titleColor = OnSurface
+            ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Playlist name") },
+                    label = { Text("Name") },
+                    placeholder = { Text("My Smart Playlist") },
                     singleLine = true,
                     colors = textFieldColors(),
                     modifier = Modifier.fillMaxWidth()
                 )
-            }
 
-            // Sort mode
-            item {
-                SectionLabel("Sort By")
+                Spacer(Modifier.height(4.dp))
+                Text("Sort Order", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
                 ExposedDropdownMenuBox(
                     expanded = sortExpanded,
                     onExpandedChange = { sortExpanded = it }
@@ -197,33 +182,12 @@ fun CreateSmartPlaylistScreen(
                         }
                     }
                 }
-            }
 
-            // Favorites only
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Favorites only", color = OnSurface)
-                    Switch(
-                        checked = favoriteOnly,
-                        onCheckedChange = { favoriteOnly = it },
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = Cyan500,
-                            checkedThumbColor = OnSurface
-                        )
-                    )
-                }
-            }
-
-            // Max results
-            item {
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    "Max results: ${SLIDER_STEPS[maxResultsIndex]}",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = OnSurfaceDim
+                    "Max Tracks: ${SLIDER_STEPS[maxResultsIndex]}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = OnSurfaceVariant
                 )
                 Slider(
                     value = maxResultsIndex.toFloat(),
@@ -236,11 +200,8 @@ fun CreateSmartPlaylistScreen(
                         inactiveTrackColor = WhiteOverlay15
                     )
                 )
-            }
 
-            // Duration
-            item {
-                SectionLabel("Duration (seconds)")
+                Spacer(Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -248,7 +209,7 @@ fun CreateSmartPlaylistScreen(
                     OutlinedTextField(
                         value = durationMin,
                         onValueChange = { durationMin = it.filter { c -> c.isDigit() } },
-                        label = { Text("Min") },
+                        label = { Text("Min Duration (s)") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         colors = textFieldColors(),
@@ -257,197 +218,199 @@ fun CreateSmartPlaylistScreen(
                     OutlinedTextField(
                         value = durationMax,
                         onValueChange = { durationMax = it.filter { c -> c.isDigit() } },
-                        label = { Text("Max") },
+                        label = { Text("Max Duration (s)") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         colors = textFieldColors(),
                         modifier = Modifier.weight(1f)
                     )
                 }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Only include favorites", color = OnSurface)
+                    Switch(
+                        checked = favoriteOnly,
+                        onCheckedChange = { favoriteOnly = it },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = Cyan500,
+                            checkedThumbColor = OnSurface
+                        )
+                    )
+                }
             }
 
-            // ── INCLUDE SECTION ──
-            item {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "INCLUDE",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Cyan400
-                )
-                HorizontalDivider(color = Cyan500.copy(alpha = 0.3f))
-            }
-
-            // Include Artists
-            item {
-                SearchableChipSection(
-                    label = "Artists",
-                    items = includeArtists.map { it.second },
+            // Include card
+            SectionCard(
+                bg = CardEmeraldBg,
+                border = CardEmeraldBorder,
+                title = "Include Rules",
+                titleColor = EmeraldAccent,
+                titleIcon = Icons.Filled.Add
+            ) {
+                SearchableChipSection("Artists", includeArtists.map { it.second },
                     onRemove = { idx -> includeArtists.removeAt(idx) },
-                    kind = "artist",
-                    onSuggest = onSuggest,
-                    onAddArtist = { id, name -> includeArtists.add(id to name) }
-                )
+                    kind = "artist", onSuggest = onSuggest,
+                    onAddArtist = { id, n -> includeArtists.add(id to n) },
+                    accent = EmeraldAccent)
                 if (includeArtists.size > 1) {
-                    ModeToggle(mode = includeArtistsMode, onToggle = {
+                    ModeToggle(includeArtistsMode, accent = EmeraldAccent) {
                         includeArtistsMode = if (includeArtistsMode == "any") "all" else "any"
-                    })
+                    }
                 }
-            }
-
-            // Include Albums
-            item {
-                SearchableChipSection(
-                    label = "Albums",
-                    items = includeAlbums.toList(),
+                SearchableChipSection("Albums", includeAlbums.toList(),
                     onRemove = { idx -> includeAlbums.removeAt(idx) },
-                    kind = "album",
-                    onSuggest = onSuggest,
-                    onAddString = { includeAlbums.add(it) }
-                )
-            }
-
-            // Include Genres
-            item {
-                SearchableChipSection(
-                    label = "Genres",
-                    items = includeGenres.toList(),
+                    kind = "album", onSuggest = onSuggest,
+                    onAddString = { includeAlbums.add(it) },
+                    accent = EmeraldAccent)
+                SearchableChipSection("Genres", includeGenres.toList(),
                     onRemove = { idx -> includeGenres.removeAt(idx) },
-                    kind = "genre",
-                    onSuggest = onSuggest,
-                    onAddString = { includeGenres.add(it) }
-                )
+                    kind = "genre", onSuggest = onSuggest,
+                    onAddString = { includeGenres.add(it) },
+                    accent = EmeraldAccent)
                 if (includeGenres.size > 1) {
-                    ModeToggle(mode = includeGenresMode, onToggle = {
+                    ModeToggle(includeGenresMode, accent = EmeraldAccent) {
                         includeGenresMode = if (includeGenresMode == "any") "all" else "any"
-                    })
+                    }
                 }
-            }
-
-            // Include Years
-            item {
-                SearchableChipSection(
-                    label = "Years",
-                    items = includeYears.map { it.toString() },
+                SearchableChipSection("Years", includeYears.map { it.toString() },
                     onRemove = { idx -> includeYears.removeAt(idx) },
-                    kind = "year",
-                    onSuggest = onSuggest,
-                    onAddYear = { includeYears.add(it) }
-                )
-            }
-
-            // Include Countries
-            item {
-                SearchableChipSection(
-                    label = "Countries",
-                    items = includeCountries.toList(),
+                    kind = "year", onSuggest = onSuggest,
+                    onAddYear = { includeYears.add(it) },
+                    accent = EmeraldAccent)
+                SearchableChipSection("Countries", includeCountries.toList(),
                     onRemove = { idx -> includeCountries.removeAt(idx) },
-                    kind = "country",
-                    onSuggest = onSuggest,
-                    onAddString = { includeCountries.add(it) }
-                )
+                    kind = "country", onSuggest = onSuggest,
+                    onAddString = { includeCountries.add(it) },
+                    accent = EmeraldAccent)
             }
 
-            // ── EXCLUDE SECTION ──
-            item {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "EXCLUDE",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.error
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
-            }
-
-            // Exclude Artists
-            item {
-                SearchableChipSection(
-                    label = "Artists",
-                    items = excludeArtists.map { it.second },
+            // Exclude card
+            SectionCard(
+                bg = CardRedBg,
+                border = CardRedBorder,
+                title = "Exclude Rules",
+                titleColor = RedAccent,
+                titleIcon = Icons.Filled.Remove
+            ) {
+                SearchableChipSection("Artists", excludeArtists.map { it.second },
                     onRemove = { idx -> excludeArtists.removeAt(idx) },
-                    kind = "artist",
-                    onSuggest = onSuggest,
-                    onAddArtist = { id, name -> excludeArtists.add(id to name) }
-                )
-            }
-
-            // Exclude Albums
-            item {
-                SearchableChipSection(
-                    label = "Albums",
-                    items = excludeAlbums.toList(),
+                    kind = "artist", onSuggest = onSuggest,
+                    onAddArtist = { id, n -> excludeArtists.add(id to n) },
+                    accent = RedAccent)
+                SearchableChipSection("Albums", excludeAlbums.toList(),
                     onRemove = { idx -> excludeAlbums.removeAt(idx) },
-                    kind = "album",
-                    onSuggest = onSuggest,
-                    onAddString = { excludeAlbums.add(it) }
-                )
-            }
-
-            // Exclude Genres
-            item {
-                SearchableChipSection(
-                    label = "Genres",
-                    items = excludeGenres.toList(),
+                    kind = "album", onSuggest = onSuggest,
+                    onAddString = { excludeAlbums.add(it) },
+                    accent = RedAccent)
+                SearchableChipSection("Genres", excludeGenres.toList(),
                     onRemove = { idx -> excludeGenres.removeAt(idx) },
-                    kind = "genre",
-                    onSuggest = onSuggest,
-                    onAddString = { excludeGenres.add(it) }
-                )
-            }
-
-            // Exclude Years
-            item {
-                SearchableChipSection(
-                    label = "Years",
-                    items = excludeYears.map { it.toString() },
+                    kind = "genre", onSuggest = onSuggest,
+                    onAddString = { excludeGenres.add(it) },
+                    accent = RedAccent)
+                SearchableChipSection("Years", excludeYears.map { it.toString() },
                     onRemove = { idx -> excludeYears.removeAt(idx) },
-                    kind = "year",
-                    onSuggest = onSuggest,
-                    onAddYear = { excludeYears.add(it) }
-                )
-            }
-
-            // Exclude Countries
-            item {
-                SearchableChipSection(
-                    label = "Countries",
-                    items = excludeCountries.toList(),
+                    kind = "year", onSuggest = onSuggest,
+                    onAddYear = { excludeYears.add(it) },
+                    accent = RedAccent)
+                SearchableChipSection("Countries", excludeCountries.toList(),
                     onRemove = { idx -> excludeCountries.removeAt(idx) },
-                    kind = "country",
-                    onSuggest = onSuggest,
-                    onAddString = { excludeCountries.add(it) }
-                )
+                    kind = "country", onSuggest = onSuggest,
+                    onAddString = { excludeCountries.add(it) },
+                    accent = RedAccent)
             }
 
-            item { Spacer(Modifier.height(120.dp)) }
+            Spacer(Modifier.height(8.dp))
+        }
+
+        // Sticky bottom action bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(SurfaceDark)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(
+                onClick = ::submit,
+                enabled = name.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Cyan500,
+                    contentColor = OnSurface,
+                    disabledContainerColor = Cyan500.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier.weight(1f).height(48.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    if (isEdit) "Save Changes" else "Create Playlist",
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier.height(48.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Cancel", color = OnSurface)
+            }
         }
     }
 }
 
-// ── Reusable Components ──
-
 @Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleSmall,
-        color = OnSurfaceDim
-    )
+private fun SectionCard(
+    bg: Color,
+    border: Color,
+    title: String,
+    titleColor: Color,
+    titleIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(bg)
+            .border(1.dp, border, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (titleIcon != null) {
+                Icon(titleIcon, null, tint = titleColor, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = titleColor
+            )
+        }
+        content()
+    }
 }
 
 @Composable
-private fun ModeToggle(mode: String, onToggle: () -> Unit) {
+private fun ModeToggle(mode: String, accent: Color, onToggle: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(top = 4.dp)
+        modifier = Modifier.padding(top = 2.dp)
     ) {
         Text("Match ", color = OnSurfaceDim, style = MaterialTheme.typography.bodySmall)
-        TextButton(onClick = onToggle) {
+        TextButton(
+            onClick = onToggle,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+        ) {
             Text(
                 if (mode == "any") "ANY ▾" else "ALL ▾",
-                color = Cyan400,
-                fontWeight = FontWeight.Bold
+                color = accent,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodySmall
             )
         }
     }
@@ -463,7 +426,8 @@ private fun SearchableChipSection(
     onSuggest: (suspend (String, String) -> SuggestResponse)?,
     onAddString: ((String) -> Unit)? = null,
     onAddArtist: ((Int, String) -> Unit)? = null,
-    onAddYear: ((Int) -> Unit)? = null
+    onAddYear: ((Int) -> Unit)? = null,
+    accent: Color = Cyan400
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var suggestions by remember { mutableStateOf<List<Any>>(emptyList()) }
@@ -471,23 +435,30 @@ private fun SearchableChipSection(
     val scope = rememberCoroutineScope()
     var searchJob by remember { mutableStateOf<Job?>(null) }
 
-    Column {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SectionLabel("$label (${items.size})")
-            IconButton(onClick = { showSearch = !showSearch }) {
+            Text(
+                "$label${if (items.isNotEmpty()) " (${items.size})" else ""}",
+                style = MaterialTheme.typography.labelMedium,
+                color = OnSurfaceVariant
+            )
+            IconButton(
+                onClick = { showSearch = !showSearch },
+                modifier = Modifier.size(28.dp)
+            ) {
                 Icon(
                     if (showSearch) Icons.Filled.Close else Icons.Filled.Add,
                     "Toggle search",
-                    tint = Cyan400
+                    tint = accent,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
 
-        // Selected chips
         if (items.isNotEmpty()) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -503,15 +474,14 @@ private fun SearchableChipSection(
                             Icon(Icons.Filled.Close, "Remove", modifier = Modifier.size(16.dp))
                         },
                         colors = InputChipDefaults.inputChipColors(
-                            selectedContainerColor = Cyan500.copy(alpha = 0.2f),
-                            selectedLabelColor = Cyan400
+                            selectedContainerColor = accent.copy(alpha = 0.2f),
+                            selectedLabelColor = accent
                         )
                     )
                 }
             }
         }
 
-        // Search field with autocomplete
         AnimatedVisibility(visible = showSearch) {
             Column {
                 OutlinedTextField(
@@ -519,9 +489,9 @@ private fun SearchableChipSection(
                     onValueChange = { query ->
                         searchQuery = query
                         searchJob?.cancel()
-                        if (query.length >= 1 && onSuggest != null) {
+                        if (query.isNotEmpty() && onSuggest != null) {
                             searchJob = scope.launch {
-                                delay(300) // debounce
+                                delay(300)
                                 try {
                                     val resp = onSuggest(kind, query)
                                     suggestions = parseSuggestions(resp, kind)
@@ -540,7 +510,6 @@ private fun SearchableChipSection(
                         keyboardType = if (kind == "year") KeyboardType.Number else KeyboardType.Unspecified
                     ),
                     keyboardActions = KeyboardActions(onDone = {
-                        // For year, allow typing directly
                         if (kind == "year" && searchQuery.isNotBlank()) {
                             searchQuery.toIntOrNull()?.let { year ->
                                 onAddYear?.invoke(year)
@@ -553,12 +522,11 @@ private fun SearchableChipSection(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Suggestion dropdown
                 if (suggestions.isNotEmpty()) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                     ) {
                         Column(
                             modifier = Modifier
@@ -615,12 +583,8 @@ private fun parseSuggestions(resp: SuggestResponse, kind: String): List<Any> {
                     val name = obj["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
                     Pair(id, name)
                 }
-                "year" -> {
-                    element.jsonPrimitive.intOrNull
-                }
-                else -> {
-                    element.jsonPrimitive.content
-                }
+                "year" -> element.jsonPrimitive.intOrNull
+                else -> element.jsonPrimitive.content
             }
         } catch (_: Exception) { null }
     }
