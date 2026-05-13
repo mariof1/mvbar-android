@@ -202,7 +202,7 @@ interface MvbarApi {
     @POST("api/smart-playlists/{id}/convert")
     suspend fun convertSmartPlaylist(
         @Path("id") id: Int,
-        @Body body: Map<String, @JvmSuppressWildcards Any?> = emptyMap()
+        @Body body: Map<String, Boolean> = emptyMap()
     ): retrofit2.Response<okhttp3.ResponseBody>
 
     @GET("api/smart-playlists/suggest")
