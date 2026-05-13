@@ -958,6 +958,11 @@ fun MainScreen(
                                 navController.navigate("edit-smart-playlist/${it.id}")
                             }
                         },
+                        onConvert = {
+                            smartPlaylistDetail?.let {
+                                mainVm.convertSmartPlaylist(it.id, deleteSmart = false)
+                            }
+                        },
                         onDelete = {
                             smartPlaylistDetail?.let {
                                 mainVm.deleteSmartPlaylist(it.id)

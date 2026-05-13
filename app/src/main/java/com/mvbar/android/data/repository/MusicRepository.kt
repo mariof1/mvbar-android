@@ -164,6 +164,8 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun updateSmartPlaylist(id: Int, name: String, sort: String, filters: SmartPlaylistFilters) =
         api.updateSmartPlaylist(id, SmartPlaylistCreateRequest(name, sort, filters))
     suspend fun deleteSmartPlaylist(id: Int) = api.deleteSmartPlaylist(id)
+    suspend fun convertSmartPlaylist(id: Int, deleteSmart: Boolean = false) =
+        api.convertSmartPlaylist(id, mapOf("delete" to deleteSmart))
     suspend fun suggestSmartPlaylist(kind: String, query: String) = api.suggestSmartPlaylist(kind, query)
     suspend fun resolveArtistIds(ids: List<Int>) =
         api.suggestSmartPlaylist(kind = "artist", ids = ids.joinToString(","))

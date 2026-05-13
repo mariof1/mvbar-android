@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
@@ -37,6 +38,7 @@ fun SmartPlaylistDetailScreen(
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: () -> Unit,
     onEdit: () -> Unit,
+    onConvert: () -> Unit,
     onDelete: () -> Unit,
     onTrackLongPress: ((Track) -> Unit)? = null,
     favoriteIds: Set<Int> = emptySet(),
@@ -92,6 +94,12 @@ fun SmartPlaylistDetailScreen(
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(Icons.Filled.Edit, "Edit", tint = Cyan400, modifier = Modifier.size(20.dp))
+                }
+                IconButton(
+                    onClick = onConvert,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Filled.ContentCopy, "Convert to Playlist", tint = Cyan400, modifier = Modifier.size(20.dp))
                 }
                 IconButton(
                     onClick = onDelete,

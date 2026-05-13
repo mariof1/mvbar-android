@@ -603,6 +603,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun convertSmartPlaylist(id: Int, deleteSmart: Boolean = false, onDone: ((Boolean) -> Unit)? = null) {
+        viewModelScope.launch {
+            try {
+                val resp = repo.convertSmartPlaylist(id, deleteSmart)
+                val ok = resp.isSuccessful
+                loadPlaylists()
+                if (deleteSmart) loadSmartPlaylists()
+                onDone?.invoke(ok)
+            } catch (e: Exception) {
+                DebugLog.e("SmartPlaylist", "Convert failed", e)
+                onDone?.invoke(false)
+            }
+        }
+    }
+
     fun updateSmartPlaylist(id: Int, name: String, sort: String, filters: SmartPlaylistFilters) {
         viewModelScope.launch {
             try {
