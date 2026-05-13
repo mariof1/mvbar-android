@@ -636,11 +636,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val resp = repo.convertSmartPlaylist(id, deleteSmart)
                 val ok = resp.isSuccessful
-                loadPlaylists()
-                if (deleteSmart) loadSmartPlaylists()
+                if (ok) {
+                    loadPlaylists()
+                    if (deleteSmart) loadSmartPlaylists()
+                    com.mvbar.android.ui.components.ToastManager.show(
+                        "Smart playlist converted",
+                        com.mvbar.android.ui.components.ToastIcon.PLAYLIST
+                    )
+                } else {
+                    DebugLog.e("SmartPlaylist", "Convert failed: HTTP ${resp.code()}")
+                    com.mvbar.android.ui.components.ToastManager.show(
+                        "Convert failed",
+                        com.mvbar.android.ui.components.ToastIcon.ERROR
+                    )
+                }
                 onDone?.invoke(ok)
             } catch (e: Exception) {
                 DebugLog.e("SmartPlaylist", "Convert failed", e)
+                com.mvbar.android.ui.components.ToastManager.show(
+                    "Convert failed",
+                    com.mvbar.android.ui.components.ToastIcon.ERROR
+                )
                 onDone?.invoke(false)
             }
         }

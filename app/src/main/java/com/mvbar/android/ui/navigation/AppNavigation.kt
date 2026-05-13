@@ -968,8 +968,10 @@ fun MainScreen(
                             }
                         },
                         onConvert = {
-                            smartPlaylistDetail?.let {
-                                mainVm.convertSmartPlaylist(it.id, deleteSmart = false)
+                            smartPlaylistDetail?.let { detail ->
+                                mainVm.convertSmartPlaylist(detail.id, deleteSmart = false) { ok ->
+                                    if (ok) navController.popBackStack()
+                                }
                             }
                         },
                         onDelete = {
