@@ -77,6 +77,13 @@ class PlaybackService : MediaLibraryService() {
     private var focusRetryJob: Job? = null
     /** True when we paused the player due to focus loss (prevents abandon on our own pause) */
     private var pausedByFocusManager = false
+    /**
+     * True when the user (or remote controller / car / headset) explicitly paused playback.
+     * Cleared on explicit play / new media. While set, focus-gain events must NOT auto-resume.
+     * This guards against the car pressing pause coinciding with a satnav chime, where a
+     * subsequent AUDIOFOCUS_GAIN would otherwise resume against the user's intent.
+     */
+    private var userExplicitlyPaused = false
     /** True while Android Auto (gearhead) is connected */
     private var androidAutoConnected = false
     /** Job that eventually releases foreground after extended pause */
@@ -108,11 +115,19 @@ class PlaybackService : MediaLibraryService() {
                 Log.i("mvbar.AudioFocus", "GAIN")
                 focusRetryJob?.cancel()
                 player.volume = 1.0f
-                if (wasPlayingBeforeFocusLoss) {
+                if (userExplicitlyPaused) {
+                    // User paused — never auto-resume from focus gain.
+                    DebugLog.i("AudioFocus", "GAIN ignored — user explicitly paused")
+                    wasPlayingBeforeFocusLoss = false
+                } else if (wasPlayingBeforeFocusLoss) {
                     wasPlayingBeforeFocusLoss = false
                     resumeJob?.cancel()
                     resumeJob = serviceScope.launch {
                         delay(500)
+                        if (userExplicitlyPaused) {
+                            DebugLog.i("AudioFocus", "Resume skipped — user paused during delay")
+                            return@launch
+                        }
                         DebugLog.i("AudioFocus", "Resuming after focus gain")
                         pausedByFocusManager = false
                         player.play()
@@ -124,9 +139,9 @@ class PlaybackService : MediaLibraryService() {
                 Log.i("mvbar.AudioFocus", "LOSS (permanent)")
                 resumeJob?.cancel()
                 focusRetryJob?.cancel()
-                val shouldResume = player.isPlaying || player.playWhenReady
-                if (shouldResume) {
-                    wasPlayingBeforeFocusLoss = true
+                val shouldResume = (player.isPlaying || player.playWhenReady) && !userExplicitlyPaused
+                if (player.isPlaying || player.playWhenReady) {
+                    wasPlayingBeforeFocusLoss = shouldResume
                     pausedByFocusManager = true
                     player.pause()
                 }
@@ -143,7 +158,8 @@ class PlaybackService : MediaLibraryService() {
                 resumeJob?.cancel()
                 focusRetryJob?.cancel()
                 if (player.isPlaying || player.playWhenReady) {
-                    wasPlayingBeforeFocusLoss = true
+                    // Only mark for auto-resume if the user hasn't already chosen to pause.
+                    wasPlayingBeforeFocusLoss = !userExplicitlyPaused
                     pausedByFocusManager = true
                     player.pause()
                 }
@@ -622,10 +638,14 @@ class PlaybackService : MediaLibraryService() {
                     focusRetryJob?.cancel() // user manually resumed — cancel auto-retry
                     requestAudioFocus()
                     pausedByFocusManager = false
+                    userExplicitlyPaused = false
                 } else if (!pausedByFocusManager) {
-                    // User or system paused — abandon focus & cancel retry
+                    // User or remote controller (car / headset) paused — abandon focus,
+                    // cancel retry, and remember this so a later AUDIOFOCUS_GAIN won't
+                    // auto-resume (e.g. car pause followed by satnav chime).
                     wasPlayingBeforeFocusLoss = false
                     focusRetryJob?.cancel()
+                    userExplicitlyPaused = true
                     abandonAudioFocus()
                 }
             }
