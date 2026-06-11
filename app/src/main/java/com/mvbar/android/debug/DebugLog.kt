@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentLinkedDeque
 
 object DebugLog {
     private const val MAX_ENTRIES = 500
+    private const val MAX_LOG_FILE_BYTES = 512 * 1024L
     private const val LOG_FILE_NAME = "debug_log.txt"
     private const val PREFS_NAME = "mvbar_debug"
     private const val KEY_ENABLED = "debug_enabled"
@@ -39,7 +40,7 @@ object DebugLog {
         try {
             val file = logFile ?: return
             if (file.exists() && file.length() > 0) {
-                val lines = file.readLines()
+                val lines = readRecentLines(file)
                 for (line in lines) {
                     if (line.isBlank()) continue
                     // Parse: timestamp\tlevel\ttag\tmessage
@@ -51,6 +52,7 @@ object DebugLog {
                     }
                 }
                 while (entries.size > MAX_ENTRIES) entries.pollFirst()
+                if (file.length() > MAX_LOG_FILE_BYTES) rewriteFile()
             }
         } catch (_: Exception) {
             // Don't crash on corrupt log file
@@ -91,6 +93,21 @@ object DebugLog {
         appendToFile(entry)
     }
 
+    private fun readRecentLines(file: File): List<String> {
+        if (file.length() <= MAX_LOG_FILE_BYTES) return file.readLines()
+
+        return file.inputStream().buffered().use { input ->
+            var remaining = file.length() - MAX_LOG_FILE_BYTES
+            while (remaining > 0) {
+                val skipped = input.skip(remaining)
+                if (skipped <= 0) break
+                remaining -= skipped
+            }
+            // The first line may be partial when reading the tail of a large file.
+            input.bufferedReader().readLines().drop(1)
+        }
+    }
+
     /** Append a single entry to the log file */
     private fun appendToFile(entry: LogEntry) {
         try {
@@ -98,6 +115,7 @@ object DebugLog {
             FileOutputStream(file, true).use { fos ->
                 fos.write((entry.serialize() + "\n").toByteArray(Charsets.UTF_8))
             }
+            if (file.length() > MAX_LOG_FILE_BYTES) rewriteFile()
         } catch (_: Exception) {
             // Silently ignore file write failures
         }

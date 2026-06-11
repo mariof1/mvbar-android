@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.player.PlaybackService
 import com.mvbar.android.ui.navigation.MainScreen
 import com.mvbar.android.ui.screens.login.LoginScreen
@@ -21,6 +22,7 @@ import com.mvbar.android.ui.theme.Cyan500
 import com.mvbar.android.ui.theme.MvbarTheme
 import com.mvbar.android.viewmodel.AuthViewModel
 import com.mvbar.android.viewmodel.MainViewModel
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,6 +31,11 @@ class MainActivity : ComponentActivity() {
         handleMediaSearchIntent(intent)
         setContent {
             MvbarTheme {
+                LaunchedEffect(Unit) {
+                    delay(750)
+                    AudioCacheManager.warmUp(this@MainActivity)
+                }
+
                 val authVm: AuthViewModel = viewModel()
                 val authState by authVm.state.collectAsState()
 
@@ -80,6 +87,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleMediaSearchIntent(intent)
     }
 

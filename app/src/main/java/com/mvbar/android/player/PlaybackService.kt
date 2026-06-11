@@ -507,7 +507,7 @@ class PlaybackService : MediaLibraryService() {
             IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
         )
 
-        AudioCacheManager.init(this)
+        AudioCacheManager.initPrefs(this)
 
         // Ensure API is configured (critical for Android Auto which may start service without Activity)
         if (ApiClient.getBaseUrl() == "http://localhost/") {
@@ -535,7 +535,7 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         val upstreamFactory = OkHttpDataSource.Factory(okClient)
-        val dataSourceFactory = AudioCacheManager.createCacheDataSourceFactory(upstreamFactory)
+        val dataSourceFactory = AudioCacheManager.createCacheDataSourceFactory(this, upstreamFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
 
         val player = ExoPlayer.Builder(this)

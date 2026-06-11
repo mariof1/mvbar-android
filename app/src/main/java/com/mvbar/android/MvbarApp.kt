@@ -26,7 +26,7 @@ class MvbarApp : Application(), ImageLoaderFactory {
         super.onCreate()
         DebugLog.init(this)
         DebugLog.installCrashHandler()
-        AudioCacheManager.init(this)
+        AudioCacheManager.initPrefs(this)
         NetworkMonitor.init(this)
 
         // Restore API session early so PlaybackService (Android Auto) can access the server

@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
@@ -32,8 +33,11 @@ object AudioCacheManager {
     private const val KEY_AUTO_CACHE_FAVORITES = "auto_cache_favorites"
     private const val KEY_AUTO_CACHE_PODCASTS = "auto_cache_podcasts"
 
+    @Volatile
     private var cache: SimpleCache? = null
+    @Volatile
     private var prefs: SharedPreferences? = null
+    @Volatile
     private var appContext: Context? = null
     private var prefetchScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var prefetchJob: Job? = null
@@ -46,24 +50,46 @@ object AudioCacheManager {
     val autoCacheFavorites: Boolean get() = prefs?.getBoolean(KEY_AUTO_CACHE_FAVORITES, false) ?: false
     val autoCachePodcasts: Boolean get() = prefs?.getBoolean(KEY_AUTO_CACHE_PODCASTS, false) ?: false
 
+    @Synchronized
+    fun initPrefs(context: Context) {
+        val ctx = context.applicationContext
+        appContext = ctx
+        if (prefs == null) {
+            prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
+    }
+
+    @Synchronized
     fun init(context: Context) {
         if (cache != null) return
-        appContext = context.applicationContext
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        initPrefs(context)
+        val ctx = appContext ?: context.applicationContext
 
         val maxBytes = maxCacheMb.toLong() * 1024 * 1024
-        val newDir = File(context.filesDir, "audio_cache")
+        val newDir = File(ctx.filesDir, "audio_cache")
         // Migrate from cacheDir to filesDir (one-time)
-        val oldDir = File(context.cacheDir, "audio_cache")
+        val oldDir = File(ctx.cacheDir, "audio_cache")
         if (oldDir.exists() && !newDir.exists()) {
             if (oldDir.renameTo(newDir)) {
                 DebugLog.i("Cache", "Migrated audio cache from cacheDir to filesDir")
             }
         }
         val evictor = LeastRecentlyUsedCacheEvictor(maxBytes)
-        val dbProvider = StandaloneDatabaseProvider(context)
+        val dbProvider = StandaloneDatabaseProvider(ctx)
         cache = SimpleCache(newDir, evictor, dbProvider)
         DebugLog.i("Cache", "Audio cache initialized (${maxCacheMb}MB max)")
+    }
+
+    fun warmUp(context: Context) {
+        val ctx = context.applicationContext
+        initPrefs(ctx)
+        prefetchScope.launch {
+            try {
+                init(ctx)
+            } catch (e: Exception) {
+                DebugLog.e("Cache", "Audio cache warm-up failed", e)
+            }
+        }
     }
 
     fun getCache(): SimpleCache? = cache
@@ -223,6 +249,32 @@ object AudioCacheManager {
             .setCache(c)
             .setUpstreamDataSourceFactory(upstreamFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
+
+    fun createCacheDataSourceFactory(
+        context: Context,
+        upstreamFactory: OkHttpDataSource.Factory
+    ): DataSource.Factory {
+        val ctx = context.applicationContext
+        initPrefs(ctx)
+        return DataSource.Factory {
+            val c = try {
+                init(ctx)
+                cache
+            } catch (e: Exception) {
+                DebugLog.e("Cache", "Falling back to direct stream; cache unavailable", e)
+                null
+            }
+            if (c != null) {
+                CacheDataSource.Factory()
+                    .setCache(c)
+                    .setUpstreamDataSourceFactory(upstreamFactory)
+                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                    .createDataSource()
+            } else {
+                upstreamFactory.createDataSource()
+            }
+        }
     }
 
     /**
