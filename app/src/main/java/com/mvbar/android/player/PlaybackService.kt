@@ -50,6 +50,8 @@ import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import org.json.JSONArray
+import org.json.JSONObject
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackService : MediaLibraryService() {
@@ -195,6 +197,8 @@ class PlaybackService : MediaLibraryService() {
         private const val COUNTRIES_ID = "[countries]"
         private const val SUGGESTED_ROOT_ID = "[suggested]"
         private const val RECENT_ROOT_ID = "[recent_root]"
+        private const val SMART_PLAYLIST_CACHE_PREFS = "aa_smart_playlists"
+        private const val SMART_PLAYLIST_CACHE_KEY = "items"
         private val PODCAST_STREAM_REGEX = """/api/podcasts/episodes/(\d+)/stream(?:\?.*)?$""".toRegex()
         private val AUDIOBOOK_STREAM_REGEX = """/api/audiobooks/(\d+)/chapters/(\d+)/stream(?:\?.*)?$""".toRegex()
         private val AUDIOBOOK_ART_REGEX = """/api/audiobook-art/(\d+)(?:\?.*)?$""".toRegex()
@@ -230,6 +234,8 @@ class PlaybackService : MediaLibraryService() {
         val audiobookId: Int? = null,
         val chapterId: Int? = null
     )
+
+    private data class CachedSmartPlaylist(val id: Int, val name: String)
 
     private fun extractArtworkUrl(uri: Uri?): String? {
         if (uri == null) return null
@@ -1795,58 +1801,116 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getPlaylistsList(): List<MediaItem> {
+        fun buildPlaylistItem(id: Int, name: String): MediaItem {
+            return MediaItem.Builder()
+                .setMediaId("playlist:$id")
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(name)
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
+                        .build()
+                )
+                .build()
+        }
+
+        fun buildSmartPlaylistItem(id: Int, name: String): MediaItem {
+            return MediaItem.Builder()
+                .setMediaId("smartpl:$id")
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(name)
+                        .setSubtitle("Smart playlist")
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
+                        .build()
+                )
+                .build()
+        }
+
         val playlists = apiOrCache("Playlists",
             apiCall = {
-                ApiClient.api.getPlaylists().playlists.map { playlist ->
-                    MediaItem.Builder()
-                        .setMediaId("playlist:${playlist.id}")
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle(playlist.name)
-                                .setIsBrowsable(true)
-                                .setIsPlayable(false)
-                                .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
-                                .build()
-                        )
-                        .build()
-                }
+                ApiClient.api.getPlaylists().playlists.map { playlist -> buildPlaylistItem(playlist.id, playlist.name) }
             },
             cacheCall = {
-                db.playlistDao().getAll().map { entity ->
-                    MediaItem.Builder()
-                        .setMediaId("playlist:${entity.id}")
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle(entity.name)
-                                .setIsBrowsable(true)
-                                .setIsPlayable(false)
-                                .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
-                                .build()
-                        )
-                        .build()
-                }
+                db.playlistDao().getAll().map { entity -> buildPlaylistItem(entity.id, entity.name) }
             }
         )
 
-        val smartPlaylists = try {
-            kotlinx.coroutines.withTimeout(5_000) {
-                ApiClient.api.getSmartPlaylists().items.map { sp ->
-                    MediaItem.Builder()
-                        .setMediaId("smartpl:${sp.id}")
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle("⚡ ${sp.name}")
-                                .setIsBrowsable(true)
-                                .setIsPlayable(false)
-                                .setMediaType(MediaMetadata.MEDIA_TYPE_PLAYLIST)
-                                .build()
-                        )
-                        .build()
-                }
-            }
-        } catch (_: Exception) { emptyList() }
+        val smartPlaylists = getSmartPlaylistsList(::buildSmartPlaylistItem)
 
         return playlists + smartPlaylists
+    }
+
+    private suspend fun getSmartPlaylistsList(buildItem: (Int, String) -> MediaItem): List<MediaItem> {
+        val tag = "Smart playlists"
+        val memCached = apiResultCache[tag]
+        if (memCached != null && System.currentTimeMillis() - memCached.first < API_CACHE_TTL_MS) {
+            @Suppress("UNCHECKED_CAST")
+            val result = memCached.second as List<MediaItem>
+            DebugLog.d("Auto", "$tag: serving ${result.size} items from memory cache")
+            return result
+        }
+
+        try {
+            val smartPlaylists = kotlinx.coroutines.withTimeout(5_000) {
+                ApiClient.api.getSmartPlaylists().items
+            }
+            saveSmartPlaylistCache(smartPlaylists)
+            val result = smartPlaylists.map { sp -> buildItem(sp.id, sp.name) }
+            apiResultCache[tag] = System.currentTimeMillis() to result
+            DebugLog.d("Auto", "$tag: serving ${result.size} items from API")
+            return result
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "$tag: API failed (${e.message})")
+        }
+
+        val cached = loadSmartPlaylistCache().map { buildItem(it.id, it.name) }
+        if (cached.isNotEmpty()) {
+            DebugLog.d("Auto", "$tag: serving ${cached.size} items from local cache")
+        }
+        return cached
+    }
+
+    private fun saveSmartPlaylistCache(items: List<com.mvbar.android.data.model.SmartPlaylist>) {
+        try {
+            val json = JSONArray()
+            items.forEach { item ->
+                json.put(
+                    JSONObject()
+                        .put("id", item.id)
+                        .put("name", item.name)
+                )
+            }
+            getSharedPreferences(SMART_PLAYLIST_CACHE_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(SMART_PLAYLIST_CACHE_KEY, json.toString())
+                .apply()
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Smart playlists: cache save failed (${e.message})")
+        }
+    }
+
+    private fun loadSmartPlaylistCache(): List<CachedSmartPlaylist> {
+        return try {
+            val raw = getSharedPreferences(SMART_PLAYLIST_CACHE_PREFS, Context.MODE_PRIVATE)
+                .getString(SMART_PLAYLIST_CACHE_KEY, null)
+                ?: return emptyList()
+            val json = JSONArray(raw)
+            buildList {
+                for (index in 0 until json.length()) {
+                    val item = json.optJSONObject(index) ?: continue
+                    val id = item.optInt("id", 0)
+                    val name = item.optString("name", "").trim()
+                    if (id > 0 && name.isNotEmpty()) add(CachedSmartPlaylist(id, name))
+                }
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Smart playlists: cache load failed (${e.message})")
+            emptyList()
+        }
     }
 
     private suspend fun getGenresList(): List<MediaItem> {
@@ -1903,14 +1967,12 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getSmartPlaylistTracks(smartPlaylistId: Int): List<MediaItem> {
-        return try {
-            kotlinx.coroutines.withTimeout(5_000) {
+        return apiOrCache("Smart playlist tracks:$smartPlaylistId",
+            apiCall = {
                 ApiClient.api.getSmartPlaylist(smartPlaylistId, limit = 100).tracks.map { trackToMediaItem(it) }
-            }
-        } catch (e: Exception) {
-            DebugLog.w("Auto", "Smart playlist tracks failed (${e.message})")
-            emptyList()
-        }
+            },
+            cacheCall = { emptyList() }
+        )
     }
 
     private suspend fun getGenreTracks(genreName: String): List<MediaItem> {
