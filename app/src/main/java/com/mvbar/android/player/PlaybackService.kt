@@ -62,6 +62,8 @@ class PlaybackService : MediaLibraryService() {
     /** Cache of track lists by parentId so tapping a track queues all siblings */
     private val browsedTrackCache = mutableMapOf<String, List<MediaItem>>()
     /** Track the previous media item for skip detection */
+    private var playedProgressJob: kotlinx.coroutines.Job? = null
+    private var lastRecordedPlayTrackId: Int? = null
     private var previousTrackId: Int? = null
     private var previousTrackDurationMs: Long = 0L
     /** Pending resume position for podcast/audiobook episodes */
@@ -183,6 +185,8 @@ class PlaybackService : MediaLibraryService() {
         private const val ROOT_ID = "[root]"
         private const val FOR_YOU_ID = "[foryou]"
         private const val RECENT_ID = "[recent]"
+        private const val PLAYED_THRESHOLD_PCT = 0.8
+        private const val PLAYED_PROGRESS_POLL_MS = 1_000L
         private const val ALBUMS_ID = "[albums]"
         private const val ARTISTS_ID = "[artists]"
         private const val PLAYLISTS_ID = "[playlists]"
@@ -756,10 +760,12 @@ class PlaybackService : MediaLibraryService() {
                     )
                 }
 
-                // Record play for the new track (covers both phone and AA playback)
+                // Track the new item; play history is recorded once playback reaches 80%.
                 val newTrackId = item?.mediaId?.toIntOrNull()
                 if (newTrackId != null && newTrackId > 0) {
-                    ActivityQueue.enqueue(ActivityQueue.ACTION_PLAY, newTrackId)
+                    startPlayedProgressTracking(p)
+                } else {
+                    playedProgressJob?.cancel()
                 }
 
                 // Update previous track reference
@@ -2335,6 +2341,31 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /** Save current episode progress to server and local DB */
+    private fun startPlayedProgressTracking(player: Player) {
+        playedProgressJob?.cancel()
+        playedProgressJob = serviceScope.launch {
+            while (true) {
+                maybeRecordCurrentTrackAsPlayed(player)
+                kotlinx.coroutines.delay(PLAYED_PROGRESS_POLL_MS)
+            }
+        }
+    }
+
+    private fun maybeRecordCurrentTrackAsPlayed(player: Player) {
+        val trackId = player.currentMediaItem?.mediaId?.toIntOrNull() ?: return
+        if (trackId <= 0 || lastRecordedPlayTrackId == trackId) return
+
+        val durationMs = player.duration.takeIf { it > 0 }
+            ?: player.currentMediaItem?.mediaMetadata?.extras?.getLong("duration_ms", 0L)?.takeIf { it > 0 }
+            ?: return
+        val positionMs = player.currentPosition.coerceAtLeast(0L)
+
+        if (positionMs.toDouble() / durationMs.toDouble() >= PLAYED_THRESHOLD_PCT) {
+            lastRecordedPlayTrackId = trackId
+            ActivityQueue.enqueue(ActivityQueue.ACTION_PLAY, trackId)
+        }
+    }
+
     private fun saveEpisodeProgress(player: Player) {
         val target = specialPlaybackTarget(player.currentMediaItem) ?: return
         val posMs = player.currentPosition
