@@ -30,6 +30,10 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 private val SORT_OPTIONS = listOf(
     "random" to "Random",
@@ -55,6 +59,25 @@ private val EmeraldAccent = Color(0xFF34D399)      // emerald-400
 private val CardRedBg = Color(0x337F1D1D)          // red-900 @ 20%
 private val CardRedBorder = Color(0x80991B1B)      // red-800 @ 50%
 private val RedAccent = Color(0xFFF87171)          // red-400
+private val SmartDateFormatter: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+
+private fun dateStringToUtcMillis(value: String): Long? {
+    if (value.isBlank()) return null
+    return try {
+        LocalDate.parse(value, SmartDateFormatter)
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant()
+            .toEpochMilli()
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun utcMillisToDateString(value: Long): String =
+    Instant.ofEpochMilli(value)
+        .atZone(ZoneOffset.UTC)
+        .toLocalDate()
+        .format(SmartDateFormatter)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -242,24 +265,16 @@ fun CreateSmartPlaylistScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    OutlinedTextField(
+                    DatePickerField(
                         value = dateAddedFrom,
-                        onValueChange = { dateAddedFrom = it.filter { c -> c.isDigit() || c == '-' }.take(10) },
-                        label = { Text("Added From") },
-                        placeholder = { Text("YYYY-MM-DD") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                        colors = textFieldColors(),
+                        onValueChange = { dateAddedFrom = it },
+                        label = "Added From",
                         modifier = Modifier.weight(1f)
                     )
-                    OutlinedTextField(
+                    DatePickerField(
                         value = dateAddedTo,
-                        onValueChange = { dateAddedTo = it.filter { c -> c.isDigit() || c == '-' }.take(10) },
-                        label = { Text("Added To") },
-                        placeholder = { Text("YYYY-MM-DD") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                        colors = textFieldColors(),
+                        onValueChange = { dateAddedTo = it },
+                        label = "Added To",
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -429,6 +444,71 @@ fun CreateSmartPlaylistScreen(
             ) {
                 Text("Cancel", color = OnSurface)
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DatePickerField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    var showPicker by remember { mutableStateOf(false) }
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = {},
+        label = { Text(label) },
+        placeholder = { Text("YYYY-MM-DD") },
+        readOnly = true,
+        singleLine = true,
+        trailingIcon = {
+            IconButton(onClick = { showPicker = true }) {
+                Icon(Icons.Filled.DateRange, "Choose date")
+            }
+        },
+        colors = textFieldColors(),
+        modifier = modifier.clickable { showPicker = true }
+    )
+
+    if (showPicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = dateStringToUtcMillis(value)
+        )
+
+        DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { onValueChange(utcMillisToDateString(it)) }
+                        showPicker = false
+                    }
+                ) {
+                    Text("Select")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            onValueChange("")
+                            showPicker = false
+                        },
+                        enabled = value.isNotBlank()
+                    ) {
+                        Text("Clear")
+                    }
+                    TextButton(onClick = { showPicker = false }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        ) {
+            DatePicker(state = pickerState)
         }
     }
 }
