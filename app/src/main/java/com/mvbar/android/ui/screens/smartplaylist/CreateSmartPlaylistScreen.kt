@@ -87,15 +87,21 @@ fun CreateSmartPlaylistScreen(
     var includeGenresMode by remember { mutableStateOf(initialFilters.include.genresMode) }
     val includeYears = remember { mutableStateListOf<Int>().apply { addAll(initialFilters.include.years) } }
     val includeCountries = remember { mutableStateListOf<String>().apply { addAll(initialFilters.include.countries) } }
+    val includeLanguages = remember { mutableStateListOf<String>().apply { addAll(initialFilters.include.languages) } }
 
     val excludeArtists = remember { mutableStateListOf<Pair<Int, String>>().apply { addAll(initialArtistNames.filter { it.first in initialFilters.exclude.artists.toSet() }) } }
     val excludeAlbums = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.albums) } }
     val excludeGenres = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.genres) } }
     val excludeYears = remember { mutableStateListOf<Int>().apply { addAll(initialFilters.exclude.years) } }
     val excludeCountries = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.countries) } }
+    val excludeLanguages = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.languages) } }
 
     var durationMin by remember { mutableStateOf(initialFilters.duration?.min?.toString() ?: "") }
     var durationMax by remember { mutableStateOf(initialFilters.duration?.max?.toString() ?: "") }
+    var bpmMin by remember { mutableStateOf(initialFilters.bpm?.min?.toString() ?: "") }
+    var bpmMax by remember { mutableStateOf(initialFilters.bpm?.max?.toString() ?: "") }
+    var dateAddedFrom by remember { mutableStateOf(initialFilters.dateAdded?.from ?: "") }
+    var dateAddedTo by remember { mutableStateOf(initialFilters.dateAdded?.to ?: "") }
 
     fun buildFilters() = SmartPlaylistFilters(
         include = SmartFilterSet(
@@ -105,17 +111,23 @@ fun CreateSmartPlaylistScreen(
             genres = includeGenres.toList(),
             genresMode = includeGenresMode,
             years = includeYears.toList(),
-            countries = includeCountries.toList()
+            countries = includeCountries.toList(),
+            languages = includeLanguages.toList()
         ),
         exclude = SmartFilterSet(
             artists = excludeArtists.map { it.first },
             albums = excludeAlbums.toList(),
             genres = excludeGenres.toList(),
             years = excludeYears.toList(),
-            countries = excludeCountries.toList()
+            countries = excludeCountries.toList(),
+            languages = excludeLanguages.toList()
         ),
         duration = if (durationMin.isNotBlank() || durationMax.isNotBlank())
             SmartDuration(min = durationMin.toIntOrNull(), max = durationMax.toIntOrNull()) else null,
+        bpm = if (bpmMin.isNotBlank() || bpmMax.isNotBlank())
+            SmartBpm(min = bpmMin.toIntOrNull(), max = bpmMax.toIntOrNull()) else null,
+        dateAdded = if (dateAddedFrom.isNotBlank() || dateAddedTo.isNotBlank())
+            SmartDateAdded(from = dateAddedFrom.takeIf { it.isNotBlank() }, to = dateAddedTo.takeIf { it.isNotBlank() }) else null,
         favoriteOnly = favoriteOnly,
         maxResults = SLIDER_STEPS[maxResultsIndex]
     )
@@ -228,6 +240,56 @@ fun CreateSmartPlaylistScreen(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = dateAddedFrom,
+                        onValueChange = { dateAddedFrom = it.filter { c -> c.isDigit() || c == '-' }.take(10) },
+                        label = { Text("Added From") },
+                        placeholder = { Text("YYYY-MM-DD") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                        colors = textFieldColors(),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = dateAddedTo,
+                        onValueChange = { dateAddedTo = it.filter { c -> c.isDigit() || c == '-' }.take(10) },
+                        label = { Text("Added To") },
+                        placeholder = { Text("YYYY-MM-DD") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                        colors = textFieldColors(),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = bpmMin,
+                        onValueChange = { bpmMin = it.filter { c -> c.isDigit() } },
+                        label = { Text("Min BPM") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = textFieldColors(),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = bpmMax,
+                        onValueChange = { bpmMax = it.filter { c -> c.isDigit() } },
+                        label = { Text("Max BPM") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = textFieldColors(),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -286,6 +348,11 @@ fun CreateSmartPlaylistScreen(
                     kind = "country", onSuggest = onSuggest,
                     onAddString = { includeCountries.add(it) },
                     accent = EmeraldAccent)
+                SearchableChipSection("Languages", includeLanguages.toList(),
+                    onRemove = { idx -> includeLanguages.removeAt(idx) },
+                    kind = "language", onSuggest = onSuggest,
+                    onAddString = { includeLanguages.add(it) },
+                    accent = EmeraldAccent)
             }
 
             // Exclude card
@@ -320,6 +387,11 @@ fun CreateSmartPlaylistScreen(
                     onRemove = { idx -> excludeCountries.removeAt(idx) },
                     kind = "country", onSuggest = onSuggest,
                     onAddString = { excludeCountries.add(it) },
+                    accent = RedAccent)
+                SearchableChipSection("Languages", excludeLanguages.toList(),
+                    onRemove = { idx -> excludeLanguages.removeAt(idx) },
+                    kind = "language", onSuggest = onSuggest,
+                    onAddString = { excludeLanguages.add(it) },
                     accent = RedAccent)
             }
 

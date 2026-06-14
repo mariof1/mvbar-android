@@ -267,6 +267,8 @@ data class SmartPlaylistFilters(
     val include: SmartFilterSet = SmartFilterSet(),
     val exclude: SmartFilterSet = SmartFilterSet(),
     val duration: SmartDuration? = null,
+    val bpm: SmartBpm? = null,
+    val dateAdded: SmartDateAdded? = null,
     val favoriteOnly: Boolean = false,
     val maxResults: Int = 500
 )
@@ -279,11 +281,18 @@ data class SmartFilterSet(
     val genres: List<String> = emptyList(),
     val genresMode: String = "any",
     val years: List<Int> = emptyList(),
-    val countries: List<String> = emptyList()
+    val countries: List<String> = emptyList(),
+    val languages: List<String> = emptyList()
 )
 
 @Serializable
 data class SmartDuration(val min: Int? = null, val max: Int? = null)
+
+@Serializable
+data class SmartBpm(val min: Int? = null, val max: Int? = null)
+
+@Serializable
+data class SmartDateAdded(val from: String? = null, val to: String? = null)
 
 @Serializable
 data class SmartPlaylistsResponse(
@@ -516,4 +525,3 @@ data class AudiobookProgressRequest(
     @SerialName("position_ms") val positionMs: Long,
     val finished: Boolean? = null
 )
-
