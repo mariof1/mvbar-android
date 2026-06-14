@@ -1191,6 +1191,7 @@ fun MainScreen(
                 mainVm.loadPlaylists()
                 mainVm.loadSmartPlaylists()
                 mainVm.loadFavorites()
+                podcastVm.loadContinueListening()
             }
         }
 
@@ -1226,6 +1227,7 @@ fun MainScreen(
                 playlists = playlists,
                 smartPlaylists = smartPlaylists,
                 favorites = favorites,
+                podcastContinueListening = podcastContinueListening,
                 playlistTracks = playlistTracks,
                 playlistTracksLoading = playlistLoading,
                 smartPlaylistTracks = smartPlaylistDetail?.tracks ?: emptyList(),
@@ -1242,6 +1244,7 @@ fun MainScreen(
                 onLoadAllTracks = { mainVm.loadAllTracks() },
                 onLoadMoreAllTracks = { mainVm.loadMoreAllTracks() },
                 onShuffleAllTracks = { mainVm.playShuffledAllTracks(it) },
+                onPlayPodcastEpisode = { podcastVm.playEpisode(it) },
                 initialQueueOpen = mainVm.queuePanelOpen,
                 onQueueOpenChanged = { mainVm.queuePanelOpen = it },
                 onSearch = { showNowPlaying = false; showSearch = true },

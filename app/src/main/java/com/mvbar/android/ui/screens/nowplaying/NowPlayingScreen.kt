@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Playlist
+import com.mvbar.android.data.model.Episode
 import com.mvbar.android.data.model.SmartPlaylist
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.player.PlayMode
@@ -76,6 +77,7 @@ fun NowPlayingScreen(
     playlists: List<Playlist> = emptyList(),
     smartPlaylists: List<SmartPlaylist> = emptyList(),
     favorites: List<Track> = emptyList(),
+    podcastContinueListening: List<Episode> = emptyList(),
     playlistTracks: List<Track> = emptyList(),
     playlistTracksLoading: Boolean = false,
     smartPlaylistTracks: List<Track> = emptyList(),
@@ -90,6 +92,7 @@ fun NowPlayingScreen(
     onLoadAllTracks: () -> Unit = {},
     onLoadMoreAllTracks: () -> Unit = {},
     onShuffleAllTracks: (Track?) -> Unit = {},
+    onPlayPodcastEpisode: (Episode) -> Unit = {},
     initialQueueOpen: Boolean = false,
     onQueueOpenChanged: (Boolean) -> Unit = {},
     onSearch: () -> Unit = {},
@@ -188,6 +191,7 @@ fun NowPlayingScreen(
                         playlists = playlists,
                         smartPlaylists = smartPlaylists,
                         favorites = favorites,
+                        podcastContinueListening = podcastContinueListening,
                         playlistTracks = playlistTracks,
                         playlistTracksLoading = playlistTracksLoading,
                         smartPlaylistTracks = smartPlaylistTracks,
@@ -198,6 +202,7 @@ fun NowPlayingScreen(
                         onLoadAllTracks = onLoadAllTracks,
                         onLoadMoreAllTracks = onLoadMoreAllTracks,
                         onShuffleAllTracks = onShuffleAllTracks,
+                        onPlayPodcastEpisode = onPlayPodcastEpisode,
                         onPlayQueueItem = onPlayQueueItem,
                         onRemoveFromQueue = onRemoveFromQueue,
                         onClearQueue = onClearQueue,
@@ -556,6 +561,7 @@ fun NowPlayingScreen(
                         playlists = playlists,
                         smartPlaylists = smartPlaylists,
                         favorites = favorites,
+                        podcastContinueListening = podcastContinueListening,
                         playlistTracks = playlistTracks,
                         playlistTracksLoading = playlistTracksLoading,
                         smartPlaylistTracks = smartPlaylistTracks,
@@ -566,6 +572,7 @@ fun NowPlayingScreen(
                         onLoadAllTracks = onLoadAllTracks,
                         onLoadMoreAllTracks = onLoadMoreAllTracks,
                         onShuffleAllTracks = onShuffleAllTracks,
+                        onPlayPodcastEpisode = onPlayPodcastEpisode,
                         onPlayQueueItem = onPlayQueueItem,
                         onRemoveFromQueue = onRemoveFromQueue,
                         onClearQueue = onClearQueue,
@@ -669,7 +676,7 @@ private enum class QueueTab(val label: String) {
     QUEUE("Queue"),
     ALL("All"),
     PLAYLISTS("Playlists"),
-    SMART("Smart"),
+    PODCASTS("Podcasts"),
     FAVOURITES("Favourites")
 }
 
@@ -679,6 +686,7 @@ private fun QueuePanelContent(
     playlists: List<Playlist>,
     smartPlaylists: List<SmartPlaylist>,
     favorites: List<Track>,
+    podcastContinueListening: List<Episode>,
     playlistTracks: List<Track>,
     playlistTracksLoading: Boolean,
     smartPlaylistTracks: List<Track>,
@@ -689,6 +697,7 @@ private fun QueuePanelContent(
     onLoadAllTracks: () -> Unit,
     onLoadMoreAllTracks: () -> Unit,
     onShuffleAllTracks: (Track?) -> Unit,
+    onPlayPodcastEpisode: (Episode) -> Unit,
     onPlayQueueItem: (Int) -> Unit,
     onRemoveFromQueue: (Int) -> Unit,
     onClearQueue: () -> Unit,
@@ -866,64 +875,142 @@ private fun QueuePanelContent(
             }
 
             QueueTab.PLAYLISTS -> {
-                if (selectedPlaylistId != null) {
-                    // Track list for selected playlist
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { selectedPlaylistId = null }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface, modifier = Modifier.size(20.dp))
+                when {
+                    selectedSmartPlaylistId != null -> {
+                        // Track list for selected smart playlist
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = { selectedSmartPlaylistId = null }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface, modifier = Modifier.size(20.dp))
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                smartPlaylists.firstOrNull { it.id == selectedSmartPlaylistId }?.name ?: "Smart Playlist",
+                                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                                color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
                         }
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            playlists.firstOrNull { it.id == selectedPlaylistId }?.name ?: "Playlist",
-                            style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
-                            color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    if (playlistTracksLoading) {
-                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
-                        }
-                    } else if (playlistTracks.isEmpty()) {
-                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            Text("No tracks", color = OnSurfaceDim)
-                        }
-                    } else {
-                        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
-                            itemsIndexed(playlistTracks, key = { _, t -> "pl_${t.id}" }) { _, track ->
-                                QueueItem(track = track, isActive = track.id == state.currentTrack?.id,
-                                    onPlay = { onPlayTrackWithQueue(track, playlistTracks) },
-                                    onRemove = {}, showRemove = false)
+                        if (smartPlaylistTracksLoading) {
+                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                            }
+                        } else if (smartPlaylistTracks.isEmpty()) {
+                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                                Text("No tracks", color = OnSurfaceDim)
+                            }
+                        } else {
+                            LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
+                                itemsIndexed(smartPlaylistTracks, key = { _, t -> "sp_${t.id}" }) { _, track ->
+                                    QueueItem(track = track, isActive = track.id == state.currentTrack?.id,
+                                        onPlay = { onPlayTrackWithQueue(track, smartPlaylistTracks) },
+                                        onRemove = {}, showRemove = false)
+                                }
                             }
                         }
                     }
-                } else {
-                    // Playlist list
-                    if (playlists.isEmpty()) {
+
+                    selectedPlaylistId != null -> {
+                        // Track list for selected playlist
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = { selectedPlaylistId = null }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface, modifier = Modifier.size(20.dp))
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                playlists.firstOrNull { it.id == selectedPlaylistId }?.name ?: "Playlist",
+                                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                                color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (playlistTracksLoading) {
+                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                            }
+                        } else if (playlistTracks.isEmpty()) {
+                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                                Text("No tracks", color = OnSurfaceDim)
+                            }
+                        } else {
+                            LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
+                                itemsIndexed(playlistTracks, key = { _, t -> "pl_${t.id}" }) { _, track ->
+                                    QueueItem(track = track, isActive = track.id == state.currentTrack?.id,
+                                        onPlay = { onPlayTrackWithQueue(track, playlistTracks) },
+                                        onRemove = {}, showRemove = false)
+                                }
+                            }
+                        }
+                    }
+
+                    playlists.isEmpty() && smartPlaylists.isEmpty() -> {
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                             Text("No playlists", color = OnSurfaceDim)
                         }
-                    } else {
+                    }
+
+                    else -> {
                         LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
-                            items(playlists, key = { it.id }) { playlist ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth()
-                                        .clickable {
-                                            selectedPlaylistId = playlist.id
-                                            onLoadPlaylistTracks(playlist.id)
+                            if (playlists.isNotEmpty()) {
+                                item(key = "playlist_header") {
+                                    Text(
+                                        "Playlists",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = OnSurfaceDim,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                }
+                                items(playlists, key = { playlist -> "playlist_${playlist.id}" }) { playlist ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth()
+                                            .clickable {
+                                                selectedPlaylistId = playlist.id
+                                                onLoadPlaylistTracks(playlist.id)
+                                            }
+                                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = Cyan500, modifier = Modifier.size(24.dp))
+                                        Spacer(Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(playlist.name, style = MaterialTheme.typography.bodyMedium, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text("${playlist.itemCount} tracks", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
                                         }
-                                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = Cyan500, modifier = Modifier.size(24.dp))
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(playlist.name, style = MaterialTheme.typography.bodyMedium, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("${playlist.itemCount} tracks", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                                        Icon(Icons.Filled.ChevronRight, null, tint = OnSurfaceDim, modifier = Modifier.size(20.dp))
                                     }
-                                    Icon(Icons.Filled.ChevronRight, null, tint = OnSurfaceDim, modifier = Modifier.size(20.dp))
+                                }
+                            }
+
+                            if (smartPlaylists.isNotEmpty()) {
+                                item(key = "smart_playlist_header") {
+                                    Text(
+                                        "Smart Playlists",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = OnSurfaceDim,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                }
+                                items(smartPlaylists, key = { sp -> "smart_${sp.id}" }) { sp ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth()
+                                            .clickable {
+                                                selectedSmartPlaylistId = sp.id
+                                                onLoadSmartPlaylistTracks(sp.id)
+                                            }
+                                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Filled.AutoAwesome, null, tint = Pink500, modifier = Modifier.size(24.dp))
+                                        Spacer(Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(sp.name, style = MaterialTheme.typography.bodyMedium, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text("Smart • ${sp.sort}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                                        }
+                                        Icon(Icons.Filled.ChevronRight, null, tint = OnSurfaceDim, modifier = Modifier.size(20.dp))
+                                    }
                                 }
                             }
                         }
@@ -931,67 +1018,26 @@ private fun QueuePanelContent(
                 }
             }
 
-            QueueTab.SMART -> {
-                if (selectedSmartPlaylistId != null) {
-                    // Track list for selected smart playlist
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { selectedSmartPlaylistId = null }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface, modifier = Modifier.size(20.dp))
-                        }
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            smartPlaylists.firstOrNull { it.id == selectedSmartPlaylistId }?.name ?: "Smart Playlist",
-                            style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
-                            color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    if (smartPlaylistTracksLoading) {
-                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
-                        }
-                    } else if (smartPlaylistTracks.isEmpty()) {
-                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            Text("No tracks", color = OnSurfaceDim)
-                        }
-                    } else {
-                        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
-                            itemsIndexed(smartPlaylistTracks, key = { _, t -> "sp_${t.id}" }) { _, track ->
-                                QueueItem(track = track, isActive = track.id == state.currentTrack?.id,
-                                    onPlay = { onPlayTrackWithQueue(track, smartPlaylistTracks) },
-                                    onRemove = {}, showRemove = false)
-                            }
+            QueueTab.PODCASTS -> {
+                if (podcastContinueListening.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("No episodes in progress", color = OnSurfaceDim)
+                            Text(
+                                "Continue listening episodes appear here",
+                                color = OnSurfaceSubtle,
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                     }
                 } else {
-                    // Smart playlist list
-                    if (smartPlaylists.isEmpty()) {
-                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            Text("No smart playlists", color = OnSurfaceDim)
-                        }
-                    } else {
-                        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
-                            items(smartPlaylists, key = { it.id }) { sp ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth()
-                                        .clickable {
-                                            selectedSmartPlaylistId = sp.id
-                                            onLoadSmartPlaylistTracks(sp.id)
-                                        }
-                                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Filled.AutoAwesome, null, tint = Pink500, modifier = Modifier.size(24.dp))
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(sp.name, style = MaterialTheme.typography.bodyMedium, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("Smart • ${sp.sort}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
-                                    }
-                                    Icon(Icons.Filled.ChevronRight, null, tint = OnSurfaceDim, modifier = Modifier.size(20.dp))
-                                }
-                            }
+                    LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 4.dp)) {
+                        items(podcastContinueListening, key = { episode -> "podcast_${episode.id}" }) { episode ->
+                            PodcastQueueItem(
+                                episode = episode,
+                                isActive = state.currentTrack?.id == -episode.id,
+                                onPlay = { onPlayPodcastEpisode(episode) }
+                            )
                         }
                     }
                 }
@@ -1025,6 +1071,80 @@ private fun QueuePanelContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PodcastQueueItem(
+    episode: Episode,
+    isActive: Boolean,
+    onPlay: () -> Unit
+) {
+    val isOnline = LocalIsOnline.current
+    val isPlayable = remember(episode.id, isOnline) {
+        isOnline || AudioCacheManager.isEpisodeCached(episode.id)
+    }
+    val artModel = episode.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+        ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
+        ?: ApiClient.episodeArtUrl(episode.id)
+    val bgColor = if (isActive) Orange500.copy(alpha = 0.12f) else Color.Transparent
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = if (isPlayable) 1f else 0.38f }
+            .background(bgColor)
+            .clickable(enabled = isPlayable, onClick = onPlay)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ArtworkImage(
+            model = artModel,
+            contentDescription = null,
+            placeholderIcon = Icons.Filled.Podcasts,
+            iconSize = 22.dp,
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(8.dp))
+        )
+        Spacer(Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                episode.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isActive) Orange400 else OnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                episode.podcastTitle ?: "Podcast",
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceDim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (episode.durationFormatted.isNotEmpty()) {
+                    Text(episode.durationFormatted, style = MaterialTheme.typography.labelSmall, color = OnSurfaceSubtle)
+                }
+                if (episode.positionMs > 0 && !episode.played) {
+                    Text("${episode.progressPercent}% played", style = MaterialTheme.typography.labelSmall, color = Orange400)
+                }
+            }
+            if (episode.positionMs > 0 && !episode.played && episode.durationMs != null) {
+                Spacer(Modifier.height(4.dp))
+                GlowingProgressLine(
+                    progress = episode.progressPercent / 100f,
+                    accent = Orange500,
+                    accentHighlight = Orange400,
+                    heightDp = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        Icon(Icons.Filled.PlayArrow, "Play", tint = Orange500, modifier = Modifier.size(22.dp))
     }
 }
 

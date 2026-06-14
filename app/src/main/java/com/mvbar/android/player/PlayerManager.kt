@@ -3,6 +3,7 @@ package com.mvbar.android.player
 import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
+import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -207,7 +208,13 @@ class PlayerManager private constructor(private val context: Context) {
         )
     }
 
-    fun playTracks(tracks: List<Track>, startIndex: Int = 0, customStreamUrls: Map<Int, String> = emptyMap(), customArtUrls: Map<Int, String> = emptyMap()) {
+    fun playTracks(
+        tracks: List<Track>,
+        startIndex: Int = 0,
+        customStreamUrls: Map<Int, String> = emptyMap(),
+        customArtUrls: Map<Int, String> = emptyMap(),
+        customResumePositions: Map<Int, Long> = emptyMap()
+    ) {
         val ctrl = controller ?: run {
             DebugLog.e("Player", "Controller is null, cannot play")
             return
@@ -229,6 +236,10 @@ class PlayerManager private constructor(private val context: Context) {
                 } else {
                     track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
                 }
+            val extras = Bundle().apply {
+                customResumePositions[track.id]?.takeIf { it > 0 }?.let { putLong("resume_position_ms", it) }
+                track.durationMs?.toLong()?.takeIf { it > 0 }?.let { putLong("duration_ms", it) }
+            }
             DebugLog.d("Player", "Track ${track.id}: stream=$streamUrl")
             MediaItem.Builder()
                 .setUri(streamUrl)
@@ -239,6 +250,7 @@ class PlayerManager private constructor(private val context: Context) {
                         .setArtist(track.displayArtist)
                         .setAlbumTitle(track.displayAlbum)
                         .setArtworkUri(ArtworkProvider.buildUri(artUrl))
+                        .setExtras(extras)
                         .build()
                 )
                 .build()
