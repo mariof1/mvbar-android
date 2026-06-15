@@ -181,6 +181,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun List<RecBucket>.withCompleteRecommendationPayloads(): List<RecBucket> =
+        filter { bucket -> bucket.count <= bucket.tracks.size }
+
     fun loadHome(isRefresh: Boolean = false) {
         homeJob?.cancel()
         homeJob = viewModelScope.launch {
@@ -190,7 +193,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             )
             // Load from cache first for instant display
             if (!isRefresh) {
-                val cachedBuckets = try { repo.getCachedRecommendations() } catch (_: Exception) { null }
+                val cachedBuckets = try {
+                    repo.getCachedRecommendations()?.withCompleteRecommendationPayloads()
+                } catch (_: Exception) { null }
                 val cachedRecent = try { repo.getCachedRecentlyAdded(PAGE_SIZE) } catch (_: Exception) { null }
                 if (!cachedBuckets.isNullOrEmpty() || !cachedRecent.isNullOrEmpty()) {
                     _homeState.value = HomeState(
@@ -206,6 +211,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val bucketsDeferred = async {
                         try {
                             val resp = repo.getRecommendations()
+                            try {
+                                repo.cacheRecommendations(resp.buckets)
+                            } catch (e: Exception) {
+                                DebugLog.e("Home", "Failed to cache recommendations", e)
+                            }
                             DebugLog.i("Home", "Got ${resp.buckets.size} buckets")
                             resp.buckets
                         } catch (e: Exception) {

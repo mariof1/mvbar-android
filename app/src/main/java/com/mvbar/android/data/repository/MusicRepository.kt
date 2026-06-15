@@ -91,6 +91,10 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun getCachedRecommendations(): List<RecBucket>? =
         db?.recommendationDao()?.getAll()?.map { it.toModel() }
 
+    suspend fun cacheRecommendations(buckets: List<RecBucket>) {
+        db?.recommendationDao()?.replaceAll(buckets.map { it.toEntity() })
+    }
+
     suspend fun getCachedPlaylists(): List<Playlist>? =
         db?.playlistDao()?.getAll()?.map { it.toModel() }
 
