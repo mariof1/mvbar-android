@@ -1,5 +1,6 @@
 package com.mvbar.android.ui.screens.podcast
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -22,10 +23,13 @@ import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,7 +59,11 @@ fun PodcastsScreen(
 ) {
     LaunchedEffect(Unit) { onRefresh() }
 
-    var currentView by remember { mutableStateOf(PodcastHomeView.CONTINUE) }
+    var currentView by rememberSaveable { mutableStateOf(PodcastHomeView.CONTINUE) }
+
+    BackHandler(enabled = currentView == PodcastHomeView.SUBSCRIPTIONS) {
+        currentView = PodcastHomeView.CONTINUE
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         PodcastSwitcher(
@@ -238,6 +246,7 @@ private fun ResumeEpisodeCard(
     onMarkPlayed: () -> Unit
 ) {
     var showDetails by remember(episode.id) { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
     val isOnline = LocalIsOnline.current
     val isPlayable = remember(episode.id, isOnline) {
         isOnline || AudioCacheManager.isEpisodeCached(episode.id)
@@ -263,7 +272,10 @@ private fun ResumeEpisodeCard(
             .graphicsLayer { alpha = if (isPlayable) 1f else 0.45f }
             .combinedClickable(
                 onClick = { if (isPlayable) onPlay() },
-                onLongClick = { showDetails = true }
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    showDetails = true
+                }
             ),
         shape = RoundedCornerShape(18.dp),
         color = SurfaceDark
@@ -395,6 +407,7 @@ private fun SubscriptionsContent(
 @Composable
 private fun PodcastGridItem(podcast: Podcast, onClick: () -> Unit) {
     var showDetails by remember(podcast.id) { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
     val artUrl = podcast.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
         ?: podcast.imageUrl
         ?: ApiClient.podcastArtUrl(podcast.id)
@@ -420,7 +433,10 @@ private fun PodcastGridItem(podcast: Podcast, onClick: () -> Unit) {
             .fillMaxWidth()
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = { showDetails = true }
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    showDetails = true
+                }
             )
     ) {
         Box(
@@ -494,6 +510,7 @@ fun EpisodeListItem(
     onMarkPlayed: () -> Unit
 ) {
     var showDetails by remember(episode.id) { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
     val isOnline = LocalIsOnline.current
     val isPlayable = remember(episode.id, isOnline) {
         isOnline || AudioCacheManager.isEpisodeCached(episode.id)
@@ -517,7 +534,10 @@ fun EpisodeListItem(
             .graphicsLayer { alpha = if (isPlayable) 1f else 0.42f }
             .combinedClickable(
                 onClick = { if (isPlayable) onPlay() },
-                onLongClick = { showDetails = true }
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    showDetails = true
+                }
             ),
         shape = RoundedCornerShape(14.dp),
         color = if (episode.played) SurfaceDark.copy(alpha = 0.65f) else BackgroundDark

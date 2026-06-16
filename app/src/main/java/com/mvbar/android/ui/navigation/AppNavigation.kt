@@ -236,10 +236,20 @@ fun MainScreen(
     val isAtRootTab = currentTab in rootTabs
     val activity = LocalContext.current as? Activity
 
-    // Handle system back: navigate back through screens instead of closing app
-    BackHandler(enabled = !showNowPlaying) {
-        val popped = navController.popBackStack()
-        if (!popped) {
+    fun navigateBack() {
+        if (currentTab?.startsWith("podcast/") == true) {
+            val poppedToPodcastList = navController.popBackStack("podcasts", inclusive = false)
+            if (!poppedToPodcastList) {
+                navController.navigate("podcasts") {
+                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+            return
+        }
+
+        if (!navController.popBackStack()) {
             // At a root tab — if not home, go to home; otherwise minimize app
             if (currentTab != "home") {
                 navController.navigate("home") {
@@ -250,6 +260,11 @@ fun MainScreen(
                 activity?.moveTaskToBack(true)
             }
         }
+    }
+
+    // Handle system back: navigate back through screens instead of closing app
+    BackHandler(enabled = !showNowPlaying) {
+        navigateBack()
     }
 
     // Add to playlist dialog
@@ -507,7 +522,7 @@ fun MainScreen(
                 TopAppBar(
                     navigationIcon = {
                         if (isDetailScreen) {
-                            IconButton(onClick = { navController.popBackStack() }) {
+                            IconButton(onClick = { navigateBack() }) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Back",
@@ -1094,7 +1109,7 @@ fun MainScreen(
                         podcast = podcastSelectedPodcast,
                         episodes = podcastEpisodes,
                         isLoading = podcastIsLoading,
-                        onBack = { navController.popBackStack() },
+                        onBack = { navigateBack() },
                         onPlayEpisode = { episode ->
                             podcastVm.playEpisode(episode)
                         },

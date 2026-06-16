@@ -1,5 +1,6 @@
 package com.mvbar.android.ui.screens.podcast
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -19,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +44,8 @@ fun PodcastDetailScreen(
     onRefresh: () -> Unit,
     onUnsubscribe: () -> Unit
 ) {
+    BackHandler(onBack = onBack)
+
     if (podcast == null && !isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Podcast not found", color = OnSurfaceDim)
@@ -146,6 +151,7 @@ private fun PodcastDetailHeader(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showDetails by remember(podcast?.id) { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
     val artUrl = podcast?.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
         ?: podcast?.imageUrl
         ?: podcast?.let { ApiClient.podcastArtUrl(it.id) }
@@ -178,7 +184,10 @@ private fun PodcastDetailHeader(
             .combinedClickable(
                 onClick = {},
                 onLongClick = {
-                    if (podcast != null) showDetails = true
+                    if (podcast != null) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showDetails = true
+                    }
                 }
             )
             .padding(horizontal = 16.dp, vertical = 14.dp)
