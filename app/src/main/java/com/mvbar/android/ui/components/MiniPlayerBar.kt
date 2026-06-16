@@ -4,7 +4,9 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -26,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.ui.theme.*
-import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @Composable
@@ -48,19 +48,30 @@ fun MiniPlayerBar(
         track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
     }
 
-    // Swipe-to-dismiss: raw state tracks finger synchronously during drag,
-    // Animatable only used for end-state animations (snap-back / slide-out)
-    var rawOffset by remember { mutableFloatStateOf(0f) }
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+    val currentOnTap by rememberUpdatedState(onTap)
+    val dismissEnabled = onDismiss != null
+
+    // Swipe-to-dismiss: raw state tracks the finger, Animatable settles every release.
+    var dragOffset by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
     val animOffset = remember { Animatable(0f) }
-    val displayOffset = if (isDragging) rawOffset else animOffset.value
-    val scope = rememberCoroutineScope()
+    val displayOffset = if (isDragging) dragOffset else animOffset.value
     val density = LocalDensity.current
     val dismissThresholdPx = with(density) { 100.dp.toPx() }
     val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
     val flingVelocityThreshold = with(density) { 600.dp.toPx() }
     var dismissed by remember { mutableStateOf(false) }
-    var velocityTracker by remember { mutableFloatStateOf(0f) }
+    val swipeState = rememberDraggableState { delta ->
+        dragOffset = (dragOffset + delta).coerceIn(-screenWidthPx, screenWidthPx)
+    }
+
+    LaunchedEffect(track.id, dismissEnabled) {
+        dismissed = false
+        isDragging = false
+        dragOffset = 0f
+        animOffset.snapTo(0f)
+    }
 
     // Floating pill design
     Surface(
@@ -72,60 +83,52 @@ fun MiniPlayerBar(
                 translationX = displayOffset
                 alpha = 1f - (abs(displayOffset) / dismissThresholdPx).coerceIn(0f, 1f) * 0.4f
             }
-            .pointerInput(onDismiss) {
-                if (onDismiss != null) {
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            isDragging = true
-                            rawOffset = animOffset.value
-                        },
-                        onDragEnd = {
-                            isDragging = false
-                            if (dismissed) return@detectHorizontalDragGestures
-                            val current = rawOffset
-                            val velocity = velocityTracker
-                            val shouldDismiss = abs(current) > dismissThresholdPx ||
-                                    abs(velocity) > flingVelocityThreshold
-                            if (shouldDismiss) {
-                                dismissed = true
-                                val target = if (current >= 0) screenWidthPx else -screenWidthPx
-                                scope.launch {
-                                    animOffset.snapTo(current)
-                                    animOffset.animateTo(
-                                        target,
-                                        animationSpec = tween(150, easing = FastOutLinearInEasing)
-                                    )
-                                    onDismiss()
-                                }
-                            } else {
-                                scope.launch {
-                                    animOffset.snapTo(current)
-                                    animOffset.animateTo(0f, animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                                        stiffness = Spring.StiffnessMedium
-                                    ))
-                                }
-                            }
-                        },
-                        onDragCancel = {
-                            isDragging = false
-                            scope.launch {
-                                animOffset.snapTo(rawOffset)
-                                animOffset.animateTo(0f, animationSpec = spring(
-                                    stiffness = Spring.StiffnessHigh
-                                ))
-                            }
-                        },
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            velocityTracker = dragAmount * 60f
-                            rawOffset += dragAmount
+            .draggable(
+                enabled = dismissEnabled && !dismissed,
+                orientation = Orientation.Horizontal,
+                state = swipeState,
+                startDragImmediately = animOffset.isRunning,
+                onDragStarted = {
+                    animOffset.stop()
+                    dragOffset = animOffset.value.coerceIn(-screenWidthPx, screenWidthPx)
+                    isDragging = true
+                },
+                onDragStopped = { velocity ->
+                    if (dismissed) return@draggable
+
+                    val current = dragOffset.coerceIn(-screenWidthPx, screenWidthPx)
+                    val shouldDismiss = abs(current) > dismissThresholdPx ||
+                            abs(velocity) > flingVelocityThreshold
+
+                    animOffset.snapTo(current)
+                    isDragging = false
+
+                    if (shouldDismiss) {
+                        dismissed = true
+                        val targetDirection = when {
+                            abs(velocity) > flingVelocityThreshold -> if (velocity >= 0f) 1f else -1f
+                            current >= 0f -> 1f
+                            else -> -1f
                         }
-                    )
+                        animOffset.animateTo(
+                            targetValue = targetDirection * screenWidthPx,
+                            animationSpec = tween(150, easing = FastOutLinearInEasing)
+                        )
+                        currentOnDismiss?.invoke()
+                    } else {
+                        animOffset.animateTo(
+                            targetValue = 0f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        )
+                    }
+                    dragOffset = 0f
                 }
-            }
+            )
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onTap),
+            .clickable(enabled = !dismissed, onClick = { currentOnTap() }),
         color = SurfaceElevated,
         tonalElevation = 8.dp,
         shadowElevation = 8.dp

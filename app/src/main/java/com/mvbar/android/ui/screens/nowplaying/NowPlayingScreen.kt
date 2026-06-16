@@ -5,7 +5,9 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,7 +34,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -127,9 +128,48 @@ fun NowPlayingScreen(
     }
 
     var dragOffset by remember { mutableFloatStateOf(0f) }
-    var isDismissing by remember { mutableStateOf(false) }
+    var isDraggingToDismiss by remember { mutableStateOf(false) }
+    val dismissOffset = remember { Animatable(0f) }
     val dismissThreshold = screenHeightPx * 0.15f
-    val displayOffset = if (isDismissing) screenHeightPx else dragOffset.coerceAtLeast(0f)
+    val flingDismissThreshold = with(density) { 900.dp.toPx() }
+    val displayOffset =
+        if (isDraggingToDismiss) dragOffset.coerceAtLeast(0f) else dismissOffset.value.coerceAtLeast(0f)
+    val swipeToDismissModifier = Modifier.draggable(
+        orientation = Orientation.Vertical,
+        state = rememberDraggableState { delta ->
+            dragOffset = (dragOffset + delta).coerceIn(0f, screenHeightPx)
+        },
+        startDragImmediately = dismissOffset.isRunning,
+        onDragStarted = {
+            dismissOffset.stop()
+            dragOffset = dismissOffset.value.coerceAtLeast(0f)
+            isDraggingToDismiss = true
+        },
+        onDragStopped = { velocity ->
+            val releaseOffset = dragOffset.coerceAtLeast(0f)
+            val shouldDismiss = releaseOffset > dismissThreshold || velocity > flingDismissThreshold
+
+            dismissOffset.snapTo(releaseOffset)
+            isDraggingToDismiss = false
+
+            if (shouldDismiss) {
+                dismissOffset.animateTo(
+                    screenHeightPx,
+                    animationSpec = tween(180, easing = FastOutLinearInEasing)
+                )
+                onBack()
+            } else {
+                dismissOffset.animateTo(
+                    0f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                )
+            }
+            dragOffset = 0f
+        }
+    )
 
     // Background art model (shared)
     val artModel = state.artworkUrl
@@ -147,16 +187,7 @@ fun NowPlayingScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer { translationY = displayOffset }
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragEnd = {
-                            if (dragOffset > dismissThreshold) { isDismissing = true; onBack() }
-                            dragOffset = 0f
-                        },
-                        onDragCancel = { dragOffset = 0f },
-                        onVerticalDrag = { change, dragAmount -> change.consume(); dragOffset += dragAmount }
-                    )
-                }
+                .then(swipeToDismissModifier)
                 .background(BackgroundDark)
         ) {
             // Blurred background
@@ -441,16 +472,7 @@ fun NowPlayingScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer { translationY = displayOffset }
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragEnd = {
-                            if (dragOffset > dismissThreshold) { isDismissing = true; onBack() }
-                            dragOffset = 0f
-                        },
-                        onDragCancel = { dragOffset = 0f },
-                        onVerticalDrag = { change, dragAmount -> change.consume(); dragOffset += dragAmount }
-                    )
-                }
+                .then(swipeToDismissModifier)
                 .background(BackgroundDark)
         ) {
             // Blurred background
