@@ -152,10 +152,10 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
         api.removeFromPlaylist(playlistId, trackId)
 
     // Lyrics
-    suspend fun getLyrics(trackId: Int): String? {
+    suspend fun getLyrics(trackId: Int): LyricsResponse? {
         val response = api.getLyrics(trackId)
         return if (response.isSuccessful && response.code() != 204) {
-            response.body()?.string()
+            response.body()
         } else null
     }
     suspend fun prefetchLyrics(trackId: Int) {

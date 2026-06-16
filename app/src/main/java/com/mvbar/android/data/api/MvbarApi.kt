@@ -1,7 +1,6 @@
 package com.mvbar.android.data.api
 
 import com.mvbar.android.data.model.*
-import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -147,7 +146,7 @@ interface MvbarApi {
 
     // Lyrics
     @GET("api/library/tracks/{id}/lyrics")
-    suspend fun getLyrics(@Path("id") trackId: Int): Response<ResponseBody>
+    suspend fun getLyrics(@Path("id") trackId: Int): Response<LyricsResponse>
 
     @POST("api/library/tracks/{id}/lyrics/prefetch")
     suspend fun prefetchLyrics(@Path("id") trackId: Int): Response<Unit>

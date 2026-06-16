@@ -79,6 +79,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val PAGE_SIZE = 50
         const val ALL_TRACKS_PAGE_SIZE = 100
+        const val UNSYNCED_LYRIC_TIME = -1L
+        val lrcTimestampRegex = Regex("""\[(\d{1,2}):(\d{2})(?:[.:](\d{2,3}))?]""")
     }
 
     // History pagination
@@ -693,9 +695,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _lyricsLoading.value = true
             _lyrics.value = emptyList()
             try {
-                val raw = repo.getLyrics(trackId)
-                if (raw != null) {
-                    _lyrics.value = parseLrc(raw)
+                val response = repo.getLyrics(trackId)
+                if (response != null) {
+                    _lyrics.value = parseLyrics(response.lyrics, response.type)
                 }
             } catch (e: Exception) {
                 DebugLog.e("Lyrics", "Load failed", e)
@@ -709,20 +711,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repo.prefetchLyrics(trackId) }
     }
 
+    private fun parseLyrics(raw: String, type: String): List<LyricLine> {
+        val text = raw.trim()
+        if (text.isBlank()) return emptyList()
+
+        val looksSynced = type.equals("synced", ignoreCase = true) || lrcTimestampRegex.containsMatchIn(text)
+        if (looksSynced) {
+            val synced = parseLrc(text)
+            if (synced.isNotEmpty()) return synced
+        }
+
+        return text.lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { LyricLine(UNSYNCED_LYRIC_TIME, it) }
+    }
+
     private fun parseLrc(lrc: String): List<LyricLine> {
-        val regex = Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})](.*)""")
-        return lrc.lines().mapNotNull { line ->
-            regex.matchEntire(line.trim())?.let { match ->
+        return lrc.lines().flatMap { rawLine ->
+            val line = rawLine.trim()
+            val matches = lrcTimestampRegex.findAll(line).toList()
+            if (matches.isEmpty()) return@flatMap emptyList()
+
+            val lyricText = line.substring(matches.last().range.last + 1).trim()
+            if (lyricText.isEmpty()) return@flatMap emptyList()
+
+            matches.map { match ->
                 val min = match.groupValues[1].toLongOrNull() ?: 0
                 val sec = match.groupValues[2].toLongOrNull() ?: 0
-                val ms = match.groupValues[3].let {
-                    val v = it.toLongOrNull() ?: 0
-                    if (it.length == 2) v * 10 else v
+                val fraction = match.groupValues.getOrNull(3).orEmpty()
+                val ms = when (fraction.length) {
+                    2 -> (fraction.toLongOrNull() ?: 0) * 10
+                    3 -> fraction.toLongOrNull() ?: 0
+                    else -> 0
                 }
-                val timeMs = min * 60_000 + sec * 1000 + ms
-                LyricLine(timeMs, match.groupValues[4].trim())
+                LyricLine(min * 60_000 + sec * 1000 + ms, lyricText)
             }
-        }.filter { it.text.isNotEmpty() }.sortedBy { it.timeMs }
+        }.sortedBy { it.timeMs }
     }
 
     fun search(query: String) {

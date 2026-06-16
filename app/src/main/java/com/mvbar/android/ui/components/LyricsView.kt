@@ -26,10 +26,11 @@ fun LyricsView(
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val hasSyncedLyrics = remember(lyrics) { lyrics.any { it.timeMs >= 0L } }
 
     // Find current line index based on playback position
-    val currentIndex = remember(lyrics, positionMs) {
-        if (lyrics.isEmpty()) -1
+    val currentIndex = remember(lyrics, positionMs, hasSyncedLyrics) {
+        if (lyrics.isEmpty() || !hasSyncedLyrics) -1
         else {
             var idx = -1
             for (i in lyrics.indices) {
@@ -41,8 +42,8 @@ fun LyricsView(
     }
 
     // Auto-scroll to current line
-    LaunchedEffect(currentIndex) {
-        if (currentIndex >= 0) {
+    LaunchedEffect(currentIndex, hasSyncedLyrics) {
+        if (hasSyncedLyrics && currentIndex >= 0) {
             scope.launch {
                 listState.animateScrollToItem(
                     index = currentIndex,
@@ -76,11 +77,11 @@ fun LyricsView(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     // Top spacer for visual centering
-                    item { Spacer(Modifier.height(100.dp)) }
+                    item { Spacer(Modifier.height(if (hasSyncedLyrics) 100.dp else 12.dp)) }
 
                     itemsIndexed(lyrics) { index, line ->
-                        val isActive = index == currentIndex
-                        val isPast = index < currentIndex
+                        val isActive = hasSyncedLyrics && index == currentIndex
+                        val isPast = hasSyncedLyrics && index < currentIndex
 
                         val color by animateColorAsState(
                             when {
@@ -99,7 +100,7 @@ fun LyricsView(
                                 MaterialTheme.typography.titleMedium,
                             color = color,
                             textAlign = TextAlign.Start,
-                            maxLines = 3,
+                            maxLines = if (hasSyncedLyrics) 3 else Int.MAX_VALUE,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.fillMaxWidth()
                         )

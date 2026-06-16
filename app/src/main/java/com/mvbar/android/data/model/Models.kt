@@ -326,6 +326,12 @@ data class SmartPlaylistCreateRequest(
 data class LyricLine(val timeMs: Long, val text: String)
 
 @Serializable
+data class LyricsResponse(
+    val lyrics: String = "",
+    val type: String = "unsynced"
+)
+
+@Serializable
 data class SuggestItem(val id: Int? = null, val name: String? = null)
 
 @Serializable
