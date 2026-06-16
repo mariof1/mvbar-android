@@ -2095,11 +2095,25 @@ class PlaybackService : MediaLibraryService() {
     /** Podcast root: shows Continue Listening, New Episodes, and Subscriptions sub-folders */
     private fun getPodcastsRootChildren(): List<MediaItem> {
         return listOf(
-            browseFolderItem(PODCAST_CONTINUE_ID, "Continue Listening", MediaMetadata.MEDIA_TYPE_FOLDER_PODCASTS),
-            browseFolderItem(PODCAST_NEW_ID, "New Episodes", MediaMetadata.MEDIA_TYPE_FOLDER_PODCASTS),
-            browseFolderItem(PODCAST_SUBS_ID, "Subscriptions", MediaMetadata.MEDIA_TYPE_FOLDER_PODCASTS)
+            podcastFolderItem(PODCAST_CONTINUE_ID, "Continue Listening", "Resume unfinished episodes"),
+            podcastFolderItem(PODCAST_NEW_ID, "New Episodes", "Latest unplayed episodes"),
+            podcastFolderItem(PODCAST_SUBS_ID, "Subscriptions", "Browse by show")
         )
     }
+
+    private fun podcastFolderItem(id: String, title: String, subtitle: String): MediaItem =
+        MediaItem.Builder()
+            .setMediaId(id)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(title)
+                    .setSubtitle(subtitle)
+                    .setIsBrowsable(true)
+                    .setIsPlayable(false)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_PODCASTS)
+                    .build()
+            )
+            .build()
 
     /** Episodes with progress (positionMs > 0 and not finished) */
     private suspend fun getContinueListeningEpisodes(): List<MediaItem> {
@@ -2135,15 +2149,26 @@ class PlaybackService : MediaLibraryService() {
 
     /** Subscribed podcast list (browsable folders) */
     private suspend fun getPodcastsSubscriptionsList(): List<MediaItem> {
-        val buildItem = { id: Int, title: String, author: String?, imagePath: String? ->
-            val artUri = imagePath?.let { ApiClient.podcastArtPathUrl(it) }
-                ?: ApiClient.podcastArtUrl(id)
+        val buildItem = { podcast: com.mvbar.android.data.model.Podcast ->
+            val artUri = podcast.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+                ?: podcast.imageUrl
+                ?: ApiClient.podcastArtUrl(podcast.id)
+            val subtitle = buildString {
+                podcast.author?.takeIf { it.isNotBlank() }?.let { append(it) }
+                if (podcast.unplayedCount > 0) {
+                    if (isNotEmpty()) append(" - ")
+                    append("${podcast.unplayedCount} unplayed")
+                }
+            }
             MediaItem.Builder()
-                .setMediaId("podcast:$id")
+                .setMediaId("podcast:${podcast.id}")
                 .setMediaMetadata(
                     MediaMetadata.Builder()
-                        .setTitle(title)
-                        .setArtist(author)
+                        .setTitle(podcast.title)
+                        .apply {
+                            (subtitle.takeIf { it.isNotBlank() } ?: podcast.author)?.let { setArtist(it) }
+                            subtitle.takeIf { it.isNotBlank() }?.let { setSubtitle(it) }
+                        }
                         .setIsBrowsable(true)
                         .setIsPlayable(false)
                         .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST)
@@ -2154,10 +2179,10 @@ class PlaybackService : MediaLibraryService() {
         }
         return apiOrCache("Podcasts",
             apiCall = {
-                ApiClient.api.getPodcasts().podcasts.map { buildItem(it.id, it.title, it.author, it.imagePath) }
+                ApiClient.api.getPodcasts().podcasts.map { buildItem(it) }
             },
             cacheCall = {
-                db.podcastDao().getAllPodcasts().map { e -> val m = e.toModel(); buildItem(m.id, m.title, m.author, m.imagePath) }
+                db.podcastDao().getAllPodcasts().map { e -> buildItem(e.toModel()) }
             }
         )
     }
@@ -2172,17 +2197,21 @@ class PlaybackService : MediaLibraryService() {
             putLong("resume_position_ms", episode.positionMs)
             putLong("duration_ms", episode.durationMs ?: 0L)
         }
-        // Build subtitle showing podcast name + progress
+        // Build compact metadata for Android Auto browse rows.
         val subtitle = buildString {
             val podName = episode.podcastTitle ?: fallbackTitle
             if (podName != null) append(podName)
+            if (episode.publishedFormatted.isNotEmpty()) {
+                if (isNotEmpty()) append(" - ")
+                append(episode.publishedFormatted)
+            }
             if (episode.positionMs > 0 && episode.durationMs != null && episode.durationMs > 0) {
                 val pct = episode.progressPercent
                 val remaining = (episode.durationMs - episode.positionMs) / 60_000
-                if (isNotEmpty()) append(" · ")
+                if (isNotEmpty()) append(" - ")
                 append("${remaining}m left ($pct%)")
             } else if (episode.durationMs != null) {
-                if (isNotEmpty()) append(" · ")
+                if (isNotEmpty()) append(" - ")
                 append(episode.durationFormatted)
             }
         }
@@ -2195,6 +2224,9 @@ class PlaybackService : MediaLibraryService() {
                     .setTitle(episode.title)
                     .setArtist(subtitle.ifEmpty { podcastName })
                     .setAlbumTitle(podcastName)
+                    .apply {
+                        subtitle.takeIf { it.isNotEmpty() }?.let { setSubtitle(it) }
+                    }
                     .setArtworkUri(ArtworkProvider.buildUri(artUri))
                     .setIsBrowsable(false)
                     .setIsPlayable(true)
