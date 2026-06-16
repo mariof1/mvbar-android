@@ -20,7 +20,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -498,31 +497,6 @@ fun MainScreen(
                         IconButton(onClick = { showSearch = true }) {
                             Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                         }
-                        IconButton(onClick = {
-                            navController.navigate("settings") {
-                                launchSingleTop = true
-                            }
-                        }) {
-                            Icon(
-                                Icons.Filled.Settings,
-                                "Settings",
-                                tint = if (currentTab == "settings") Cyan500 else OnSurfaceDim
-                            )
-                        }
-
-                        if (screenTitle.isNotBlank()) {
-                            Text(
-                                screenTitle,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = OnSurfaceDim,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier
-                                    .width(76.dp)
-                                    .padding(horizontal = 4.dp, vertical = 6.dp)
-                            )
-                        }
 
                         Spacer(Modifier.weight(1f))
 
@@ -562,6 +536,18 @@ fun MainScreen(
                         }
 
                         Spacer(Modifier.weight(1f))
+
+                        IconButton(onClick = {
+                            navController.navigate("settings") {
+                                launchSingleTop = true
+                            }
+                        }) {
+                            Icon(
+                                Icons.Filled.Settings,
+                                "Settings",
+                                tint = if (currentTab == "settings") Cyan500 else OnSurfaceDim
+                            )
+                        }
                     }
                 }
             }
