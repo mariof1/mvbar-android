@@ -223,6 +223,7 @@ class PlayerManager private constructor(private val context: Context) {
         _queue.addAll(tracks)
         _customArtUrls = customArtUrls
         _isAudiobookMode = customArtUrls.isNotEmpty() && tracks.any { it.id < 0 && customArtUrls.containsKey(it.id) }
+        val isSpecialPlayback = tracks.any { it.id < 0 }
 
         DebugLog.i("Player", "Playing ${tracks.size} tracks from index $startIndex")
 
@@ -256,10 +257,15 @@ class PlayerManager private constructor(private val context: Context) {
                 .build()
         }
 
+        if (isSpecialPlayback) {
+            ctrl.repeatMode = Player.REPEAT_MODE_OFF
+            ctrl.shuffleModeEnabled = false
+        }
+
         // If shuffle is on, temporarily disable it so the tapped track plays first.
         // ExoPlayer shuffle can randomize the start position; we re-enable after setMediaItems
         // so that "next" tracks are shuffled but the tapped one always plays immediately.
-        val wasShuffling = ctrl.shuffleModeEnabled
+        val wasShuffling = ctrl.shuffleModeEnabled && !isSpecialPlayback
         if (wasShuffling) {
             ctrl.shuffleModeEnabled = false
         }
@@ -276,7 +282,9 @@ class PlayerManager private constructor(private val context: Context) {
             queue = tracks.toList(),
             queueIndex = startIndex,
             currentTrack = tracks.getOrNull(startIndex),
+            playMode = if (isSpecialPlayback) PlayMode.NORMAL else _state.value.playMode,
             isAudiobookMode = _isAudiobookMode,
+            isPodcastModeOverride = isSpecialPlayback && !_isAudiobookMode,
             artworkUrl = tracks.getOrNull(startIndex)?.id?.let { customArtUrls[it] }
         )
         // Prefetch is handled by onMediaItemTransition listener — no need to call here

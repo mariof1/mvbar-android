@@ -311,6 +311,20 @@ class PlaybackService : MediaLibraryService() {
         return SpecialPlaybackTarget(SpecialPlaybackKind.PODCAST, episodeId = absoluteId)
     }
 
+    private fun enforceLinearPlaybackForSpecialItem(player: Player, item: MediaItem?) {
+        if (specialPlaybackTarget(item) == null) return
+
+        pendingShuffleRestore = false
+        if (player.repeatMode != Player.REPEAT_MODE_OFF) {
+            player.repeatMode = Player.REPEAT_MODE_OFF
+            DebugLog.i("Player", "Repeat disabled for podcast/audiobook playback")
+        }
+        if (player.shuffleModeEnabled) {
+            player.shuffleModeEnabled = false
+            DebugLog.i("Player", "Shuffle disabled for podcast/audiobook playback")
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_VOICE_COMMAND) {
             handleVoiceCommand(intent)
@@ -744,6 +758,7 @@ class PlaybackService : MediaLibraryService() {
                 // --- Save progress for the episode we're leaving ---
                 progressSaveJob?.cancel()
                 saveEpisodeProgress(p)
+                val target = specialPlaybackTarget(item)
 
                 // --- Activity tracking via ActivityQueue ---
                 // Record skip for the previous track if user pressed next/prev
@@ -780,8 +795,10 @@ class PlaybackService : MediaLibraryService() {
                     DebugLog.i("Player", "Will resume ${item?.mediaId} at ${resumeMs}ms")
                 }
 
+                enforceLinearPlaybackForSpecialItem(p, item)
+
                 // --- Start periodic progress saving for episodes ---
-                if (specialPlaybackTarget(item) != null) {
+                if (target != null) {
                     startProgressSaving(p)
                 }
 
@@ -1423,6 +1440,9 @@ class PlaybackService : MediaLibraryService() {
             if (mediaItems.size == 1 && first != null) {
                 val tappedId = first.mediaId
                 val isPodcastOrBook = specialPlaybackTarget(first) != null
+                if (isPodcastOrBook) {
+                    enforceLinearPlaybackForSpecialItem(mediaSession.player, first)
+                }
 
                 // Search result tap: play just the tapped track + fetch similar from server
                 val isFromSearch = browsedTrackCache.entries
@@ -2582,9 +2602,11 @@ class PlaybackService : MediaLibraryService() {
                         } catch (_: Exception) {}
                     }
                 }
-                val wasShuffling = player.shuffleModeEnabled
+                val restoreItem = items.getOrNull(saved.index)
+                val wasShuffling = player.shuffleModeEnabled && specialPlaybackTarget(restoreItem) == null
                 if (wasShuffling) player.shuffleModeEnabled = false
                 player.setMediaItems(items, saved.index, startPos)
+                enforceLinearPlaybackForSpecialItem(player, restoreItem)
                 player.prepare()
                 // Don't auto-play — let the user press play on the head unit
                 if (wasShuffling) player.shuffleModeEnabled = true
