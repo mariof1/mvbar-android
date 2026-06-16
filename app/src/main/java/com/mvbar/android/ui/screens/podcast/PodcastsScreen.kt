@@ -1,15 +1,19 @@
 package com.mvbar.android.ui.screens.podcast
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
@@ -226,24 +230,41 @@ private fun ContinueListeningContent(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ResumeEpisodeCard(
     episode: Episode,
     onPlay: () -> Unit,
     onMarkPlayed: () -> Unit
 ) {
+    var showDetails by remember(episode.id) { mutableStateOf(false) }
     val isOnline = LocalIsOnline.current
     val isPlayable = remember(episode.id, isOnline) {
         isOnline || AudioCacheManager.isEpisodeCached(episode.id)
     }
     val artUrl = episodeArtUrl(episode)
     val remaining = episodeRemainingText(episode)
+    val description = remember(episode.description) { cleanPodcastDescription(episode.description) }
+
+    if (showDetails) {
+        PodcastFullTextDialog(
+            label = "Episode details",
+            title = episode.title,
+            subtitle = episode.podcastTitle,
+            meta = episodeMetaText(episode, includeProgress = true).takeIf { it.isNotBlank() },
+            description = description,
+            onDismiss = { showDetails = false }
+        )
+    }
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer { alpha = if (isPlayable) 1f else 0.45f }
-            .clickable(enabled = isPlayable, onClick = onPlay),
+            .combinedClickable(
+                onClick = { if (isPlayable) onPlay() },
+                onLongClick = { showDetails = true }
+            ),
         shape = RoundedCornerShape(18.dp),
         color = SurfaceDark
     ) {
@@ -370,16 +391,37 @@ private fun SubscriptionsContent(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PodcastGridItem(podcast: Podcast, onClick: () -> Unit) {
+    var showDetails by remember(podcast.id) { mutableStateOf(false) }
     val artUrl = podcast.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
         ?: podcast.imageUrl
         ?: ApiClient.podcastArtUrl(podcast.id)
+    val description = remember(podcast.description) { cleanPodcastDescription(podcast.description) }
+    val meta = buildList {
+        if (podcast.unplayedCount > 0) add("${podcast.unplayedCount} unplayed")
+        podcast.language?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
+    }.joinToString(" - ").takeIf { it.isNotBlank() }
+
+    if (showDetails) {
+        PodcastFullTextDialog(
+            label = "Podcast details",
+            title = podcast.title,
+            subtitle = podcast.author,
+            meta = meta,
+            description = description,
+            onDismiss = { showDetails = false }
+        )
+    }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { showDetails = true }
+            )
     ) {
         Box(
             modifier = Modifier
@@ -442,6 +484,7 @@ private fun PodcastGridItem(podcast: Podcast, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EpisodeListItem(
     episode: Episode,
@@ -450,17 +493,32 @@ fun EpisodeListItem(
     onPlay: () -> Unit,
     onMarkPlayed: () -> Unit
 ) {
+    var showDetails by remember(episode.id) { mutableStateOf(false) }
     val isOnline = LocalIsOnline.current
     val isPlayable = remember(episode.id, isOnline) {
         isOnline || AudioCacheManager.isEpisodeCached(episode.id)
     }
     val description = remember(episode.description) { cleanPodcastDescription(episode.description) }
 
+    if (showDetails) {
+        PodcastFullTextDialog(
+            label = "Episode details",
+            title = episode.title,
+            subtitle = episode.podcastTitle,
+            meta = episodeMetaText(episode, includeProgress = true).takeIf { it.isNotBlank() },
+            description = description,
+            onDismiss = { showDetails = false }
+        )
+    }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer { alpha = if (isPlayable) 1f else 0.42f }
-            .clickable(enabled = isPlayable, onClick = onPlay),
+            .combinedClickable(
+                onClick = { if (isPlayable) onPlay() },
+                onLongClick = { showDetails = true }
+            ),
         shape = RoundedCornerShape(14.dp),
         color = if (episode.played) SurfaceDark.copy(alpha = 0.65f) else BackgroundDark
     ) {
@@ -551,6 +609,73 @@ fun EpisodeListItem(
             }
         }
     }
+}
+
+@Composable
+internal fun PodcastFullTextDialog(
+    label: String,
+    title: String,
+    subtitle: String? = null,
+    meta: String? = null,
+    description: String? = null,
+    onDismiss: () -> Unit
+) {
+    val cleanedDescription = description.orEmpty().trim()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceDark,
+        titleContentColor = OnSurface,
+        textContentColor = OnSurfaceDim,
+        title = {
+            Text(
+                label,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    title,
+                    color = OnSurface,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                subtitle?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        it,
+                        color = Cyan400,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                meta?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        it,
+                        color = OnSurfaceSubtle,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    cleanedDescription.ifBlank { "No description available." },
+                    color = OnSurfaceDim,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done", color = Cyan400)
+            }
+        }
+    )
 }
 
 @Composable

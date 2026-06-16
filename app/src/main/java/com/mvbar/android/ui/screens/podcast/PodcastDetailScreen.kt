@@ -1,6 +1,8 @@
 package com.mvbar.android.ui.screens.podcast
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -130,6 +132,7 @@ fun PodcastDetailScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PodcastDetailHeader(
     podcast: Podcast?,
@@ -142,10 +145,27 @@ private fun PodcastDetailHeader(
     onUnsubscribe: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showDetails by remember(podcast?.id) { mutableStateOf(false) }
     val artUrl = podcast?.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
         ?: podcast?.imageUrl
         ?: podcast?.let { ApiClient.podcastArtUrl(it.id) }
     val description = remember(podcast?.description) { cleanPodcastDescription(podcast?.description) }
+    val meta = buildList {
+        add("$episodeCount episodes")
+        if (unplayedCount > 0) add("$unplayedCount unplayed")
+        podcast?.language?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
+    }.joinToString(" - ")
+
+    if (showDetails && podcast != null) {
+        PodcastFullTextDialog(
+            label = "Podcast details",
+            title = podcast.title,
+            subtitle = podcast.author,
+            meta = meta,
+            description = description,
+            onDismiss = { showDetails = false }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -154,6 +174,12 @@ private fun PodcastDetailHeader(
                 Brush.verticalGradient(
                     listOf(WhiteOverlay10, BackgroundDark, BackgroundDark)
                 )
+            )
+            .combinedClickable(
+                onClick = {},
+                onLongClick = {
+                    if (podcast != null) showDetails = true
+                }
             )
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
@@ -206,6 +232,13 @@ private fun PodcastDetailHeader(
                     onDismissRequest = { showMenu = false },
                     containerColor = SurfaceDark
                 ) {
+                    DropdownMenuItem(
+                        text = { Text("Show details", color = OnSurface) },
+                        onClick = {
+                            showMenu = false
+                            if (podcast != null) showDetails = true
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text("Refresh", color = OnSurface) },
                         leadingIcon = { Icon(Icons.Filled.Refresh, null, tint = OnSurfaceDim) },
