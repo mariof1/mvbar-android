@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -437,6 +438,37 @@ fun MainScreen(
         }
     }
 
+    val screenTitle = when {
+        currentTab == "home" -> "For You"
+        currentTab == "browse" || currentTab?.startsWith("artist/") == true ||
+            currentTab?.startsWith("album") == true || currentTab?.startsWith("genre/") == true ||
+            currentTab?.startsWith("country/") == true || currentTab?.startsWith("language/") == true -> "Browse"
+        currentTab == "create-smart-playlist" -> "New Smart Playlist"
+        currentTab?.startsWith("edit-smart-playlist") == true -> "Edit Smart Playlist"
+        currentTab == "library" || currentTab == "history" ||
+            currentTab?.startsWith("playlist/") == true ||
+            currentTab?.startsWith("smart-playlist") == true -> "Library"
+        currentTab == "podcasts" || currentTab?.startsWith("podcast/") == true -> "Podcasts"
+        currentTab == "audiobooks" || currentTab?.startsWith("audiobook/") == true -> "Audiobooks"
+        currentTab == "favorites" -> "Favorites"
+        currentTab == "settings" -> "Settings"
+        currentTab == "cache-browser" -> "Cache"
+        else -> ""
+    }
+    val isDetailScreen = currentTab?.startsWith("artist/") == true ||
+        currentTab?.startsWith("album") == true ||
+        currentTab?.startsWith("genre/") == true ||
+        currentTab?.startsWith("country/") == true ||
+        currentTab?.startsWith("language/") == true ||
+        currentTab?.startsWith("playlist/") == true ||
+        currentTab?.startsWith("smart-playlist/") == true ||
+        currentTab == "create-smart-playlist" ||
+        currentTab?.startsWith("edit-smart-playlist") == true ||
+        currentTab?.startsWith("podcast/") == true ||
+        currentTab?.startsWith("audiobook/") == true ||
+        currentTab == "history" ||
+        currentTab == "cache-browser"
+
     CompositionLocalProvider(LocalIsOnline provides isOnline) {
     Box(modifier = Modifier.fillMaxSize()) {
         // When using nav rail: put it outside Scaffold so it spans full height
@@ -449,78 +481,10 @@ fun MainScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.Center
+                            .statusBarsPadding()
+                            .navigationBarsPadding(),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        BottomTab.entries.forEach { tab ->
-                            val selected = isTabSelected(tab)
-                            NavigationRailItem(
-                                selected = selected,
-                                onClick = { onTabClick(tab) },
-                                icon = {
-                                    Icon(
-                                        if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                        tab.label
-                                    )
-                                },
-                                label = {
-                                    Text(
-                                        tab.label,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                },
-                                alwaysShowLabel = false,
-                                colors = NavigationRailItemDefaults.colors(
-                                    selectedIconColor = Cyan500,
-                                    selectedTextColor = Cyan500,
-                                    unselectedIconColor = OnSurfaceDim,
-                                    unselectedTextColor = OnSurfaceDim,
-                                    indicatorColor = Cyan500.copy(alpha = 0.15f)
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-
-        Scaffold(
-            modifier = if (useNavRail) Modifier.weight(1f) else Modifier,
-            containerColor = BackgroundDark,
-            topBar = {
-                val screenTitle = when {
-                    currentTab == "home" -> "For You"
-                    currentTab == "browse" || currentTab?.startsWith("artist/") == true ||
-                        currentTab?.startsWith("album") == true || currentTab?.startsWith("genre/") == true ||
-                        currentTab?.startsWith("country/") == true || currentTab?.startsWith("language/") == true -> "Browse"
-                    currentTab == "create-smart-playlist" -> "New Smart Playlist"
-                    currentTab?.startsWith("edit-smart-playlist") == true -> "Edit Smart Playlist"
-                    currentTab == "library" || currentTab == "history" ||
-                        currentTab?.startsWith("playlist/") == true ||
-                        currentTab?.startsWith("smart-playlist") == true -> "Library"
-                    currentTab == "podcasts" || currentTab?.startsWith("podcast/") == true -> "Podcasts"
-                    currentTab == "audiobooks" || currentTab?.startsWith("audiobook/") == true -> "Audiobooks"
-                    currentTab == "favorites" -> "Favorites"
-                    currentTab == "settings" -> "Settings"
-                    currentTab == "cache-browser" -> "Cache"
-                    else -> ""
-                }
-                val isDetailScreen = currentTab?.startsWith("artist/") == true ||
-                    currentTab?.startsWith("album") == true ||
-                    currentTab?.startsWith("genre/") == true ||
-                    currentTab?.startsWith("country/") == true ||
-                    currentTab?.startsWith("language/") == true ||
-                    currentTab?.startsWith("playlist/") == true ||
-                    currentTab?.startsWith("smart-playlist/") == true ||
-                    currentTab == "create-smart-playlist" ||
-                    currentTab?.startsWith("edit-smart-playlist") == true ||
-                    currentTab?.startsWith("podcast/") == true ||
-                    currentTab?.startsWith("audiobook/") == true ||
-                    currentTab == "history" ||
-                    currentTab == "cache-browser"
-                TopAppBar(
-                    navigationIcon = {
                         if (isDetailScreen) {
                             IconButton(onClick = { navigateBack() }) {
                                 Icon(
@@ -530,15 +494,7 @@ fun MainScreen(
                                 )
                             }
                         }
-                    },
-                    title = {
-                        Text(
-                            screenTitle,
-                            style = MaterialTheme.typography.titleLarge,
-                            color = OnSurface
-                        )
-                    },
-                    actions = {
+
                         IconButton(onClick = { showSearch = true }) {
                             Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                         }
@@ -547,13 +503,110 @@ fun MainScreen(
                                 launchSingleTop = true
                             }
                         }) {
-                            Icon(Icons.Filled.Settings, "Settings", tint = OnSurfaceDim)
+                            Icon(
+                                Icons.Filled.Settings,
+                                "Settings",
+                                tint = if (currentTab == "settings") Cyan500 else OnSurfaceDim
+                            )
                         }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = BackgroundDark
+
+                        if (screenTitle.isNotBlank()) {
+                            Text(
+                                screenTitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = OnSurfaceDim,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .width(76.dp)
+                                    .padding(horizontal = 4.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        Spacer(Modifier.weight(1f))
+
+                        Column(
+                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            BottomTab.entries.forEach { tab ->
+                                val selected = isTabSelected(tab)
+                                NavigationRailItem(
+                                    selected = selected,
+                                    onClick = { onTabClick(tab) },
+                                    icon = {
+                                        Icon(
+                                            if (selected) tab.selectedIcon else tab.unselectedIcon,
+                                            tab.label
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            tab.label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    },
+                                    alwaysShowLabel = false,
+                                    colors = NavigationRailItemDefaults.colors(
+                                        selectedIconColor = Cyan500,
+                                        selectedTextColor = Cyan500,
+                                        unselectedIconColor = OnSurfaceDim,
+                                        unselectedTextColor = OnSurfaceDim,
+                                        indicatorColor = Cyan500.copy(alpha = 0.15f)
+                                    )
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+
+        Scaffold(
+            modifier = if (useNavRail) Modifier.weight(1f) else Modifier,
+            containerColor = BackgroundDark,
+            topBar = {
+                if (!useNavRail) {
+                    TopAppBar(
+                        navigationIcon = {
+                            if (isDetailScreen) {
+                                IconButton(onClick = { navigateBack() }) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back",
+                                        tint = OnSurface
+                                    )
+                                }
+                            }
+                        },
+                        title = {
+                            Text(
+                                screenTitle,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = OnSurface
+                            )
+                        },
+                        actions = {
+                            IconButton(onClick = { showSearch = true }) {
+                                Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
+                            }
+                            IconButton(onClick = {
+                                navController.navigate("settings") {
+                                    launchSingleTop = true
+                                }
+                            }) {
+                                Icon(Icons.Filled.Settings, "Settings", tint = OnSurfaceDim)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = BackgroundDark
+                        )
                     )
-                )
+                }
             },
             bottomBar = {
                 if (!useNavRail) {
@@ -618,6 +671,7 @@ fun MainScreen(
             // Main content column (with mini player at bottom for nav rail mode)
             Column(modifier = Modifier
                 .padding(top = innerPadding.calculateTopPadding())
+                .then(if (useNavRail) Modifier.statusBarsPadding() else Modifier)
                 .fillMaxSize()
                 .navigationBarsPadding()
             ) {
