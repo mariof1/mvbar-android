@@ -53,6 +53,7 @@ import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.components.GlowingProgressLine
 import com.mvbar.android.ui.components.GlowingSeekbar
+import com.mvbar.android.ui.components.LyricsView
 import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.theme.*
 
@@ -255,12 +256,28 @@ fun NowPlayingScreen(
                                 }
                             }
 
-                            Spacer(Modifier.weight(1f))
-
-                            // Artist info — larger
-                            Text(track.displayTitle, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = OnSurface, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(4.dp))
-                            Text(track.displayArtist, style = MaterialTheme.typography.bodyLarge, color = OnSurfaceDim, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (showLyrics) {
+                                    EmbeddedLyricsPanel(
+                                        lyrics = lyrics,
+                                        isLoading = lyricsLoading,
+                                        positionMs = state.position,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(track.displayTitle, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = OnSurface, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(track.displayArtist, style = MaterialTheme.typography.bodyLarge, color = OnSurfaceDim, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                    }
+                                }
+                            }
 
                             Spacer(Modifier.height(16.dp))
 
@@ -306,7 +323,7 @@ fun NowPlayingScreen(
                                 }
                             }
 
-                            Spacer(Modifier.weight(1f))
+                            Spacer(Modifier.height(12.dp))
                         }
                     } else {
                         // Queue-closed layout: standard side-by-side art + controls
@@ -345,8 +362,20 @@ fun NowPlayingScreen(
                             // Art + info + controls
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Box(modifier = Modifier.weight(0.45f).padding(8.dp), contentAlignment = Alignment.Center) {
-                                    AsyncImage(model = artModel, contentDescription = null, contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxHeight(0.8f).aspectRatio(1f).clip(RoundedCornerShape(16.dp)).shadow(16.dp, RoundedCornerShape(16.dp)))
+                                    if (showLyrics) {
+                                        EmbeddedLyricsPanel(
+                                            lyrics = lyrics,
+                                            isLoading = lyricsLoading,
+                                            positionMs = state.position,
+                                            modifier = Modifier
+                                                .fillMaxHeight(0.8f)
+                                                .aspectRatio(1f)
+                                                .shadow(16.dp, RoundedCornerShape(16.dp))
+                                        )
+                                    } else {
+                                        AsyncImage(model = artModel, contentDescription = null, contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxHeight(0.8f).aspectRatio(1f).clip(RoundedCornerShape(16.dp)).shadow(16.dp, RoundedCornerShape(16.dp)))
+                                    }
                                 }
 
                                 Column(modifier = Modifier.weight(0.55f).padding(start = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -404,22 +433,6 @@ fun NowPlayingScreen(
                 } // Row
             } // BoxWithConstraints
 
-            // Full-screen lyrics overlay (landscape)
-            if (showLyrics && !state.isPodcastMode && !state.isAudiobookMode) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.7f))
-                        .statusBarsPadding()
-                        .navigationBarsPadding()
-                        .clickable { showLyrics = false }
-                ) {
-                    com.mvbar.android.ui.components.LyricsView(
-                        lyrics = lyrics, isLoading = lyricsLoading, positionMs = state.position,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
         }
     } else {
         // ===== PORTRAIT: standalone layout with toggleable queue =====
@@ -669,6 +682,32 @@ fun NowPlayingScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun EmbeddedLyricsPanel(
+    lyrics: List<com.mvbar.android.data.model.LyricLine>,
+    isLoading: Boolean,
+    positionMs: Long,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.Black.copy(alpha = 0.38f))
+    ) {
+        LyricsView(
+            lyrics = lyrics,
+            isLoading = isLoading,
+            positionMs = positionMs,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+            lineSpacing = 8.dp,
+            syncedTopSpacer = 12.dp,
+            unsyncedTopSpacer = 0.dp,
+            bottomSpacer = 72.dp
+        )
     }
 }
 

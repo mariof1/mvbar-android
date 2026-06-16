@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.model.LyricLine
 import com.mvbar.android.ui.theme.*
@@ -22,7 +23,12 @@ fun LyricsView(
     lyrics: List<LyricLine>,
     isLoading: Boolean,
     positionMs: Long,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 24.dp, vertical = 32.dp),
+    lineSpacing: Dp = 12.dp,
+    syncedTopSpacer: Dp = 100.dp,
+    unsyncedTopSpacer: Dp = 12.dp,
+    bottomSpacer: Dp = 200.dp
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -72,12 +78,12 @@ fun LyricsView(
             else -> {
                 LazyColumn(
                     state = listState,
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 32.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = contentPadding,
+                    verticalArrangement = Arrangement.spacedBy(lineSpacing),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     // Top spacer for visual centering
-                    item { Spacer(Modifier.height(if (hasSyncedLyrics) 100.dp else 12.dp)) }
+                    item { Spacer(Modifier.height(if (hasSyncedLyrics) syncedTopSpacer else unsyncedTopSpacer)) }
 
                     itemsIndexed(lyrics) { index, line ->
                         val isActive = hasSyncedLyrics && index == currentIndex
@@ -107,7 +113,7 @@ fun LyricsView(
                     }
 
                     // Bottom spacer
-                    item { Spacer(Modifier.height(200.dp)) }
+                    item { Spacer(Modifier.height(bottomSpacer)) }
                 }
             }
         }
