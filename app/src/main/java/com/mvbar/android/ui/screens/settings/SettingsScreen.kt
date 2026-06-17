@@ -2,6 +2,7 @@ package com.mvbar.android.ui.screens.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,10 +31,25 @@ import com.mvbar.android.data.sync.SyncManager
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.ui.theme.*
+import com.mvbar.android.update.AppUpdateInfo
+import com.mvbar.android.update.AppUpdateManager
+import com.mvbar.android.update.UpdateInstallResult
 import com.mvbar.android.wearbridge.WearNode
 import com.mvbar.android.wearbridge.WearPairingStatus
 import com.mvbar.android.wearbridge.WearStatePublisher
+import java.io.File
 import kotlinx.coroutines.launch
+
+private data class UpdateUiState(
+    val isChecking: Boolean = false,
+    val isDownloading: Boolean = false,
+    val hasChecked: Boolean = false,
+    val availableUpdate: AppUpdateInfo? = null,
+    val downloadedFile: File? = null,
+    val message: String? = null,
+    val error: String? = null,
+    val installPermissionNeeded: Boolean = false
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +61,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     var logEntries by remember { mutableStateOf(DebugLog.getEntries()) }
     var uploadStatus by remember { mutableStateOf<String?>(null) }
     var isUploading by remember { mutableStateOf(false) }
+    var updateState by remember { mutableStateOf(UpdateUiState()) }
 
     // Cache settings
     var cacheSizeMb by remember { mutableLongStateOf(AudioCacheManager.getCacheSizeMb()) }
@@ -92,6 +109,99 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
         mutable.add(target, item)
         categories = mutable
         scope.launch { AaPreferences.saveCategoryOrder(context, mutable) }
+    }
+
+    fun startDownloadedUpdate(file: File) {
+        try {
+            when (AppUpdateManager.startInstall(context, file)) {
+                UpdateInstallResult.Started -> {
+                    updateState = updateState.copy(
+                        message = "Installer opened.",
+                        error = null,
+                        installPermissionNeeded = false
+                    )
+                }
+                UpdateInstallResult.NeedsInstallPermission -> {
+                    updateState = updateState.copy(
+                        message = "Allow mvbar to install downloaded APKs, then tap Install.",
+                        error = null,
+                        installPermissionNeeded = true
+                    )
+                    AppUpdateManager.openInstallPermissionSettings(context)
+                }
+            }
+        } catch (e: Exception) {
+            updateState = updateState.copy(
+                error = e.message ?: "Could not open the APK installer.",
+                message = null
+            )
+        }
+    }
+
+    fun checkForAppUpdate(showUpToDate: Boolean) {
+        if (updateState.isChecking || updateState.isDownloading) return
+        scope.launch {
+            updateState = updateState.copy(
+                isChecking = true,
+                message = null,
+                error = null,
+                installPermissionNeeded = false
+            )
+            try {
+                val check = AppUpdateManager.checkForUpdates()
+                updateState = updateState.copy(
+                    isChecking = false,
+                    hasChecked = true,
+                    availableUpdate = if (check.updateAvailable) check.latest else null,
+                    downloadedFile = null,
+                    message = when {
+                        check.updateAvailable -> null
+                        showUpToDate -> "You are already on the latest version."
+                        else -> null
+                    },
+                    error = null
+                )
+            } catch (e: Exception) {
+                updateState = updateState.copy(
+                    isChecking = false,
+                    hasChecked = true,
+                    error = e.message ?: "Update check failed.",
+                    message = null
+                )
+            }
+        }
+    }
+
+    fun downloadAppUpdate(update: AppUpdateInfo) {
+        if (updateState.isChecking || updateState.isDownloading) return
+        scope.launch {
+            updateState = updateState.copy(
+                isDownloading = true,
+                message = null,
+                error = null,
+                installPermissionNeeded = false
+            )
+            try {
+                val file = AppUpdateManager.downloadUpdate(context, update)
+                updateState = updateState.copy(
+                    isDownloading = false,
+                    downloadedFile = file,
+                    message = "Downloaded ${update.assetName}.",
+                    error = null
+                )
+                startDownloadedUpdate(file)
+            } catch (e: Exception) {
+                updateState = updateState.copy(
+                    isDownloading = false,
+                    error = e.message ?: "APK download failed.",
+                    message = null
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        checkForAppUpdate(false)
     }
 
     if (showLogViewer) {
@@ -170,6 +280,19 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                     }
                 }
             }
+        }
+
+        item {
+            SectionHeader("APP UPDATE")
+        }
+        item {
+            UpdateCard(
+                state = updateState,
+                onCheck = { checkForAppUpdate(true) },
+                onDownload = { updateState.availableUpdate?.let { downloadAppUpdate(it) } },
+                onInstall = { updateState.downloadedFile?.let { startDownloadedUpdate(it) } },
+                onOpenInstallSettings = { AppUpdateManager.openInstallPermissionSettings(context) }
+            )
         }
 
         // ── PLAYBACK ─────────────────────────────────────────────
@@ -676,6 +799,169 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
             }
         }
     }
+}
+
+@Composable
+private fun UpdateCard(
+    state: UpdateUiState,
+    onCheck: () -> Unit,
+    onDownload: () -> Unit,
+    onInstall: () -> Unit,
+    onOpenInstallSettings: () -> Unit
+) {
+    val update = state.availableUpdate
+    val changelogScroll = rememberScrollState()
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.SystemUpdate, null, tint = Cyan500)
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("App Update", style = MaterialTheme.typography.titleMedium, color = OnSurface)
+                    Text(
+                        when {
+                            state.isChecking -> "Checking GitHub releases..."
+                            update != null -> "Version ${update.version} is available"
+                            state.hasChecked -> "Current version ${BuildConfig.VERSION_NAME}"
+                            else -> "Current version ${BuildConfig.VERSION_NAME}"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceDim
+                    )
+                }
+            }
+
+            if (update != null) {
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = SurfaceDark)
+                Spacer(Modifier.height(12.dp))
+
+                Text(update.releaseName, style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+                Text(
+                    "${update.assetName} - ${formatBytes(update.sizeBytes)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim
+                )
+
+                Spacer(Modifier.height(12.dp))
+                Text("Changelog", style = MaterialTheme.typography.labelLarge, color = Cyan500)
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 180.dp)
+                        .background(SurfaceDark, RoundedCornerShape(10.dp))
+                        .padding(12.dp)
+                        .verticalScroll(changelogScroll)
+                ) {
+                    Text(
+                        update.changelog,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceVariant,
+                        lineHeight = 18.sp
+                    )
+                }
+            }
+
+            state.message?.let { message ->
+                Spacer(Modifier.height(10.dp))
+                Text(message, style = MaterialTheme.typography.bodySmall, color = Cyan500)
+            }
+
+            state.error?.let { error ->
+                Spacer(Modifier.height(10.dp))
+                Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val busy = state.isChecking || state.isDownloading
+                OutlinedButton(
+                    onClick = onCheck,
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
+                ) {
+                    Icon(Icons.Filled.Refresh, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (state.isChecking) "Checking..." else "Check")
+                }
+
+                when {
+                    state.downloadedFile != null -> {
+                        Button(
+                            onClick = onInstall,
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
+                        ) {
+                            Icon(Icons.Filled.InstallMobile, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Install", color = Color.Black, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    update != null -> {
+                        Button(
+                            onClick = onDownload,
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
+                        ) {
+                            if (state.isDownloading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = Color.Black,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(Icons.Filled.Download, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (state.isDownloading) "Downloading..." else "Download",
+                                color = Color.Black,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (state.installPermissionNeeded) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onOpenInstallSettings,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange400)
+                ) {
+                    Icon(Icons.Filled.Security, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Allow APK Installs")
+                }
+            }
+        }
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes <= 0L) return "unknown size"
+    val mb = bytes / (1024.0 * 1024.0)
+    return String.format(java.util.Locale.US, "%.1f MB", mb)
 }
 
 @Composable

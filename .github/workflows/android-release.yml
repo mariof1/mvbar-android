@@ -263,4 +263,5 @@ jobs:
         run: |
           gh release create "${{ needs.version.outputs.tag }}" dist/*.apk \
             --title "MVBar Android ${{ needs.version.outputs.version }}" \
-            --notes "Signed Android APK release ${{ needs.version.outputs.version }} (${{ needs.version.outputs.version_code }})."
+            --notes "Signed Android APK release ${{ needs.version.outputs.version }} (${{ needs.version.outputs.version_code }})." \
+            --generate-notes
