@@ -82,9 +82,11 @@ class PlayerManager private constructor(private val context: Context) {
     private var _isAudiobookMode: Boolean = false
 
     private val castProgressListener = RemoteMediaClient.ProgressListener { positionMs, durationMs ->
+        stopProgressUpdates()
+        val current = _state.value
         _state.value = _state.value.copy(
             position = positionMs.coerceAtLeast(0L),
-            duration = durationMs.coerceAtLeast(0L),
+            duration = durationMs.takeIf { it > 0L } ?: current.duration,
             isCasting = true
         )
     }
@@ -224,6 +226,7 @@ class PlayerManager private constructor(private val context: Context) {
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (_state.value.isCasting) return
                 val ctrl = controller ?: return
                 val idx = ctrl.currentMediaItemIndex
                 // If _queue is stale (e.g. AA started playback), rebuild from controller
@@ -247,6 +250,7 @@ class PlayerManager private constructor(private val context: Context) {
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (_state.value.isCasting) return
                 if (playbackState == Player.STATE_READY) {
                     _state.value = _state.value.copy(
                         duration = controller?.duration?.coerceAtLeast(0L) ?: 0L
@@ -255,6 +259,7 @@ class PlayerManager private constructor(private val context: Context) {
             }
 
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+                if (_state.value.isCasting) return
                 // External queue changes (e.g. AA set new items)
                 if (_queue.isEmpty() && timeline.windowCount > 0) {
                     syncQueueFromController()
@@ -282,6 +287,7 @@ class PlayerManager private constructor(private val context: Context) {
     }
 
     private fun attachCastSession(session: CastSession, transferCurrentPlayback: Boolean) {
+        stopProgressUpdates()
         castRemoteClient?.unregisterCallback(castCallback)
         castRemoteClient?.removeProgressListener(castProgressListener)
 
@@ -310,9 +316,11 @@ class PlayerManager private constructor(private val context: Context) {
         currentCastContentId = null
         handledCastFinishedContentId = null
         _state.value = _state.value.copy(isCasting = false, isPlaying = controller?.isPlaying == true)
+        if (controller?.isPlaying == true) startProgressUpdates() else stopProgressUpdates()
     }
 
     private fun syncFromCast() {
+        stopProgressUpdates()
         val remote = castRemoteClient ?: return
         val status = remote.mediaStatus ?: return
         val isPlaying = status.playerState == MediaStatus.PLAYER_STATE_PLAYING ||
@@ -331,7 +339,7 @@ class PlayerManager private constructor(private val context: Context) {
             isCasting = true,
             isPlaying = isPlaying,
             position = status.streamPosition.coerceAtLeast(0L),
-            duration = (status.mediaInfo?.streamDuration ?: _state.value.duration).coerceAtLeast(0L)
+            duration = status.mediaInfo?.streamDuration?.takeIf { it > 0L } ?: _state.value.duration
         )
     }
 
@@ -422,6 +430,7 @@ class PlayerManager private constructor(private val context: Context) {
                     .build()
 
                 controller?.pause()
+                stopProgressUpdates()
                 currentCastContentId = castUrl.url
                 DebugLog.i(
                     "Cast",
@@ -860,9 +869,14 @@ class PlayerManager private constructor(private val context: Context) {
     }
 
     private fun startProgressUpdates() {
+        if (_state.value.isCasting) return
         stopProgressUpdates()
         progressJob = scope.launch {
             while (true) {
+                if (_state.value.isCasting) {
+                    progressJob = null
+                    return@launch
+                }
                 controller?.let { ctrl ->
                     _state.value = _state.value.copy(
                         position = ctrl.currentPosition.coerceAtLeast(0L),
