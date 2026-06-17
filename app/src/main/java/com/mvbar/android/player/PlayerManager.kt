@@ -17,6 +17,7 @@ import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
+import com.google.android.gms.common.images.WebImage
 import com.google.android.gms.cast.MediaMetadata as CastMediaMetadata
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Track
@@ -92,29 +93,40 @@ class PlayerManager private constructor(private val context: Context) {
 
         override fun onMediaError(mediaError: com.google.android.gms.cast.MediaError) {
             DebugLog.e("Cast", "Cast media error: ${mediaError.reason}")
+            _state.value = _state.value.copy(isPlaying = false)
         }
     }
 
     private val castSessionListener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarted(session: CastSession, sessionId: String) {
+            DebugLog.i("Cast", "Cast session started: $sessionId")
             attachCastSession(session, transferCurrentPlayback = true)
         }
 
         override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+            DebugLog.i("Cast", "Cast session resumed; wasSuspended=$wasSuspended")
             attachCastSession(session, transferCurrentPlayback = false)
             syncFromCast()
         }
 
         override fun onSessionEnded(session: CastSession, error: Int) {
+            DebugLog.i("Cast", "Cast session ended; error=$error")
             detachCastSession()
         }
 
         override fun onSessionSuspended(session: CastSession, reason: Int) {
+            DebugLog.w("Cast", "Cast session suspended; reason=$reason")
             detachCastSession()
         }
 
-        override fun onSessionStartFailed(session: CastSession, error: Int) = Unit
-        override fun onSessionResumeFailed(session: CastSession, error: Int) = detachCastSession()
+        override fun onSessionStartFailed(session: CastSession, error: Int) {
+            DebugLog.e("Cast", "Cast session start failed; error=$error")
+            detachCastSession()
+        }
+        override fun onSessionResumeFailed(session: CastSession, error: Int) {
+            DebugLog.e("Cast", "Cast session resume failed; error=$error")
+            detachCastSession()
+        }
         override fun onSessionStarting(session: CastSession) = Unit
         override fun onSessionEnding(session: CastSession) = Unit
         override fun onSessionResuming(session: CastSession, sessionId: String) = Unit
@@ -153,12 +165,50 @@ class PlayerManager private constructor(private val context: Context) {
         return trackId.toString()
     }
 
+    private fun contentTypeForTrack(track: Track): String {
+        val ext = track.path
+            ?.substringAfterLast('.', missingDelimiterValue = "")
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+
+        return when (ext) {
+            "mp3" -> "audio/mpeg"
+            "m4a", "mp4" -> "audio/mp4"
+            "aac" -> "audio/aac"
+            "flac" -> "audio/flac"
+            "ogg", "oga" -> "audio/ogg"
+            "opus" -> "audio/opus"
+            "wav" -> "audio/wav"
+            else -> "audio/mpeg"
+        }
+    }
+
+    private fun castPlayerStateName(playerState: Int): String = when (playerState) {
+        MediaStatus.PLAYER_STATE_BUFFERING -> "BUFFERING"
+        MediaStatus.PLAYER_STATE_IDLE -> "IDLE"
+        MediaStatus.PLAYER_STATE_LOADING -> "LOADING"
+        MediaStatus.PLAYER_STATE_PAUSED -> "PAUSED"
+        MediaStatus.PLAYER_STATE_PLAYING -> "PLAYING"
+        MediaStatus.PLAYER_STATE_UNKNOWN -> "UNKNOWN"
+        else -> "UNKNOWN($playerState)"
+    }
+
+    private fun castIdleReasonName(idleReason: Int): String = when (idleReason) {
+        MediaStatus.IDLE_REASON_CANCELED -> "CANCELED"
+        MediaStatus.IDLE_REASON_ERROR -> "ERROR"
+        MediaStatus.IDLE_REASON_FINISHED -> "FINISHED"
+        MediaStatus.IDLE_REASON_INTERRUPTED -> "INTERRUPTED"
+        MediaStatus.IDLE_REASON_NONE -> "NONE"
+        else -> "UNKNOWN($idleReason)"
+    }
+
     suspend fun connect() {
         if (controller != null) return
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
         controller = MediaController.Builder(context, token).buildAsync().await()
         controller?.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (_state.value.isCasting) return
                 _state.value = _state.value.copy(isPlaying = isPlaying)
                 if (isPlaying) startProgressUpdates() else stopProgressUpdates()
             }
@@ -232,6 +282,10 @@ class PlayerManager private constructor(private val context: Context) {
             remote.addProgressListener(castProgressListener, 500L)
         }
         _state.value = _state.value.copy(isCasting = castRemoteClient != null)
+        DebugLog.i(
+            "Cast",
+            "Cast session attached; hasRemoteClient=${castRemoteClient != null} transfer=$transferCurrentPlayback"
+        )
 
         if (transferCurrentPlayback) {
             transferCurrentTrackToCast()
@@ -239,6 +293,7 @@ class PlayerManager private constructor(private val context: Context) {
     }
 
     private fun detachCastSession() {
+        DebugLog.i("Cast", "Cast session detached")
         castRemoteClient?.unregisterCallback(castCallback)
         castRemoteClient?.removeProgressListener(castProgressListener)
         castRemoteClient = null
@@ -251,6 +306,10 @@ class PlayerManager private constructor(private val context: Context) {
         val status = remote.mediaStatus ?: return
         val isPlaying = status.playerState == MediaStatus.PLAYER_STATE_PLAYING ||
             status.playerState == MediaStatus.PLAYER_STATE_BUFFERING
+        DebugLog.d(
+            "Cast",
+            "Cast status player=${castPlayerStateName(status.playerState)} idle=${castIdleReasonName(status.idleReason)} position=${status.streamPosition} duration=${status.mediaInfo?.streamDuration}"
+        )
         _state.value = _state.value.copy(
             isCasting = true,
             isPlaying = isPlaying,
@@ -285,10 +344,14 @@ class PlayerManager private constructor(private val context: Context) {
                     putString(CastMediaMetadata.KEY_TITLE, track.displayTitle)
                     putString(CastMediaMetadata.KEY_ARTIST, track.displayArtist)
                     putString(CastMediaMetadata.KEY_ALBUM_TITLE, track.displayAlbum)
+                    castUrl.artUrl?.takeIf { it.isNotBlank() }?.let { artUrl ->
+                        addImage(WebImage(Uri.parse(artUrl)))
+                    }
                 }
+                val contentType = castUrl.contentType.ifBlank { contentTypeForTrack(track) }
                 val mediaInfo = MediaInfo.Builder(castUrl.url)
                     .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
-                    .setContentType("audio/mpeg")
+                    .setContentType(contentType)
                     .setMetadata(metadata)
                     .build()
                 val request = MediaLoadRequestData.Builder()
@@ -298,7 +361,22 @@ class PlayerManager private constructor(private val context: Context) {
                     .build()
 
                 controller?.pause()
-                remote.load(request)
+                DebugLog.i(
+                    "Cast",
+                    "Loading Cast track id=${track.id} title=${track.displayTitle} contentType=$contentType hasArt=${!castUrl.artUrl.isNullOrBlank()} position=$positionMs"
+                )
+                remote.load(request).setResultCallback { result ->
+                    val status = result.status
+                    if (status.isSuccess) {
+                        DebugLog.i("Cast", "Cast load accepted for track ${track.id}")
+                    } else {
+                        DebugLog.e(
+                            "Cast",
+                            "Cast load failed for track ${track.id}; status=${status.statusCode} message=${status.statusMessage}"
+                        )
+                        _state.value = _state.value.copy(isPlaying = false)
+                    }
+                }
                 _state.value = _state.value.copy(
                     currentTrack = track,
                     queueIndex = index,
@@ -384,13 +462,18 @@ class PlayerManager private constructor(private val context: Context) {
             DebugLog.e("Player", "Controller is null, cannot play")
             return
         }
+        if (tracks.isEmpty()) {
+            DebugLog.w("Player", "playTracks called with an empty track list")
+            return
+        }
+        val safeStartIndex = startIndex.coerceIn(tracks.indices)
         _queue.clear()
         _queue.addAll(tracks)
         _customArtUrls = customArtUrls
         _isAudiobookMode = customArtUrls.isNotEmpty() && tracks.any { it.id < 0 && customArtUrls.containsKey(it.id) }
         val isSpecialPlayback = tracks.any { it.id < 0 }
 
-        DebugLog.i("Player", "Playing ${tracks.size} tracks from index $startIndex")
+        DebugLog.i("Player", "Playing ${tracks.size} tracks from index $safeStartIndex")
 
         val items = tracks.map { track ->
             val isPodcast = track.id < 0
@@ -435,12 +518,18 @@ class PlayerManager private constructor(private val context: Context) {
             ctrl.shuffleModeEnabled = false
         }
 
-        ctrl.setMediaItems(items, startIndex, 0L)
-        ctrl.prepare()
-        ctrl.play()
+        val keepCasting = _state.value.isCasting && castRemoteClient != null && !isSpecialPlayback
 
-        if (_state.value.isCasting) {
-            castContext?.sessionManager?.endCurrentSession(false)
+        ctrl.setMediaItems(items, safeStartIndex, 0L)
+        ctrl.prepare()
+
+        if (keepCasting) {
+            ctrl.pause()
+        } else {
+            ctrl.play()
+            if (_state.value.isCasting) {
+                castContext?.sessionManager?.endCurrentSession(false)
+            }
         }
 
         if (wasShuffling) {
@@ -449,13 +538,17 @@ class PlayerManager private constructor(private val context: Context) {
 
         _state.value = _state.value.copy(
             queue = tracks.toList(),
-            queueIndex = startIndex,
-            currentTrack = tracks.getOrNull(startIndex),
+            queueIndex = safeStartIndex,
+            currentTrack = tracks.getOrNull(safeStartIndex),
             playMode = if (isSpecialPlayback) PlayMode.NORMAL else _state.value.playMode,
             isAudiobookMode = _isAudiobookMode,
             isPodcastModeOverride = isSpecialPlayback && !_isAudiobookMode,
-            artworkUrl = tracks.getOrNull(startIndex)?.id?.let { customArtUrls[it] }
+            isCasting = keepCasting || _state.value.isCasting,
+            artworkUrl = tracks.getOrNull(safeStartIndex)?.id?.let { customArtUrls[it] }
         )
+        if (keepCasting) {
+            playCastQueueIndex(safeStartIndex)
+        }
         // Prefetch is handled by onMediaItemTransition listener — no need to call here
     }
 

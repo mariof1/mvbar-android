@@ -270,7 +270,7 @@ fun NowPlayingScreen(
                                 }
                                 Row {
                                     if (!state.isPodcastMode && !state.isAudiobookMode) {
-                                        CastRouteButton()
+                                        CastRouteButton(isCasting = state.isCasting)
                                     }
                                     IconButton(onClick = onSearch) {
                                         Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim, modifier = Modifier.size(28.dp))
@@ -374,7 +374,7 @@ fun NowPlayingScreen(
                                 }
                                 Row {
                                     if (!state.isPodcastMode && !state.isAudiobookMode) {
-                                        CastRouteButton()
+                                        CastRouteButton(isCasting = state.isCasting)
                                     }
                                     IconButton(onClick = onSearch) {
                                         Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
@@ -515,7 +515,7 @@ fun NowPlayingScreen(
                     )
                     Row {
                         if (!state.isPodcastMode && !state.isAudiobookMode) {
-                            CastRouteButton()
+                            CastRouteButton(isCasting = state.isCasting)
                         }
                         IconButton(onClick = onSearch) {
                             Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)

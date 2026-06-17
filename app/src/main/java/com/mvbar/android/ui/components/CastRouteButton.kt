@@ -24,11 +24,13 @@ import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.CastMediaControlIntent
 import com.google.android.gms.cast.framework.CastContext
 import com.mvbar.android.debug.DebugLog
+import com.mvbar.android.ui.theme.Cyan500
 import com.mvbar.android.ui.theme.OnSurfaceDim
 
 @Composable
 fun CastRouteButton(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isCasting: Boolean = false
 ) {
     val context = LocalContext.current
     val selector = remember {
@@ -53,17 +55,20 @@ fun CastRouteButton(
         modifier = modifier.size(44.dp),
         contentAlignment = Alignment.Center
     ) {
+        val tint = if (isCasting) Cyan500 else OnSurfaceDim
+        val description = if (isCasting) "Cast connected" else "Cast"
+
         IconButton(
             onClick = {
                 val shown = showCastDialog(context, selector)
-                DebugLog.i("Cast", "Cast route button tapped; dialogShown=$shown")
+                DebugLog.i("Cast", "Cast route button tapped; isCasting=$isCasting dialogShown=$shown")
                 if (!shown) {
                     Toast.makeText(context, "Cast dialog is not available", Toast.LENGTH_SHORT).show()
                 }
             },
             modifier = Modifier.matchParentSize()
         ) {
-            Icon(Icons.Filled.Cast, contentDescription = "Cast", tint = OnSurfaceDim)
+            Icon(Icons.Filled.Cast, contentDescription = description, tint = tint)
         }
     }
 }
@@ -79,11 +84,12 @@ private fun showCastDialog(context: Context, selector: MediaRouteSelector): Bool
     if (fragmentManager.findFragmentByTag(CONTROLLER_TAG) != null) return true
 
     return try {
-        CastContext.getSharedInstance(activity.applicationContext)
+        val castContext = CastContext.getSharedInstance(activity.applicationContext)
+        val hasConnectedSession = castContext.sessionManager.currentCastSession?.isConnected == true
         val router = MediaRouter.getInstance(activity)
         val factory = MediaRouteDialogFactory.getDefault()
 
-        if (router.selectedRoute.isDefaultOrBluetooth) {
+        if (!hasConnectedSession && router.selectedRoute.isDefaultOrBluetooth) {
             factory.onCreateChooserDialogFragment().apply {
                 routeSelector = selector
             }.show(fragmentManager, CHOOSER_TAG)

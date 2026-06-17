@@ -16,7 +16,9 @@ data class GoogleAuthEnabledResponse(val enabled: Boolean = false, val clientId:
 data class CastUrlResponse(
     val ok: Boolean = false,
     val url: String = "",
-    val expiresAt: Long = 0L
+    val expiresAt: Long = 0L,
+    val contentType: String = "audio/mpeg",
+    val artUrl: String? = null
 )
 
 @Serializable

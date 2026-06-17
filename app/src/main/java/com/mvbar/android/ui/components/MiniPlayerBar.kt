@@ -176,7 +176,10 @@ fun MiniPlayerBar(
                 }
 
                 if (!state.isPodcastMode && !state.isAudiobookMode) {
-                    CastRouteButton(modifier = Modifier.size(40.dp))
+                    CastRouteButton(
+                        modifier = Modifier.size(40.dp),
+                        isCasting = state.isCasting
+                    )
                 }
 
                 IconButton(onClick = onTogglePlay) {
