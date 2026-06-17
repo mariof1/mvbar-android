@@ -187,7 +187,7 @@ jobs:
           echo "artifact_name=mvbar-android-dev-${VERSION}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.collect.outputs.artifact_name }}
           path: dist/*.apk
@@ -250,7 +250,7 @@ jobs:
           fi
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: mvbar-android-${{ needs.version.outputs.version }}
           path: dist/*.apk
