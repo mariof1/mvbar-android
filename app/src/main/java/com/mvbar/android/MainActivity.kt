@@ -3,6 +3,7 @@ package com.mvbar.android
 import android.content.Intent
 import android.os.Bundle
 import android.provider.SearchRecentSuggestions
+import android.view.KeyEvent
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.fragment.app.FragmentActivity
 import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.player.PlayerManager
 import com.mvbar.android.player.PlaybackService
 import com.mvbar.android.ui.navigation.MainScreen
 import com.mvbar.android.ui.screens.login.LoginScreen
@@ -89,6 +91,22 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleMediaSearchIntent(intent)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
+            event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+        ) {
+            val playerManager = PlayerManager.getInstance(applicationContext)
+            if (playerManager.isCasting()) {
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    val direction = if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) 1 else -1
+                    playerManager.adjustCastVolume(direction)
+                }
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private fun handleMediaSearchIntent(intent: Intent?) {

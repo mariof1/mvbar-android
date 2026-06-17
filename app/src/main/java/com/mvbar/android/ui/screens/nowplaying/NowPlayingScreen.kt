@@ -285,8 +285,8 @@ fun NowPlayingScreen(
                                             Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim, modifier = Modifier.size(28.dp))
                                         }
                                     }
-                                    IconButton(onClick = { showQueue = !showQueue }) {
-                                        Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = Cyan500, modifier = Modifier.size(28.dp))
+                                    IconButton(onClick = { showQueue = !showQueue }, modifier = Modifier.size(52.dp)) {
+                                        Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = Cyan500, modifier = Modifier.size(34.dp))
                                     }
                                 }
                             }
@@ -389,8 +389,8 @@ fun NowPlayingScreen(
                                             Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
                                         }
                                     }
-                                    IconButton(onClick = { showQueue = !showQueue }) {
-                                        Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = if (showQueue) Cyan500 else OnSurfaceDim)
+                                    IconButton(onClick = { showQueue = !showQueue }, modifier = Modifier.size(52.dp)) {
+                                        Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue", tint = if (showQueue) Cyan500 else OnSurfaceDim, modifier = Modifier.size(34.dp))
                                     }
                                 }
                             }
@@ -495,24 +495,12 @@ fun NowPlayingScreen(
                     .padding(horizontal = if (showQueue) 16.dp else 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top bar
+                // Top actions
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(32.dp))
-                    }
-                    Text(
-                        when {
-                            state.isAudiobookMode -> "Audiobook"
-                            state.isPodcastMode -> "Podcast"
-                            else -> "Now Playing"
-                        },
-                        style = MaterialTheme.typography.titleSmall,
-                        color = OnSurfaceDim
-                    )
                     Row {
                         if (!state.isPodcastMode && !state.isAudiobookMode) {
                             CastRouteButton(isCasting = state.isCasting)
@@ -530,9 +518,10 @@ fun NowPlayingScreen(
                                 Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
                             }
                         }
-                        IconButton(onClick = { showQueue = !showQueue }) {
+                        IconButton(onClick = { showQueue = !showQueue }, modifier = Modifier.size(52.dp)) {
                             Icon(Icons.AutoMirrored.Filled.QueueMusic, "Queue",
-                                tint = if (showQueue) Cyan500 else OnSurfaceDim)
+                                tint = if (showQueue) Cyan500 else OnSurfaceDim,
+                                modifier = Modifier.size(34.dp))
                         }
                     }
                 }

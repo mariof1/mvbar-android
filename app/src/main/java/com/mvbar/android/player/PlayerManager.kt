@@ -31,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 enum class PlayMode { NORMAL, REPEAT_ALL, REPEAT_ONE, SHUFFLE }
 
@@ -70,6 +71,8 @@ class PlayerManager private constructor(private val context: Context) {
     private var castRemoteClient: RemoteMediaClient? = null
     private val scope = CoroutineScope(Dispatchers.Main)
     private var progressJob: Job? = null
+    private var currentCastContentId: String? = null
+    private var handledCastFinishedContentId: String? = null
 
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
@@ -298,6 +301,8 @@ class PlayerManager private constructor(private val context: Context) {
         castRemoteClient?.removeProgressListener(castProgressListener)
         castRemoteClient = null
         castSession = null
+        currentCastContentId = null
+        handledCastFinishedContentId = null
         _state.value = _state.value.copy(isCasting = false, isPlaying = controller?.isPlaying == true)
     }
 
@@ -310,12 +315,62 @@ class PlayerManager private constructor(private val context: Context) {
             "Cast",
             "Cast status player=${castPlayerStateName(status.playerState)} idle=${castIdleReasonName(status.idleReason)} position=${status.streamPosition} duration=${status.mediaInfo?.streamDuration}"
         )
+        if (status.playerState == MediaStatus.PLAYER_STATE_IDLE &&
+            status.idleReason == MediaStatus.IDLE_REASON_FINISHED &&
+            handleCastFinished(status)
+        ) {
+            return
+        }
         _state.value = _state.value.copy(
             isCasting = true,
             isPlaying = isPlaying,
             position = status.streamPosition.coerceAtLeast(0L),
             duration = (status.mediaInfo?.streamDuration ?: _state.value.duration).coerceAtLeast(0L)
         )
+    }
+
+    private fun handleCastFinished(status: MediaStatus): Boolean {
+        val finishedContentId = status.mediaInfo?.contentId
+        val expectedContentId = currentCastContentId
+        if (finishedContentId == null || expectedContentId == null) {
+            return false
+        }
+        if (finishedContentId != expectedContentId) {
+            DebugLog.d("Cast", "Ignoring stale Cast finish for content=$finishedContentId expected=$expectedContentId")
+            return true
+        }
+        if (handledCastFinishedContentId == finishedContentId) return true
+
+        val currentIndex = _state.value.queueIndex
+        val nextIndex = nextCastQueueIndexAfterFinished(currentIndex)
+        handledCastFinishedContentId = finishedContentId
+
+        if (nextIndex == null) {
+            DebugLog.i("Cast", "Cast queue finished at index $currentIndex")
+            return false
+        }
+
+        DebugLog.i("Cast", "Advancing Cast queue from index $currentIndex to $nextIndex")
+        playCastQueueIndex(nextIndex)
+        return true
+    }
+
+    private fun nextCastQueueIndexAfterFinished(currentIndex: Int): Int? {
+        if (_queue.isEmpty()) return null
+        if (currentIndex !in _queue.indices) return _queue.indices.firstOrNull()
+
+        return when (_state.value.playMode) {
+            PlayMode.REPEAT_ONE -> currentIndex
+            PlayMode.SHUFFLE -> {
+                if (_queue.size == 1) currentIndex
+                else _queue.indices.filter { it != currentIndex }.random(Random)
+            }
+            PlayMode.REPEAT_ALL -> {
+                val next = currentIndex + 1
+                if (next in _queue.indices) next else 0
+            }
+            PlayMode.NORMAL -> (currentIndex + 1).takeIf { it in _queue.indices }
+        }
     }
 
     private fun transferCurrentTrackToCast() {
@@ -361,6 +416,7 @@ class PlayerManager private constructor(private val context: Context) {
                     .build()
 
                 controller?.pause()
+                currentCastContentId = castUrl.url
                 DebugLog.i(
                     "Cast",
                     "Loading Cast track id=${track.id} title=${track.displayTitle} contentType=$contentType hasArt=${!castUrl.artUrl.isNullOrBlank()} position=$positionMs"
@@ -369,11 +425,13 @@ class PlayerManager private constructor(private val context: Context) {
                     val status = result.status
                     if (status.isSuccess) {
                         DebugLog.i("Cast", "Cast load accepted for track ${track.id}")
+                        handledCastFinishedContentId = null
                     } else {
                         DebugLog.e(
                             "Cast",
                             "Cast load failed for track ${track.id}; status=${status.statusCode} message=${status.statusMessage}"
                         )
+                        if (currentCastContentId == castUrl.url) currentCastContentId = null
                         _state.value = _state.value.copy(isPlaying = false)
                     }
                 }
@@ -734,6 +792,25 @@ class PlayerManager private constructor(private val context: Context) {
             return
         }
         controller?.seekTo(positionMs)
+    }
+
+    fun isCasting(): Boolean = _state.value.isCasting && castSession?.isConnected == true
+
+    fun adjustCastVolume(direction: Int): Boolean {
+        val session = castSession?.takeIf { it.isConnected } ?: return false
+        return try {
+            val current = session.volume.coerceIn(0.0, 1.0)
+            val next = (current + direction.coerceIn(-1, 1) * 0.05).coerceIn(0.0, 1.0)
+            if (direction > 0 && session.isMute) {
+                session.setMute(false)
+            }
+            session.setVolume(next)
+            DebugLog.d("Cast", "Cast volume ${"%.2f".format(current)} -> ${"%.2f".format(next)}")
+            true
+        } catch (e: Exception) {
+            DebugLog.e("Cast", "Failed to adjust Cast volume", e)
+            false
+        }
     }
 
     /** Skip forward 15 seconds (podcast mode) */
