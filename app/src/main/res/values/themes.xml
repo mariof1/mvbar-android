@@ -1,7 +1,17 @@
 <resources>
     <style name="Theme.Mvbar" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/background</item>
+        <item name="android:colorBackground">@color/background</item>
+        <item name="android:colorBackgroundFloating">@color/background</item>
+        <item name="colorBackgroundFloating">@color/background</item>
+        <item name="mediaRouteTheme">@style/Theme.Mvbar.MediaRouter</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <style name="Theme.Mvbar.MediaRouter" parent="Theme.MediaRouter">
+        <item name="android:colorBackground">@color/background</item>
+        <item name="android:colorBackgroundFloating">@color/background</item>
+        <item name="colorBackgroundFloating">@color/background</item>
     </style>
 </resources>

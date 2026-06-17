@@ -175,6 +175,10 @@ fun MiniPlayerBar(
                     }
                 }
 
+                if (!state.isPodcastMode && !state.isAudiobookMode) {
+                    CastRouteButton(modifier = Modifier.size(40.dp))
+                }
+
                 IconButton(onClick = onTogglePlay) {
                     Icon(
                         if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,

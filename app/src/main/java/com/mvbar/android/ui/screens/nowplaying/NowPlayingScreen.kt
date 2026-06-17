@@ -52,6 +52,7 @@ import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.ui.components.ArtworkImage
+import com.mvbar.android.ui.components.CastRouteButton
 import com.mvbar.android.ui.components.GlowingProgressLine
 import com.mvbar.android.ui.components.GlowingSeekbar
 import com.mvbar.android.ui.components.LyricsView
@@ -268,6 +269,9 @@ fun NowPlayingScreen(
                                     Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(32.dp))
                                 }
                                 Row {
+                                    if (!state.isPodcastMode && !state.isAudiobookMode) {
+                                        CastRouteButton()
+                                    }
                                     IconButton(onClick = onSearch) {
                                         Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim, modifier = Modifier.size(28.dp))
                                     }
@@ -369,6 +373,9 @@ fun NowPlayingScreen(
                                     Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = OnSurface, modifier = Modifier.size(28.dp))
                                 }
                                 Row {
+                                    if (!state.isPodcastMode && !state.isAudiobookMode) {
+                                        CastRouteButton()
+                                    }
                                     IconButton(onClick = onSearch) {
                                         Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                                     }
@@ -507,6 +514,9 @@ fun NowPlayingScreen(
                         color = OnSurfaceDim
                     )
                     Row {
+                        if (!state.isPodcastMode && !state.isAudiobookMode) {
+                            CastRouteButton()
+                        }
                         IconButton(onClick = onSearch) {
                             Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                         }

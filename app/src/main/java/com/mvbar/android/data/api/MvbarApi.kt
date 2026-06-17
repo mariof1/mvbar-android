@@ -27,6 +27,9 @@ interface MvbarApi {
     @GET("api/library/tracks/count")
     suspend fun getTrackCount(): Map<String, Int>
 
+    @GET("api/library/tracks/{id}/cast-url")
+    suspend fun getCastUrl(@Path("id") trackId: Int): CastUrlResponse
+
     // Browse
     @GET("api/browse/artists")
     suspend fun getArtists(

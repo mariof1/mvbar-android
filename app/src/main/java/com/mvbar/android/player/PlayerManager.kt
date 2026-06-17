@@ -9,6 +9,15 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.google.android.gms.cast.MediaInfo
+import com.google.android.gms.cast.MediaLoadRequestData
+import com.google.android.gms.cast.MediaSeekOptions
+import com.google.android.gms.cast.MediaStatus
+import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.CastSession
+import com.google.android.gms.cast.framework.SessionManagerListener
+import com.google.android.gms.cast.framework.media.RemoteMediaClient
+import com.google.android.gms.cast.MediaMetadata as CastMediaMetadata
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.debug.DebugLog
@@ -35,6 +44,7 @@ data class PlayerState(
     val isFavorite: Boolean = false,
     val isAudiobookMode: Boolean = false,
     val isPodcastModeOverride: Boolean = false,
+    val isCasting: Boolean = false,
     val artworkUrl: String? = null
 ) {
     val isPodcastMode: Boolean get() = isPodcastModeOverride ||
@@ -54,6 +64,9 @@ class PlayerManager private constructor(private val context: Context) {
     }
 
     private var controller: MediaController? = null
+    private var castContext: CastContext? = null
+    private var castSession: CastSession? = null
+    private var castRemoteClient: RemoteMediaClient? = null
     private val scope = CoroutineScope(Dispatchers.Main)
     private var progressJob: Job? = null
 
@@ -63,6 +76,49 @@ class PlayerManager private constructor(private val context: Context) {
     private val _queue = mutableListOf<Track>()
     private var _customArtUrls: Map<Int, String> = emptyMap()
     private var _isAudiobookMode: Boolean = false
+
+    private val castProgressListener = RemoteMediaClient.ProgressListener { positionMs, durationMs ->
+        _state.value = _state.value.copy(
+            position = positionMs.coerceAtLeast(0L),
+            duration = durationMs.coerceAtLeast(0L),
+            isCasting = true
+        )
+    }
+
+    private val castCallback = object : RemoteMediaClient.Callback() {
+        override fun onStatusUpdated() {
+            syncFromCast()
+        }
+
+        override fun onMediaError(mediaError: com.google.android.gms.cast.MediaError) {
+            DebugLog.e("Cast", "Cast media error: ${mediaError.reason}")
+        }
+    }
+
+    private val castSessionListener = object : SessionManagerListener<CastSession> {
+        override fun onSessionStarted(session: CastSession, sessionId: String) {
+            attachCastSession(session, transferCurrentPlayback = true)
+        }
+
+        override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+            attachCastSession(session, transferCurrentPlayback = false)
+            syncFromCast()
+        }
+
+        override fun onSessionEnded(session: CastSession, error: Int) {
+            detachCastSession()
+        }
+
+        override fun onSessionSuspended(session: CastSession, reason: Int) {
+            detachCastSession()
+        }
+
+        override fun onSessionStartFailed(session: CastSession, error: Int) = Unit
+        override fun onSessionResumeFailed(session: CastSession, error: Int) = detachCastSession()
+        override fun onSessionStarting(session: CastSession) = Unit
+        override fun onSessionEnding(session: CastSession) = Unit
+        override fun onSessionResuming(session: CastSession, sessionId: String) = Unit
+    }
 
     private fun isPodcastMediaItem(item: MediaItem?): Boolean {
         val mediaId = item?.mediaId ?: return false
@@ -148,6 +204,115 @@ class PlayerManager private constructor(private val context: Context) {
         })
         // Sync initial state if something is already playing (e.g. started from AA)
         syncFromController()
+        initCast()
+    }
+
+    private fun initCast() {
+        if (castContext != null) return
+
+        try {
+            val context = CastContext.getSharedInstance(context)
+            castContext = context
+            context.sessionManager.addSessionManagerListener(castSessionListener, CastSession::class.java)
+            context.sessionManager.currentCastSession?.takeIf { it.isConnected }?.let {
+                attachCastSession(it, transferCurrentPlayback = false)
+            }
+        } catch (e: Exception) {
+            DebugLog.w("Cast", "Google Cast is not available", e)
+        }
+    }
+
+    private fun attachCastSession(session: CastSession, transferCurrentPlayback: Boolean) {
+        castRemoteClient?.unregisterCallback(castCallback)
+        castRemoteClient?.removeProgressListener(castProgressListener)
+
+        castSession = session
+        castRemoteClient = session.remoteMediaClient?.also { remote ->
+            remote.registerCallback(castCallback)
+            remote.addProgressListener(castProgressListener, 500L)
+        }
+        _state.value = _state.value.copy(isCasting = castRemoteClient != null)
+
+        if (transferCurrentPlayback) {
+            transferCurrentTrackToCast()
+        }
+    }
+
+    private fun detachCastSession() {
+        castRemoteClient?.unregisterCallback(castCallback)
+        castRemoteClient?.removeProgressListener(castProgressListener)
+        castRemoteClient = null
+        castSession = null
+        _state.value = _state.value.copy(isCasting = false, isPlaying = controller?.isPlaying == true)
+    }
+
+    private fun syncFromCast() {
+        val remote = castRemoteClient ?: return
+        val status = remote.mediaStatus ?: return
+        val isPlaying = status.playerState == MediaStatus.PLAYER_STATE_PLAYING ||
+            status.playerState == MediaStatus.PLAYER_STATE_BUFFERING
+        _state.value = _state.value.copy(
+            isCasting = true,
+            isPlaying = isPlaying,
+            position = status.streamPosition.coerceAtLeast(0L),
+            duration = (status.mediaInfo?.streamDuration ?: _state.value.duration).coerceAtLeast(0L)
+        )
+    }
+
+    private fun transferCurrentTrackToCast() {
+        val idx = _state.value.queueIndex.takeIf { it in _queue.indices } ?: return
+        val positionMs = controller?.currentPosition?.coerceAtLeast(0L) ?: _state.value.position
+        playCastQueueIndex(idx, positionMs)
+    }
+
+    private fun playCastQueueIndex(index: Int, positionMs: Long = 0L) {
+        val remote = castRemoteClient ?: return
+        val track = _queue.getOrNull(index) ?: return
+        if (track.id < 0) {
+            DebugLog.w("Cast", "Casting podcasts and audiobooks is not supported yet")
+            return
+        }
+
+        scope.launch {
+            try {
+                val castUrl = ApiClient.api.getCastUrl(track.id)
+                if (!castUrl.ok || castUrl.url.isBlank()) {
+                    DebugLog.e("Cast", "Server did not return a cast URL for track ${track.id}")
+                    return@launch
+                }
+
+                val metadata = CastMediaMetadata(CastMediaMetadata.MEDIA_TYPE_MUSIC_TRACK).apply {
+                    putString(CastMediaMetadata.KEY_TITLE, track.displayTitle)
+                    putString(CastMediaMetadata.KEY_ARTIST, track.displayArtist)
+                    putString(CastMediaMetadata.KEY_ALBUM_TITLE, track.displayAlbum)
+                }
+                val mediaInfo = MediaInfo.Builder(castUrl.url)
+                    .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+                    .setContentType("audio/mpeg")
+                    .setMetadata(metadata)
+                    .build()
+                val request = MediaLoadRequestData.Builder()
+                    .setMediaInfo(mediaInfo)
+                    .setAutoplay(true)
+                    .setCurrentTime(positionMs.coerceAtLeast(0L))
+                    .build()
+
+                controller?.pause()
+                remote.load(request)
+                _state.value = _state.value.copy(
+                    currentTrack = track,
+                    queueIndex = index,
+                    isCasting = true,
+                    isPlaying = true,
+                    position = positionMs.coerceAtLeast(0L),
+                    duration = track.durationMs?.toLong() ?: _state.value.duration,
+                    isPodcastModeOverride = false,
+                    isAudiobookMode = false
+                )
+            } catch (e: Exception) {
+                DebugLog.e("Cast", "Failed to start Cast playback", e)
+            }
+        }
     }
 
     /** Rebuild _queue from the controller's current media items */
@@ -273,6 +438,10 @@ class PlayerManager private constructor(private val context: Context) {
         ctrl.setMediaItems(items, startIndex, 0L)
         ctrl.prepare()
         ctrl.play()
+
+        if (_state.value.isCasting) {
+            castContext?.sessionManager?.endCurrentSession(false)
+        }
 
         if (wasShuffling) {
             ctrl.shuffleModeEnabled = true
@@ -412,6 +581,10 @@ class PlayerManager private constructor(private val context: Context) {
     }
 
     fun playQueueIndex(index: Int) {
+        if (_state.value.isCasting) {
+            if (index in _queue.indices) playCastQueueIndex(index)
+            return
+        }
         val ctrl = controller ?: return
         if (index < 0 || index >= _queue.size) return
         ctrl.seekTo(index, 0L)
@@ -425,14 +598,50 @@ class PlayerManager private constructor(private val context: Context) {
         _state.value = PlayerState()
     }
 
-    fun togglePlay() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
+    fun togglePlay() {
+        if (_state.value.isCasting) {
+            val status = castRemoteClient?.mediaStatus
+            if (status?.playerState == MediaStatus.PLAYER_STATE_PLAYING ||
+                status?.playerState == MediaStatus.PLAYER_STATE_BUFFERING
+            ) {
+                castRemoteClient?.pause()
+                _state.value = _state.value.copy(isPlaying = false)
+            } else {
+                castRemoteClient?.play()
+                _state.value = _state.value.copy(isPlaying = true)
+            }
+            return
+        }
+        controller?.let { if (it.isPlaying) it.pause() else it.play() }
+    }
     fun next() {
+        if (_state.value.isCasting) {
+            val nextIndex = (_state.value.queueIndex + 1).takeIf { it in _queue.indices } ?: return
+            playCastQueueIndex(nextIndex)
+            return
+        }
         if (_state.value.isPodcastMode || _state.value.isAudiobookMode) skipForward() else controller?.seekToNextMediaItem()
     }
     fun previous() {
+        if (_state.value.isCasting) {
+            val previousIndex = (_state.value.queueIndex - 1).takeIf { it in _queue.indices } ?: return
+            playCastQueueIndex(previousIndex)
+            return
+        }
         if (_state.value.isPodcastMode || _state.value.isAudiobookMode) skipBackward() else controller?.seekToPreviousMediaItem()
     }
-    fun seekTo(positionMs: Long) { controller?.seekTo(positionMs) }
+    fun seekTo(positionMs: Long) {
+        if (_state.value.isCasting) {
+            castRemoteClient?.seek(
+                MediaSeekOptions.Builder()
+                    .setPosition(positionMs.coerceAtLeast(0L))
+                    .build()
+            )
+            _state.value = _state.value.copy(position = positionMs.coerceAtLeast(0L))
+            return
+        }
+        controller?.seekTo(positionMs)
+    }
 
     /** Skip forward 15 seconds (podcast mode) */
     fun skipForward(seconds: Int = 15) {

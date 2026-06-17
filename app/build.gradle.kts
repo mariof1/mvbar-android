@@ -54,6 +54,7 @@ dependencies {
 
     // Wearable Data Layer (for paired Wear OS device)
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
+    implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
     // Compose BOM
@@ -74,6 +75,7 @@ dependencies {
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation("androidx.mediarouter:mediarouter:1.7.0")
 
     // Media3 / ExoPlayer
     implementation("androidx.media3:media3-exoplayer:1.4.1")

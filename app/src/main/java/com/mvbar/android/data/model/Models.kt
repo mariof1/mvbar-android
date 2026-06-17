@@ -13,6 +13,13 @@ data class GoogleTokenRequest(val idToken: String)
 data class GoogleAuthEnabledResponse(val enabled: Boolean = false, val clientId: String? = null)
 
 @Serializable
+data class CastUrlResponse(
+    val ok: Boolean = false,
+    val url: String = "",
+    val expiresAt: Long = 0L
+)
+
+@Serializable
 data class LoginResponse(
     val ok: Boolean = false,
     val token: String = "",
