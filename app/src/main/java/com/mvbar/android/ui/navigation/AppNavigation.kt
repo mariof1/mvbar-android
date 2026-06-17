@@ -474,6 +474,7 @@ fun MainScreen(
         Row(modifier = Modifier.fillMaxSize()) {
             if (useNavRail) {
                 NavigationRail(
+                    modifier = Modifier.width(88.dp),
                     containerColor = SurfaceDark.copy(alpha = 0.95f),
                     contentColor = OnSurface
                 ) {
@@ -498,44 +499,47 @@ fun MainScreen(
                             Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                         }
 
-                        Spacer(Modifier.weight(1f))
-
-                        Column(
-                            modifier = Modifier.verticalScroll(rememberScrollState()),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center
                         ) {
-                            BottomTab.entries.forEach { tab ->
-                                val selected = isTabSelected(tab)
-                                NavigationRailItem(
-                                    selected = selected,
-                                    onClick = { onTabClick(tab) },
-                                    icon = {
-                                        Icon(
-                                            if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                            tab.label
+                            Column(
+                                modifier = Modifier.verticalScroll(rememberScrollState()),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                BottomTab.entries.forEach { tab ->
+                                    val selected = isTabSelected(tab)
+                                    NavigationRailItem(
+                                        selected = selected,
+                                        onClick = { onTabClick(tab) },
+                                        icon = {
+                                            Icon(
+                                                if (selected) tab.selectedIcon else tab.unselectedIcon,
+                                                tab.label
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                tab.label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        alwaysShowLabel = false,
+                                        colors = NavigationRailItemDefaults.colors(
+                                            selectedIconColor = Cyan500,
+                                            selectedTextColor = Cyan500,
+                                            unselectedIconColor = OnSurfaceDim,
+                                            unselectedTextColor = OnSurfaceDim,
+                                            indicatorColor = Cyan500.copy(alpha = 0.15f)
                                         )
-                                    },
-                                    label = {
-                                        Text(
-                                            tab.label,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    },
-                                    alwaysShowLabel = false,
-                                    colors = NavigationRailItemDefaults.colors(
-                                        selectedIconColor = Cyan500,
-                                        selectedTextColor = Cyan500,
-                                        unselectedIconColor = OnSurfaceDim,
-                                        unselectedTextColor = OnSurfaceDim,
-                                        indicatorColor = Cyan500.copy(alpha = 0.15f)
                                     )
-                                )
+                                }
                             }
                         }
-
-                        Spacer(Modifier.weight(1f))
 
                         IconButton(onClick = {
                             navController.navigate("settings") {
