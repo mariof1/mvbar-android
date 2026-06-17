@@ -4,14 +4,38 @@
         <item name="android:colorBackground">@color/background</item>
         <item name="android:colorBackgroundFloating">@color/background</item>
         <item name="colorBackgroundFloating">@color/background</item>
+        <item name="dialogTheme">@style/Theme.Mvbar.Dialog</item>
+        <item name="alertDialogTheme">@style/Theme.Mvbar.Dialog</item>
         <item name="mediaRouteTheme">@style/Theme.Mvbar.MediaRouter</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
-    <style name="Theme.Mvbar.MediaRouter" parent="Theme.MediaRouter">
+    <style name="Theme.Mvbar.Dialog" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="android:windowBackground">@color/background</item>
         <item name="android:colorBackground">@color/background</item>
         <item name="android:colorBackgroundFloating">@color/background</item>
         <item name="colorBackgroundFloating">@color/background</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="windowNoTitle">true</item>
+        <item name="colorAccent">@color/cyan_500</item>
+        <item name="colorPrimary">@color/cyan_500</item>
+        <item name="mediaRouteTheme">@style/Theme.Mvbar.MediaRouter</item>
+    </style>
+
+    <style name="Theme.Mvbar.MediaRouter" parent="Theme.MediaRouter">
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:colorBackground">@color/background</item>
+        <item name="android:colorBackgroundFloating">@color/background</item>
+        <item name="colorBackgroundFloating">@color/background</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="windowNoTitle">true</item>
+        <item name="isLightTheme">false</item>
+        <item name="colorAccent">@color/cyan_500</item>
+        <item name="colorPrimary">@color/cyan_500</item>
     </style>
 </resources>
