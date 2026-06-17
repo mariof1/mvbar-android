@@ -205,6 +205,13 @@ class PlayerManager private constructor(private val context: Context) {
         else -> "UNKNOWN($idleReason)"
     }
 
+    private fun artworkUrlForTrack(track: Track?, mediaItem: MediaItem? = null): String? {
+        if (track == null) return mediaItem?.mediaMetadata?.artworkUri?.toString()
+        _customArtUrls[track.id]?.let { return it }
+        if (track.id < 0) return mediaItem?.mediaMetadata?.artworkUri?.toString()
+        return track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+    }
+
     suspend fun connect() {
         if (controller != null) return
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
@@ -232,8 +239,7 @@ class PlayerManager private constructor(private val context: Context) {
                     duration = ctrl.duration.coerceAtLeast(0L),
                     isAudiobookMode = isAudiobook || _isAudiobookMode,
                     isPodcastModeOverride = isPodcast,
-                    artworkUrl = track?.id?.let { _customArtUrls[it] }
-                        ?: mediaItem?.mediaMetadata?.artworkUri?.toString()
+                    artworkUrl = artworkUrlForTrack(track, mediaItem)
                 )
                 if (_queue.isNotEmpty() && idx >= 0) {
                     AudioCacheManager.prefetchNext(_queue, idx)
@@ -443,7 +449,8 @@ class PlayerManager private constructor(private val context: Context) {
                     position = positionMs.coerceAtLeast(0L),
                     duration = track.durationMs?.toLong() ?: _state.value.duration,
                     isPodcastModeOverride = false,
-                    isAudiobookMode = false
+                    isAudiobookMode = false,
+                    artworkUrl = artworkUrlForTrack(track)
                 )
             } catch (e: Exception) {
                 DebugLog.e("Cast", "Failed to start Cast playback", e)
@@ -480,7 +487,7 @@ class PlayerManager private constructor(private val context: Context) {
             duration = ctrl.duration.coerceAtLeast(0L),
             isAudiobookMode = isAudiobook,
             isPodcastModeOverride = isPodcast,
-            artworkUrl = mediaItem?.mediaMetadata?.artworkUri?.toString()
+            artworkUrl = artworkUrlForTrack(track, mediaItem)
         )
         if (ctrl.isPlaying) startProgressUpdates()
     }
@@ -602,7 +609,7 @@ class PlayerManager private constructor(private val context: Context) {
             isAudiobookMode = _isAudiobookMode,
             isPodcastModeOverride = isSpecialPlayback && !_isAudiobookMode,
             isCasting = keepCasting || _state.value.isCasting,
-            artworkUrl = tracks.getOrNull(safeStartIndex)?.id?.let { customArtUrls[it] }
+            artworkUrl = artworkUrlForTrack(tracks.getOrNull(safeStartIndex))
         )
         if (keepCasting) {
             playCastQueueIndex(safeStartIndex)
@@ -713,7 +720,8 @@ class PlayerManager private constructor(private val context: Context) {
             _state.value = _state.value.copy(
                 queue = _queue.toList(),
                 queueIndex = newIndex,
-                currentTrack = track
+                currentTrack = track,
+                artworkUrl = artworkUrlForTrack(track)
             )
         }
     }
