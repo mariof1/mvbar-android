@@ -62,6 +62,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     var uploadStatus by remember { mutableStateOf<String?>(null) }
     var isUploading by remember { mutableStateOf(false) }
     var updateState by remember { mutableStateOf(UpdateUiState()) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
 
     // Cache settings
     var cacheSizeMb by remember { mutableLongStateOf(AudioCacheManager.getCacheSizeMb()) }
@@ -216,6 +217,17 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
         return
     }
 
+    if (showUpdateDialog) {
+        UpdateDialog(
+            state = updateState,
+            onDismiss = { showUpdateDialog = false },
+            onCheck = { checkForAppUpdate(true) },
+            onDownload = { updateState.availableUpdate?.let { downloadAppUpdate(it) } },
+            onInstall = { updateState.downloadedFile?.let { startDownloadedUpdate(it) } },
+            onOpenInstallSettings = { AppUpdateManager.openInstallPermissionSettings(context) }
+        )
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 140.dp)
@@ -236,9 +248,25 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Info, null, tint = Cyan500)
                         Spacer(Modifier.width(12.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text("mvbar Android", style = MaterialTheme.typography.titleMedium, color = OnSurface)
-                            Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    "Version ${BuildConfig.VERSION_NAME}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = OnSurfaceDim
+                                )
+                                CompactUpdateButton(
+                                    state = updateState,
+                                    onClick = {
+                                        showUpdateDialog = true
+                                        checkForAppUpdate(true)
+                                    }
+                                )
+                            }
                         }
                     }
 
@@ -280,19 +308,6 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                     }
                 }
             }
-        }
-
-        item {
-            SectionHeader("APP UPDATE")
-        }
-        item {
-            UpdateCard(
-                state = updateState,
-                onCheck = { checkForAppUpdate(true) },
-                onDownload = { updateState.availableUpdate?.let { downloadAppUpdate(it) } },
-                onInstall = { updateState.downloadedFile?.let { startDownloadedUpdate(it) } },
-                onOpenInstallSettings = { AppUpdateManager.openInstallPermissionSettings(context) }
-            )
         }
 
         // ── PLAYBACK ─────────────────────────────────────────────
@@ -802,8 +817,52 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
 }
 
 @Composable
-private fun UpdateCard(
+private fun CompactUpdateButton(
     state: UpdateUiState,
+    onClick: () -> Unit
+) {
+    val update = state.availableUpdate
+    val busy = state.isChecking || state.isDownloading
+
+    OutlinedButton(
+        onClick = onClick,
+        enabled = !state.isDownloading,
+        modifier = Modifier.height(32.dp),
+        shape = RoundedCornerShape(8.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = if (update != null) Orange400 else Cyan500)
+    ) {
+        if (busy) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                color = if (update != null) Orange400 else Cyan500,
+                strokeWidth = 2.dp
+            )
+        } else {
+            Icon(
+                if (update != null) Icons.Filled.SystemUpdate else Icons.Filled.Refresh,
+                null,
+                modifier = Modifier.size(15.dp)
+            )
+        }
+        Spacer(Modifier.width(5.dp))
+        Text(
+            when {
+                state.isChecking -> "Checking"
+                state.isDownloading -> "Loading"
+                update != null -> "Update"
+                else -> "Check"
+            },
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun UpdateDialog(
+    state: UpdateUiState,
+    onDismiss: () -> Unit,
     onCheck: () -> Unit,
     onDownload: () -> Unit,
     onInstall: () -> Unit,
@@ -812,31 +871,30 @@ private fun UpdateCard(
     val update = state.availableUpdate
     val changelogScroll = rememberScrollState()
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceVariantDark,
+        titleContentColor = OnSurface,
+        textContentColor = OnSurfaceVariant,
+        title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.SystemUpdate, null, tint = Cyan500)
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("App Update", style = MaterialTheme.typography.titleMedium, color = OnSurface)
-                    Text(
-                        when {
-                            state.isChecking -> "Checking GitHub releases..."
-                            update != null -> "Version ${update.version} is available"
-                            state.hasChecked -> "Current version ${BuildConfig.VERSION_NAME}"
-                            else -> "Current version ${BuildConfig.VERSION_NAME}"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceDim
-                    )
-                }
+                Spacer(Modifier.width(10.dp))
+                Text("App Update")
             }
+        },
+        text = {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                when {
+                    state.isChecking -> "Checking GitHub releases..."
+                    update != null -> "Version ${update.version} is available."
+                    state.hasChecked -> "Current version ${BuildConfig.VERSION_NAME}."
+                    else -> "Current version ${BuildConfig.VERSION_NAME}."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = OnSurface
+            )
 
             if (update != null) {
                 Spacer(Modifier.height(12.dp))
@@ -880,69 +938,8 @@ private fun UpdateCard(
                 Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
 
-            Spacer(Modifier.height(14.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val busy = state.isChecking || state.isDownloading
-                OutlinedButton(
-                    onClick = onCheck,
-                    enabled = !busy,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
-                ) {
-                    Icon(Icons.Filled.Refresh, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (state.isChecking) "Checking..." else "Check")
-                }
-
-                when {
-                    state.downloadedFile != null -> {
-                        Button(
-                            onClick = onInstall,
-                            enabled = !busy,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
-                        ) {
-                            Icon(Icons.Filled.InstallMobile, null, tint = Color.Black, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Install", color = Color.Black, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                    update != null -> {
-                        Button(
-                            onClick = onDownload,
-                            enabled = !busy,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
-                        ) {
-                            if (state.isDownloading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    color = Color.Black,
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Icon(Icons.Filled.Download, null, tint = Color.Black, modifier = Modifier.size(18.dp))
-                            }
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                if (state.isDownloading) "Downloading..." else "Download",
-                                color = Color.Black,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
-            }
-
             if (state.installPermissionNeeded) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(14.dp))
                 OutlinedButton(
                     onClick = onOpenInstallSettings,
                     modifier = Modifier.fillMaxWidth(),
@@ -955,7 +952,66 @@ private fun UpdateCard(
                 }
             }
         }
-    }
+        },
+        confirmButton = {
+            val busy = state.isChecking || state.isDownloading
+            when {
+                state.downloadedFile != null -> {
+                    Button(
+                        onClick = onInstall,
+                        enabled = !busy,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
+                    ) {
+                        Icon(Icons.Filled.InstallMobile, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Install", color = Color.Black, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                update != null -> {
+                    Button(
+                        onClick = onDownload,
+                        enabled = !busy,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
+                    ) {
+                        if (state.isDownloading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color.Black,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Filled.Download, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (state.isDownloading) "Downloading..." else "Download",
+                            color = Color.Black,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                else -> {
+                    OutlinedButton(
+                        onClick = onCheck,
+                        enabled = !busy,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
+                    ) {
+                        Icon(Icons.Filled.Refresh, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (state.isChecking) "Checking..." else "Check")
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = OnSurfaceVariant)
+            }
+        }
+    )
 }
 
 private fun formatBytes(bytes: Long): String {
