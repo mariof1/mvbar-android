@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mvbar.android.BuildConfig
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.local.MvbarDatabase
@@ -127,7 +128,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                         Spacer(Modifier.width(12.dp))
                         Column {
                             Text("mvbar Android", style = MaterialTheme.typography.titleMedium, color = OnSurface)
-                            Text("Version 1.0.0", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                            Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
                         }
                     }
 

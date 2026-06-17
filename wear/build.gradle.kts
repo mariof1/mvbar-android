@@ -5,6 +5,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+fun signingValue(name: String): String? =
+    (findProperty(name) as String?)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(name)?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "com.mvbar.android.wear"
     compileSdk = 34
@@ -13,16 +17,16 @@ android {
         applicationId = "com.mvbar.android"
         minSdk = 30
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = rootProject.extra["mvbarVersionCode"] as Int
+        versionName = rootProject.extra["mvbarVersionName"] as String
     }
 
     signingConfigs {
         create("release") {
-            storeFile = rootProject.file("mvbar-release.jks")
-            storePassword = "Kl1ng0n5"
-            keyAlias = "mvbar"
-            keyPassword = "Kl1ng0n5"
+            storeFile = rootProject.file(signingValue("MVBAR_RELEASE_STORE_FILE") ?: "mvbar-release.jks")
+            storePassword = signingValue("MVBAR_RELEASE_STORE_PASSWORD") ?: "Kl1ng0n5"
+            keyAlias = signingValue("MVBAR_RELEASE_KEY_ALIAS") ?: "mvbar"
+            keyPassword = signingValue("MVBAR_RELEASE_KEY_PASSWORD") ?: "Kl1ng0n5"
         }
     }
 
