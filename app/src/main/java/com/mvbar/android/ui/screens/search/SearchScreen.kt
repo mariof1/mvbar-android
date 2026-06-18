@@ -47,6 +47,7 @@ fun SearchScreen(
     onSearch: (String) -> Unit,
     onPlayTrack: (Track, List<Track>) -> Unit,
     onArtistClick: (SearchArtist) -> Unit,
+    onAlbumsSectionClick: ((SearchArtist) -> Unit)? = null,
     onAlbumClick: (SearchAlbum) -> Unit,
     onPlaylistClick: (SearchPlaylist) -> Unit,
     onTrackLongPress: ((Track) -> Unit)? = null,
@@ -159,7 +160,17 @@ fun SearchScreen(
                 // Albums section
                 val albums = results.albums
                 if (albums.isNotEmpty()) {
-                    item { SectionHeader("Albums") }
+                    val albumSectionArtist = results.bestArtistForAlbumShortcut(query)
+                        .takeIf { onAlbumsSectionClick != null }
+                    item {
+                        SectionHeader(
+                            title = "Albums",
+                            actionText = albumSectionArtist?.let { "All" },
+                            onClick = albumSectionArtist?.let { artist ->
+                                { onAlbumsSectionClick?.invoke(artist) }
+                            }
+                        )
+                    }
                     items(albums.take(4)) { album ->
                         AlbumSearchRow(
                             album = album,
@@ -244,16 +255,78 @@ fun SearchScreen(
 }
 
 @Composable
-private fun SectionHeader(title: String) {
-    Text(
-        title.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = OnSurfaceDim,
-        letterSpacing = 1.sp,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
-    )
+private fun SectionHeader(
+    title: String,
+    actionText: String? = null,
+    onClick: (() -> Unit)? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            title.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = OnSurfaceDim,
+            letterSpacing = 1.sp,
+            modifier = Modifier.weight(1f)
+        )
+        if (actionText != null) {
+            Text(
+                actionText.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = Cyan500,
+                letterSpacing = 1.sp
+            )
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForwardIos,
+                contentDescription = null,
+                tint = Cyan500,
+                modifier = Modifier.size(12.dp)
+            )
+        }
+    }
 }
+
+private fun SearchResults.bestArtistForAlbumShortcut(query: String): SearchArtist? {
+    val normalizedQuery = query.normalizedSearchText()
+    if (normalizedQuery.isEmpty()) return null
+
+    val artistCandidates = artists.filter { it.id > 0 && it.name.isNotBlank() }
+    val exactArtist = artistCandidates.firstOrNull {
+        it.name.normalizedSearchText() == normalizedQuery
+    }
+    if (exactArtist != null) return exactArtist
+
+    val closeArtist = artistCandidates.firstOrNull {
+        val normalizedName = it.name.normalizedSearchText()
+        normalizedName.contains(normalizedQuery) || normalizedQuery.contains(normalizedName)
+    }
+    if (closeArtist != null) return closeArtist
+
+    val exactAlbumArtist = albums.firstOrNull {
+        it.artistId != null &&
+            !it.displayArtist.isNullOrBlank() &&
+            it.displayArtist.normalizedSearchText() == normalizedQuery
+    }
+    if (exactAlbumArtist != null) {
+        return SearchArtist(
+            id = exactAlbumArtist.artistId ?: 0,
+            name = exactAlbumArtist.displayArtist.orEmpty()
+        )
+    }
+
+    return artistCandidates.firstOrNull()
+}
+
+private fun String.normalizedSearchText(): String =
+    trim().lowercase().replace(Regex("\\s+"), " ")
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable

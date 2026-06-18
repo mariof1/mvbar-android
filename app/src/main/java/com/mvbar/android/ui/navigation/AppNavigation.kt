@@ -34,6 +34,7 @@ import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Artist
 import com.mvbar.android.data.model.Playlist
+import com.mvbar.android.data.model.SearchArtist
 import com.mvbar.android.data.model.SmartPlaylistFilters
 import com.mvbar.android.data.model.SuggestResponse
 import com.mvbar.android.data.model.Track
@@ -1312,17 +1313,32 @@ fun MainScreen(
         }
 
         if (showSearch) {
+            val openSearchArtist: (SearchArtist) -> Unit = { artist ->
+                if (artist.id > 0) {
+                    showSearch = false
+                    mainVm.clearSearch()
+                    browseVm.loadArtistDetail(
+                        Artist(
+                            id = artist.id,
+                            name = artist.name,
+                            trackCount = artist.trackCount,
+                            albumCount = artist.albumCount,
+                            artPath = artist.artPath
+                        )
+                    )
+                    navController.navigate("artist/${artist.id}") {
+                        launchSingleTop = true
+                    }
+                }
+            }
             SearchScreen(
                 results = searchResults,
                 isLoading = searchLoading,
                 currentTrackId = currentTrackId,
                 onSearch = { mainVm.search(it) },
                 onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
-                onArtistClick = { artist ->
-                    showSearch = false
-                    mainVm.clearSearch()
-                    navController.navigate("artist/${artist.id}")
-                },
+                onArtistClick = openSearchArtist,
+                onAlbumsSectionClick = openSearchArtist,
                 onAlbumClick = { album ->
                     showSearch = false
                     mainVm.clearSearch()
