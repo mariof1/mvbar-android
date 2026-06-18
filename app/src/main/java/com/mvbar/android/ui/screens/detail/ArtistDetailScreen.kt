@@ -60,6 +60,8 @@ fun ArtistDetailScreen(
 ) {
     if (artist == null) return
 
+    val displayedTrackCount = maxOf(artist.trackCount, tracks.size)
+    val displayedAlbumCount = maxOf(artist.albumCount, albums.size)
     val listState = rememberLazyListState()
     LaunchedEffect(listState, hasMoreTracks, isLoadingMoreTracks) {
         snapshotFlow {
@@ -103,7 +105,7 @@ fun ArtistDetailScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        "${artist.trackCount} tracks • ${artist.albumCount} albums",
+                        "$displayedTrackCount tracks • $displayedAlbumCount albums",
                         style = MaterialTheme.typography.bodySmall,
                         color = OnSurfaceDim
                     )

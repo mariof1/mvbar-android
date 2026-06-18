@@ -40,7 +40,7 @@ interface MvbarApi {
     @GET("api/browse/artist/{id}")
     suspend fun getArtistDetail(@Path("id") id: Int): ArtistDetailResponse
 
-    @GET("api/browse/artists/{id}/tracks")
+    @GET("api/browse/artist/{id}/tracks")
     suspend fun getArtistTracks(
         @Path("id") id: Int,
         @Query("limit") limit: Int = 50,

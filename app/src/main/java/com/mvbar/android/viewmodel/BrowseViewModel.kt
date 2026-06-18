@@ -323,6 +323,12 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                             val response = repo.getArtistTracks(id, PAGE_SIZE, 0)
                             _artistTracks.value = response.tracks
                             _hasMoreArtistTracks.value = response.tracks.size >= PAGE_SIZE
+                            if (response.tracks.isNotEmpty()) {
+                                val current = _selectedArtist.value ?: artist
+                                if (current.trackCount <= 0) {
+                                    _selectedArtist.value = current.copy(trackCount = response.tracks.size)
+                                }
+                            }
                         } catch (e: Exception) {
                             DebugLog.e("Browse", "Artist tracks failed", e)
                         }
@@ -332,13 +338,22 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                             val detail = repo.getArtistDetail(id)
                             _artistAlbums.value = detail.albums
                             _artistAppearsOn.value = detail.appearsOn
-                            // Update artist info from detail if available
-                            detail.artist?.let { a ->
-                                _selectedArtist.value = artist.copy(
-                                    name = a.name.ifEmpty { artist.name },
-                                    artPath = a.artPath ?: artist.artPath
-                                )
-                            }
+                            val current = _selectedArtist.value ?: artist
+                            val detailArtist = detail.artist
+                            _selectedArtist.value = current.copy(
+                                name = detailArtist?.name?.takeIf { it.isNotBlank() }
+                                    ?: current.name.ifBlank { artist.name },
+                                trackCount = maxOf(
+                                    current.trackCount,
+                                    detailArtist?.trackCount ?: 0
+                                ),
+                                albumCount = maxOf(
+                                    current.albumCount,
+                                    detailArtist?.albumCount ?: 0,
+                                    detail.albums.size
+                                ),
+                                artPath = detailArtist?.artPath ?: current.artPath ?: artist.artPath
+                            )
                         } catch (e: Exception) {
                             DebugLog.e("Browse", "Artist detail failed", e)
                         }
