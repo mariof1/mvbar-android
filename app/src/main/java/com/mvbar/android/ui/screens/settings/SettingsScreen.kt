@@ -46,6 +46,7 @@ private data class UpdateUiState(
     val hasChecked: Boolean = false,
     val availableUpdate: AppUpdateInfo? = null,
     val downloadedFile: File? = null,
+    val lastCheckedAt: Long? = null,
     val message: String? = null,
     val error: String? = null,
     val installPermissionNeeded: Boolean = false
@@ -139,7 +140,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
         }
     }
 
-    fun checkForAppUpdate(showUpToDate: Boolean) {
+    fun checkForAppUpdate() {
         if (updateState.isChecking || updateState.isDownloading) return
         scope.launch {
             updateState = updateState.copy(
@@ -155,9 +156,9 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                     hasChecked = true,
                     availableUpdate = if (check.updateAvailable) check.latest else null,
                     downloadedFile = null,
+                    lastCheckedAt = System.currentTimeMillis(),
                     message = when {
                         check.updateAvailable -> null
-                        showUpToDate -> "You are already on the latest version."
                         else -> null
                     },
                     error = null
@@ -166,6 +167,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                 updateState = updateState.copy(
                     isChecking = false,
                     hasChecked = true,
+                    lastCheckedAt = System.currentTimeMillis(),
                     error = e.message ?: "Update check failed.",
                     message = null
                 )
@@ -202,7 +204,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     }
 
     LaunchedEffect(Unit) {
-        checkForAppUpdate(false)
+        checkForAppUpdate()
     }
 
     if (showLogViewer) {
@@ -221,7 +223,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
         UpdateDialog(
             state = updateState,
             onDismiss = { showUpdateDialog = false },
-            onCheck = { checkForAppUpdate(true) },
+            onCheck = { checkForAppUpdate() },
             onDownload = { updateState.availableUpdate?.let { downloadAppUpdate(it) } },
             onInstall = { updateState.downloadedFile?.let { startDownloadedUpdate(it) } },
             onOpenInstallSettings = { AppUpdateManager.openInstallPermissionSettings(context) }
@@ -263,7 +265,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                                     state = updateState,
                                     onClick = {
                                         showUpdateDialog = true
-                                        checkForAppUpdate(true)
+                                        checkForAppUpdate()
                                     }
                                 )
                             }
@@ -840,7 +842,11 @@ private fun CompactUpdateButton(
             )
         } else {
             Icon(
-                if (update != null) Icons.Filled.SystemUpdate else Icons.Filled.Refresh,
+                when {
+                    update != null -> Icons.Filled.SystemUpdate
+                    state.hasChecked -> Icons.Filled.CheckCircle
+                    else -> Icons.Filled.Refresh
+                },
                 null,
                 modifier = Modifier.size(15.dp)
             )
@@ -851,6 +857,7 @@ private fun CompactUpdateButton(
                 state.isChecking -> "Checking"
                 state.isDownloading -> "Loading"
                 update != null -> "Update"
+                state.hasChecked -> "Latest"
                 else -> "Check"
             },
             fontSize = 12.sp,
@@ -889,12 +896,20 @@ private fun UpdateDialog(
                 when {
                     state.isChecking -> "Checking GitHub releases..."
                     update != null -> "Version ${update.version} is available."
-                    state.hasChecked -> "Current version ${BuildConfig.VERSION_NAME}."
+                    state.hasChecked -> "You are on the latest version."
                     else -> "Current version ${BuildConfig.VERSION_NAME}."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = OnSurface
             )
+            state.lastCheckedAt?.let { checkedAt ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Checked ${formatUpdateCheckedAt(checkedAt)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim
+                )
+            }
 
             if (update != null) {
                 Spacer(Modifier.height(12.dp))
@@ -993,15 +1008,23 @@ private fun UpdateDialog(
                     }
                 }
                 else -> {
-                    OutlinedButton(
-                        onClick = onCheck,
-                        enabled = !busy,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
-                    ) {
-                        Icon(Icons.Filled.Refresh, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (state.isChecking) "Checking..." else "Check")
+                    if (state.error != null || (!state.hasChecked && !state.isChecking)) {
+                        OutlinedButton(
+                            onClick = onCheck,
+                            enabled = !busy,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
+                        ) {
+                            Icon(Icons.Filled.Refresh, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                when {
+                                    state.isChecking -> "Checking..."
+                                    state.error != null -> "Retry"
+                                    else -> "Check"
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -1018,6 +1041,17 @@ private fun formatBytes(bytes: Long): String {
     if (bytes <= 0L) return "unknown size"
     val mb = bytes / (1024.0 * 1024.0)
     return String.format(java.util.Locale.US, "%.1f MB", mb)
+}
+
+private fun formatUpdateCheckedAt(timestamp: Long): String {
+    val elapsedMs = System.currentTimeMillis() - timestamp
+    if (elapsedMs in 0 until 60_000) return "just now"
+    if (elapsedMs in 60_000 until 60 * 60_000) {
+        val minutes = elapsedMs / 60_000
+        return "$minutes minute${if (minutes == 1L) "" else "s"} ago"
+    }
+    val formatter = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+    return formatter.format(java.util.Date(timestamp))
 }
 
 @Composable
