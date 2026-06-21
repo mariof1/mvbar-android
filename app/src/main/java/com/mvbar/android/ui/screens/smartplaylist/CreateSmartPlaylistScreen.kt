@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.model.*
 import com.mvbar.android.ui.theme.*
@@ -91,7 +92,8 @@ fun CreateSmartPlaylistScreen(
     initialSort: String = "random",
     initialFilters: SmartPlaylistFilters = SmartPlaylistFilters(),
     initialArtistNames: List<Pair<Int, String>> = emptyList(),
-    onUpdate: ((id: Int, name: String, sort: String, filters: SmartPlaylistFilters) -> Unit)? = null
+    onUpdate: ((id: Int, name: String, sort: String, filters: SmartPlaylistFilters) -> Unit)? = null,
+    bottomPadding: Dp = 0.dp
 ) {
     val isEdit = editId != null
 
@@ -166,7 +168,11 @@ fun CreateSmartPlaylistScreen(
         onBack()
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = bottomPadding)
+    ) {
         Column(
             modifier = Modifier
                 .weight(1f)

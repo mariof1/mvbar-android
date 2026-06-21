@@ -1080,7 +1080,8 @@ fun MainScreen(
                         initialArtistNames = artistNames,
                         onUpdate = { id, name, sort, filters ->
                             mainVm.updateSmartPlaylist(id, name, sort, filters)
-                        }
+                        },
+                        bottomPadding = innerPadding.calculateBottomPadding()
                     )
                 }
 
@@ -1091,7 +1092,8 @@ fun MainScreen(
                         onCreate = { name, sort, filters ->
                             mainVm.createSmartPlaylist(name, sort, filters)
                         },
-                        onSuggest = { kind, query -> mainVm.suggest(kind, query) }
+                        onSuggest = { kind, query -> mainVm.suggest(kind, query) },
+                        bottomPadding = innerPadding.calculateBottomPadding()
                     )
                 }
 
