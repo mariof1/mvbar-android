@@ -759,6 +759,8 @@ fun MainScreen(
                         onLoadMoreGenres = { browseVm.loadMoreGenres() },
                         onLoadMoreCountries = { browseVm.loadMoreCountries() },
                         onLoadMoreLanguages = { browseVm.loadMoreLanguages() },
+                        onArtistLetterSelected = { browseVm.selectArtistLetter(it) },
+                        onAlbumLetterSelected = { browseVm.selectAlbumLetter(it) },
                         onArtistLongPress = { artist ->
                             val id = artist.id ?: return@BrowseScreen
                             val artUrl = ApiClient.artistArtUrl(id)

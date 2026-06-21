@@ -27,7 +27,9 @@ data class BrowseState(
     val hasMoreLanguages: Boolean = true,
     val isLoadingMore: Boolean = false,
     val isRefreshing: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val artistLetter: String? = null,
+    val albumLetter: String? = null
 )
 
 class BrowseViewModel(app: Application) : AndroidViewModel(app) {
@@ -110,12 +112,14 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadAll(isRefresh: Boolean = false) {
+        val artistLetter = _state.value.artistLetter
+        val albumLetter = _state.value.albumLetter
         viewModelScope.launch {
             _state.value = _state.value.copy(
                 isLoading = !isRefresh, isRefreshing = isRefresh, error = null
             )
             // Load from cache first
-            if (!isRefresh) {
+            if (!isRefresh && artistLetter == null && albumLetter == null) {
                 val cachedArtists = try { repo.getCachedArtists(PAGE_SIZE, 0) } catch (_: Exception) { null }
                 val cachedAlbums = try { repo.getCachedAlbums(PAGE_SIZE, 0) } catch (_: Exception) { null }
                 val cachedGenres = try { repo.getCachedGenres(PAGE_SIZE, 0) } catch (_: Exception) { null }
@@ -146,7 +150,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 DebugLog.i("Browse", "Loading artists, albums, genres...")
                 val artists = try {
-                    val r = repo.getArtists(PAGE_SIZE, 0)
+                    val r = repo.getArtists(PAGE_SIZE, 0, artistLetter)
                     DebugLog.i("Browse", "Got ${r.artists.size} artists (total: ${r.total})")
                     _state.value = _state.value.copy(hasMoreArtists = r.artists.size >= PAGE_SIZE)
                     r.artists
@@ -155,7 +159,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                     _state.value.artists.ifEmpty { emptyList() }
                 }
                 val albums = try {
-                    val r = repo.getAlbums(PAGE_SIZE, 0)
+                    val r = repo.getAlbums(PAGE_SIZE, 0, albumLetter)
                     DebugLog.i("Browse", "Got ${r.albums.size} albums (total: ${r.total})")
                     _state.value = _state.value.copy(hasMoreAlbums = r.albums.size >= PAGE_SIZE)
                     r.albums
@@ -211,7 +215,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.value = s.copy(isLoadingMore = true)
             try {
-                val r = repo.getArtists(PAGE_SIZE, s.artists.size)
+                val r = repo.getArtists(PAGE_SIZE, s.artists.size, s.artistLetter)
                 DebugLog.i("Browse", "Loaded ${r.artists.size} more artists (offset ${s.artists.size})")
                 _state.value = _state.value.copy(
                     artists = s.artists + r.artists,
@@ -231,7 +235,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.value = s.copy(isLoadingMore = true)
             try {
-                val r = repo.getAlbums(PAGE_SIZE, s.albums.size)
+                val r = repo.getAlbums(PAGE_SIZE, s.albums.size, s.albumLetter)
                 DebugLog.i("Browse", "Loaded ${r.albums.size} more albums (offset ${s.albums.size})")
                 _state.value = _state.value.copy(
                     albums = s.albums + r.albums,
@@ -306,6 +310,67 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setTab(tab: Int) { _state.value = _state.value.copy(selectedTab = tab) }
+
+    fun selectArtistLetter(letter: String?) {
+        val normalized = normalizeBrowseLetter(letter)
+        val s = _state.value
+        if (s.artistLetter == normalized && s.artists.isNotEmpty()) return
+        viewModelScope.launch {
+            _state.value = s.copy(
+                artistLetter = normalized,
+                artists = emptyList(),
+                hasMoreArtists = true,
+                isLoadingMore = true,
+                error = null
+            )
+            try {
+                val r = repo.getArtists(PAGE_SIZE, 0, normalized)
+                _state.value = _state.value.copy(
+                    artists = r.artists,
+                    hasMoreArtists = r.artists.size >= PAGE_SIZE,
+                    isLoadingMore = false
+                )
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Artist letter filter failed", e)
+                _state.value = _state.value.copy(isLoadingMore = false)
+            }
+        }
+    }
+
+    fun selectAlbumLetter(letter: String?) {
+        val normalized = normalizeBrowseLetter(letter)
+        val s = _state.value
+        if (s.albumLetter == normalized && s.albums.isNotEmpty()) return
+        viewModelScope.launch {
+            _state.value = s.copy(
+                albumLetter = normalized,
+                albums = emptyList(),
+                hasMoreAlbums = true,
+                isLoadingMore = true,
+                error = null
+            )
+            try {
+                val r = repo.getAlbums(PAGE_SIZE, 0, normalized)
+                _state.value = _state.value.copy(
+                    albums = r.albums,
+                    hasMoreAlbums = r.albums.size >= PAGE_SIZE,
+                    isLoadingMore = false
+                )
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Album letter filter failed", e)
+                _state.value = _state.value.copy(isLoadingMore = false)
+            }
+        }
+    }
+
+    private fun normalizeBrowseLetter(letter: String?): String? {
+        val value = letter?.trim()?.uppercase() ?: return null
+        return when {
+            value == "#" -> "#"
+            value.length == 1 && value[0] in 'A'..'Z' -> value
+            else -> null
+        }
+    }
 
     fun loadArtistDetail(artist: Artist) {
         _selectedArtist.value = artist

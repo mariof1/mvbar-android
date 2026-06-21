@@ -34,7 +34,8 @@ interface MvbarApi {
     @GET("api/browse/artists")
     suspend fun getArtists(
         @Query("limit") limit: Int = 50,
-        @Query("offset") offset: Int = 0
+        @Query("offset") offset: Int = 0,
+        @Query("letter") letter: String? = null
     ): TracksListWrapper
 
     @GET("api/browse/artist/{id}")
@@ -50,7 +51,8 @@ interface MvbarApi {
     @GET("api/browse/albums")
     suspend fun getAlbums(
         @Query("limit") limit: Int = 50,
-        @Query("offset") offset: Int = 0
+        @Query("offset") offset: Int = 0,
+        @Query("letter") letter: String? = null
     ): AlbumsListWrapper
 
     @GET("api/browse/album")

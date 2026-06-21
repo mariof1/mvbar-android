@@ -1,11 +1,15 @@
 package com.mvbar.android.ui.screens.browse
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +30,8 @@ import com.mvbar.android.ui.components.ArtistCard
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.BrowseState
 
+private val BROWSE_LETTERS = listOf("#") + ('A'..'Z').map { it.toString() }
+
 @Composable
 fun BrowseScreen(
     state: BrowseState,
@@ -41,6 +47,8 @@ fun BrowseScreen(
     onLoadMoreGenres: () -> Unit = {},
     onLoadMoreCountries: () -> Unit = {},
     onLoadMoreLanguages: () -> Unit = {},
+    onArtistLetterSelected: (String?) -> Unit = {},
+    onAlbumLetterSelected: (String?) -> Unit = {},
     onArtistLongPress: ((Artist) -> Unit)? = null,
     onAlbumLongPress: ((Album) -> Unit)? = null
 ) {
@@ -79,8 +87,26 @@ fun BrowseScreen(
             }
         } else {
             when (state.selectedTab) {
-                0 -> ArtistsGrid(state.artists, state.hasMoreArtists, state.isLoadingMore, onArtistClick, onLoadMoreArtists, onArtistLongPress)
-                1 -> AlbumsGrid(state.albums, state.hasMoreAlbums, state.isLoadingMore, onAlbumClick, onLoadMoreAlbums, onAlbumLongPress)
+                0 -> ArtistsGrid(
+                    artists = state.artists,
+                    hasMore = state.hasMoreArtists,
+                    isLoadingMore = state.isLoadingMore,
+                    selectedLetter = state.artistLetter,
+                    onClick = onArtistClick,
+                    onLoadMore = onLoadMoreArtists,
+                    onLetterSelected = onArtistLetterSelected,
+                    onLongPress = onArtistLongPress
+                )
+                1 -> AlbumsGrid(
+                    albums = state.albums,
+                    hasMore = state.hasMoreAlbums,
+                    isLoadingMore = state.isLoadingMore,
+                    selectedLetter = state.albumLetter,
+                    onClick = onAlbumClick,
+                    onLoadMore = onLoadMoreAlbums,
+                    onLetterSelected = onAlbumLetterSelected,
+                    onLongPress = onAlbumLongPress
+                )
                 2 -> GenresGrid(state.genres, state.hasMoreGenres, state.isLoadingMore, onGenreClick, onLoadMoreGenres)
                 3 -> CountriesGrid(state.countries, state.hasMoreCountries, state.isLoadingMore, onCountryClick, onLoadMoreCountries)
                 4 -> LanguagesGrid(state.languages, state.hasMoreLanguages, state.isLoadingMore, onLanguageClick, onLoadMoreLanguages)
@@ -94,8 +120,10 @@ private fun ArtistsGrid(
     artists: List<Artist>,
     hasMore: Boolean,
     isLoadingMore: Boolean,
+    selectedLetter: String?,
     onClick: (Artist) -> Unit,
     onLoadMore: () -> Unit,
+    onLetterSelected: (String?) -> Unit,
     onLongPress: ((Artist) -> Unit)? = null
 ) {
     val gridState = rememberLazyGridState()
@@ -108,26 +136,38 @@ private fun ArtistsGrid(
         }.collect { if (it) onLoadMore() }
     }
 
-    LazyVerticalGrid(
-        state = gridState,
-        columns = GridCells.Adaptive(minSize = 150.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        items(artists) { artist ->
-            ArtistCard(artist = artist, onClick = { onClick(artist) }, onLongPress = onLongPress?.let { { it(artist) } })
-        }
-        if (isLoadingMore) {
-            item {
-                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            state = gridState,
+            columns = GridCells.Adaptive(minSize = 150.dp),
+            contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 54.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (selectedLetter != null && artists.isEmpty() && !isLoadingMore) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    LetterEmptyState(kind = "artists", selectedLetter = selectedLetter)
                 }
             }
+            items(artists) { artist ->
+                ArtistCard(artist = artist, onClick = { onClick(artist) }, onLongPress = onLongPress?.let { { it(artist) } })
+            }
+            if (isLoadingMore) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+            // Bottom spacing for player bar
+            items(2) { Spacer(Modifier.height(120.dp)) }
         }
-        // Bottom spacing for player bar
-        items(2) { Spacer(Modifier.height(120.dp)) }
+        AlphabetRail(
+            selectedLetter = selectedLetter,
+            onLetterSelected = onLetterSelected,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
 }
 
@@ -136,8 +176,10 @@ private fun AlbumsGrid(
     albums: List<Album>,
     hasMore: Boolean,
     isLoadingMore: Boolean,
+    selectedLetter: String?,
     onClick: (Album) -> Unit,
     onLoadMore: () -> Unit,
+    onLetterSelected: (String?) -> Unit,
     onLongPress: ((Album) -> Unit)? = null
 ) {
     val gridState = rememberLazyGridState()
@@ -149,25 +191,109 @@ private fun AlbumsGrid(
         }.collect { if (it) onLoadMore() }
     }
 
-    LazyVerticalGrid(
-        state = gridState,
-        columns = GridCells.Adaptive(minSize = 150.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        items(albums) { album ->
-            AlbumCard(album = album, onClick = { onClick(album) }, onLongPress = onLongPress?.let { { it(album) } })
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            state = gridState,
+            columns = GridCells.Adaptive(minSize = 150.dp),
+            contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 54.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (selectedLetter != null && albums.isEmpty() && !isLoadingMore) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    LetterEmptyState(kind = "albums", selectedLetter = selectedLetter)
+                }
+            }
+            items(albums) { album ->
+                AlbumCard(album = album, onClick = { onClick(album) }, onLongPress = onLongPress?.let { { it(album) } })
+            }
+            if (isLoadingMore) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+            items(2) { Spacer(Modifier.height(120.dp)) }
         }
-        if (isLoadingMore) {
-            item {
-                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(24.dp))
+        AlphabetRail(
+            selectedLetter = selectedLetter,
+            onLetterSelected = onLetterSelected,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
+    }
+}
+
+@Composable
+private fun AlphabetRail(
+    selectedLetter: String?,
+    onLetterSelected: (String?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val items = remember { listOf<String?>(null) + BROWSE_LETTERS }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(42.dp)
+            .padding(end = 4.dp, top = 8.dp, bottom = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        val rawHeight = (maxHeight - 8.dp) / items.size.toFloat()
+        val itemHeight = when {
+            rawHeight < 11.dp -> 11.dp
+            rawHeight > 22.dp -> 22.dp
+            else -> rawHeight
+        }
+        val fontSize = if (itemHeight < 14.dp) 8.sp else 10.sp
+
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .background(SurfaceDark.copy(alpha = 0.78f), RoundedCornerShape(18.dp))
+                .padding(vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            items.forEach { letter ->
+                val label = letter ?: "All"
+                val selected = selectedLetter == letter
+                Box(
+                    modifier = Modifier
+                        .height(itemHeight)
+                        .width(if (letter == null) 32.dp else 24.dp)
+                        .clip(CircleShape)
+                        .background(if (selected) Cyan500.copy(alpha = 0.22f) else Color.Transparent)
+                        .clickable { onLetterSelected(letter) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        color = if (selected) Cyan500 else OnSurfaceDim,
+                        fontSize = fontSize,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                        maxLines = 1
+                    )
                 }
             }
         }
-        items(2) { Spacer(Modifier.height(120.dp)) }
+    }
+}
+
+@Composable
+private fun LetterEmptyState(kind: String, selectedLetter: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            "No $kind starting with $selectedLetter",
+            style = MaterialTheme.typography.bodyMedium,
+            color = OnSurfaceDim
+        )
     }
 }
 
