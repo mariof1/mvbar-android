@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.mediarouter.app.MediaRouteDialogFactory
 import androidx.mediarouter.media.MediaRouteSelector
-import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.CastMediaControlIntent
 import com.google.android.gms.cast.framework.CastContext
 import com.mvbar.android.debug.DebugLog
@@ -86,10 +85,9 @@ private fun showCastDialog(context: Context, selector: MediaRouteSelector): Bool
     return try {
         val castContext = CastContext.getSharedInstance(activity.applicationContext)
         val hasConnectedSession = castContext.sessionManager.currentCastSession?.isConnected == true
-        val router = MediaRouter.getInstance(activity)
         val factory = MediaRouteDialogFactory.getDefault()
 
-        if (!hasConnectedSession && router.selectedRoute.isDefaultOrBluetooth) {
+        if (!hasConnectedSession) {
             factory.onCreateChooserDialogFragment().apply {
                 routeSelector = selector
             }.show(fragmentManager, CHOOSER_TAG)

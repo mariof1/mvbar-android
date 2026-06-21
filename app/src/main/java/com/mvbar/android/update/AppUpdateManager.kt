@@ -4,7 +4,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.mvbar.android.BuildConfig
@@ -127,9 +126,7 @@ object AppUpdateManager {
     }
 
     fun startInstall(context: Context, apkFile: File): UpdateInstallResult {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            !context.packageManager.canRequestPackageInstalls()
-        ) {
+        if (!context.packageManager.canRequestPackageInstalls()) {
             return UpdateInstallResult.NeedsInstallPermission
         }
 
@@ -165,7 +162,7 @@ object AppUpdateManager {
         return candidate.replace(Regex("[^A-Za-z0-9._-]"), "_")
     }
 
-    private fun isNewerVersion(latest: String, current: String): Boolean {
+    internal fun isNewerVersion(latest: String, current: String): Boolean {
         val latestParts = versionParts(latest)
         val currentParts = versionParts(current)
         val max = maxOf(latestParts.size, currentParts.size)

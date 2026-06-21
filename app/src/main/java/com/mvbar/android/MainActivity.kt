@@ -2,7 +2,6 @@ package com.mvbar.android
 
 import android.content.Intent
 import android.os.Bundle
-import android.provider.SearchRecentSuggestions
 import android.view.KeyEvent
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -93,20 +92,27 @@ class MainActivity : FragmentActivity() {
         handleMediaSearchIntent(intent)
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
-            event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
-        ) {
-            val playerManager = PlayerManager.getInstance(applicationContext)
-            if (playerManager.isCasting()) {
-                if (event.action == KeyEvent.ACTION_DOWN) {
-                    val direction = if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) 1 else -1
-                    playerManager.adjustCastVolume(direction)
-                }
-                return true
-            }
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (handleCastVolumeKey(keyCode, isKeyDown = true)) return true
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (handleCastVolumeKey(keyCode, isKeyDown = false)) return true
+        return super.onKeyUp(keyCode, event)
+    }
+
+    private fun handleCastVolumeKey(keyCode: Int, isKeyDown: Boolean): Boolean {
+        if (keyCode != KeyEvent.KEYCODE_VOLUME_UP && keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) return false
+
+        val playerManager = PlayerManager.getInstance(applicationContext)
+        if (!playerManager.isCasting()) return false
+
+        if (isKeyDown) {
+            val direction = if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) 1 else -1
+            playerManager.adjustCastVolume(direction)
         }
-        return super.dispatchKeyEvent(event)
+        return true
     }
 
     private fun handleMediaSearchIntent(intent: Intent?) {

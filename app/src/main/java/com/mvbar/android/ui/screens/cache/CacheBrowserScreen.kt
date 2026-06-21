@@ -31,6 +31,7 @@ import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.theme.*
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -341,7 +342,11 @@ private suspend fun loadCachedItems(context: android.content.Context): List<Cach
         val sizeBytes = AudioCacheManager.getCachedSizeBytes(p.key)
         val sizeMbStr = if (sizeBytes > 0) {
             val mb = sizeBytes / (1024.0 * 1024.0)
-            if (mb >= 1.0) String.format("%.1f MB", mb) else String.format("%.0f KB", sizeBytes / 1024.0)
+            if (mb >= 1.0) {
+                String.format(Locale.US, "%.1f MB", mb)
+            } else {
+                String.format(Locale.US, "%.0f KB", sizeBytes / 1024.0)
+            }
         } else "—"
 
         when (p.type) {
