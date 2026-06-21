@@ -774,7 +774,8 @@ fun MainScreen(
                                 artUrl = artUrl,
                                 trackCount = album.trackCount
                             )
-                        }
+                        },
+                        bottomPadding = innerPadding.calculateBottomPadding()
                     )
                 }
 

@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -11,6 +12,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -31,6 +34,8 @@ import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.BrowseState
 
 private val BROWSE_LETTERS = listOf("#") + ('A'..'Z').map { it.toString() }
+private val BrowseArtworkCellMin = 118.dp
+private val BrowseRailWidth = 36.dp
 
 @Composable
 fun BrowseScreen(
@@ -50,7 +55,8 @@ fun BrowseScreen(
     onArtistLetterSelected: (String?) -> Unit = {},
     onAlbumLetterSelected: (String?) -> Unit = {},
     onArtistLongPress: ((Artist) -> Unit)? = null,
-    onAlbumLongPress: ((Album) -> Unit)? = null
+    onAlbumLongPress: ((Album) -> Unit)? = null,
+    bottomPadding: Dp = 0.dp
 ) {
     LaunchedEffect(Unit) {
         if (state.artists.isEmpty() && state.albums.isEmpty() && !state.isLoading) {
@@ -95,7 +101,8 @@ fun BrowseScreen(
                     onClick = onArtistClick,
                     onLoadMore = onLoadMoreArtists,
                     onLetterSelected = onArtistLetterSelected,
-                    onLongPress = onArtistLongPress
+                    onLongPress = onArtistLongPress,
+                    bottomPadding = bottomPadding
                 )
                 1 -> AlbumsGrid(
                     albums = state.albums,
@@ -105,7 +112,8 @@ fun BrowseScreen(
                     onClick = onAlbumClick,
                     onLoadMore = onLoadMoreAlbums,
                     onLetterSelected = onAlbumLetterSelected,
-                    onLongPress = onAlbumLongPress
+                    onLongPress = onAlbumLongPress,
+                    bottomPadding = bottomPadding
                 )
                 2 -> GenresGrid(state.genres, state.hasMoreGenres, state.isLoadingMore, onGenreClick, onLoadMoreGenres)
                 3 -> CountriesGrid(state.countries, state.hasMoreCountries, state.isLoadingMore, onCountryClick, onLoadMoreCountries)
@@ -124,7 +132,8 @@ private fun ArtistsGrid(
     onClick: (Artist) -> Unit,
     onLoadMore: () -> Unit,
     onLetterSelected: (String?) -> Unit,
-    onLongPress: ((Artist) -> Unit)? = null
+    onLongPress: ((Artist) -> Unit)? = null,
+    bottomPadding: Dp = 0.dp
 ) {
     val gridState = rememberLazyGridState()
 
@@ -139,10 +148,15 @@ private fun ArtistsGrid(
     Box(modifier = Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Adaptive(minSize = 150.dp),
-            contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 54.dp, bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            columns = GridCells.Adaptive(minSize = BrowseArtworkCellMin),
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                top = 8.dp,
+                end = BrowseRailWidth + 8.dp,
+                bottom = bottomPadding + 24.dp
+            ),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.fillMaxSize()
         ) {
             if (selectedLetter != null && artists.isEmpty() && !isLoadingMore) {
@@ -160,12 +174,11 @@ private fun ArtistsGrid(
                     }
                 }
             }
-            // Bottom spacing for player bar
-            items(2) { Spacer(Modifier.height(120.dp)) }
         }
         AlphabetRail(
             selectedLetter = selectedLetter,
             onLetterSelected = onLetterSelected,
+            bottomPadding = bottomPadding,
             modifier = Modifier.align(Alignment.CenterEnd)
         )
     }
@@ -180,7 +193,8 @@ private fun AlbumsGrid(
     onClick: (Album) -> Unit,
     onLoadMore: () -> Unit,
     onLetterSelected: (String?) -> Unit,
-    onLongPress: ((Album) -> Unit)? = null
+    onLongPress: ((Album) -> Unit)? = null,
+    bottomPadding: Dp = 0.dp
 ) {
     val gridState = rememberLazyGridState()
 
@@ -194,10 +208,15 @@ private fun AlbumsGrid(
     Box(modifier = Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Adaptive(minSize = 150.dp),
-            contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 54.dp, bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            columns = GridCells.Adaptive(minSize = BrowseArtworkCellMin),
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                top = 8.dp,
+                end = BrowseRailWidth + 8.dp,
+                bottom = bottomPadding + 24.dp
+            ),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.fillMaxSize()
         ) {
             if (selectedLetter != null && albums.isEmpty() && !isLoadingMore) {
@@ -215,11 +234,11 @@ private fun AlbumsGrid(
                     }
                 }
             }
-            items(2) { Spacer(Modifier.height(120.dp)) }
         }
         AlphabetRail(
             selectedLetter = selectedLetter,
             onLetterSelected = onLetterSelected,
+            bottomPadding = bottomPadding,
             modifier = Modifier.align(Alignment.CenterEnd)
         )
     }
@@ -229,32 +248,35 @@ private fun AlbumsGrid(
 private fun AlphabetRail(
     selectedLetter: String?,
     onLetterSelected: (String?) -> Unit,
+    bottomPadding: Dp,
     modifier: Modifier = Modifier
 ) {
     val items = remember { listOf<String?>(null) + BROWSE_LETTERS }
+    val railScrollState = rememberScrollState()
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxHeight()
-            .width(42.dp)
-            .padding(end = 4.dp, top = 8.dp, bottom = 8.dp),
+            .width(BrowseRailWidth)
+            .padding(end = 4.dp, top = 6.dp, bottom = bottomPadding + 6.dp),
         contentAlignment = Alignment.Center
     ) {
         val rawHeight = (maxHeight - 8.dp) / items.size.toFloat()
         val itemHeight = when {
-            rawHeight < 11.dp -> 11.dp
-            rawHeight > 22.dp -> 22.dp
+            rawHeight < 10.dp -> 10.dp
+            rawHeight > 20.dp -> 20.dp
             else -> rawHeight
         }
-        val fontSize = if (itemHeight < 14.dp) 8.sp else 10.sp
+        val fontSize = if (itemHeight < 13.dp) 7.sp else 9.sp
 
         Column(
             modifier = Modifier
                 .fillMaxHeight()
                 .background(SurfaceDark.copy(alpha = 0.78f), RoundedCornerShape(18.dp))
+                .verticalScroll(railScrollState)
                 .padding(vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = if (rawHeight < 10.dp) Arrangement.Top else Arrangement.Center
         ) {
             items.forEach { letter ->
                 val label = letter ?: "All"
@@ -262,7 +284,7 @@ private fun AlphabetRail(
                 Box(
                     modifier = Modifier
                         .height(itemHeight)
-                        .width(if (letter == null) 32.dp else 24.dp)
+                        .width(if (letter == null) 28.dp else 22.dp)
                         .clip(CircleShape)
                         .background(if (selected) Cyan500.copy(alpha = 0.22f) else Color.Transparent)
                         .clickable { onLetterSelected(letter) },
