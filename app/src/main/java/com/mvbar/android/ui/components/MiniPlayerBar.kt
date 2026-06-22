@@ -42,6 +42,7 @@ fun MiniPlayerBar(
     val track = state.currentTrack ?: return
     val progress = if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
     val isPodcast = state.isPodcastMode
+    val availability = trackAvailability(track.id)
     val artUrl = if (isPodcast) {
         ApiClient.episodeArtUrl(-track.id)
     } else {
@@ -160,13 +161,20 @@ fun MiniPlayerBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        track.displayArtist,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceDim,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            track.displayArtist,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnSurfaceDim,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        AvailabilityBadge(
+                            availability = availability,
+                            modifier = Modifier.padding(start = 6.dp)
+                        )
+                    }
                 }
 
                 if (isPodcast && onPrevious != null) {

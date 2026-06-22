@@ -38,9 +38,9 @@ import androidx.compose.ui.unit.sp
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Episode
 import com.mvbar.android.data.model.Podcast
-import com.mvbar.android.player.AudioCacheManager
-import com.mvbar.android.ui.LocalIsOnline
+import com.mvbar.android.ui.components.AvailabilityBadge
 import com.mvbar.android.ui.components.ArtworkImage
+import com.mvbar.android.ui.components.episodeAvailability
 import com.mvbar.android.ui.theme.*
 
 private enum class PodcastHomeView { CONTINUE, SUBSCRIPTIONS }
@@ -247,10 +247,8 @@ private fun ResumeEpisodeCard(
 ) {
     var showDetails by remember(episode.id) { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
-    val isOnline = LocalIsOnline.current
-    val isPlayable = remember(episode.id, isOnline) {
-        isOnline || AudioCacheManager.isEpisodeCached(episode.id)
-    }
+    val availability = episodeAvailability(episode.id)
+    val isPlayable = availability.isPlayable
     val artUrl = episodeArtUrl(episode)
     val remaining = episodeRemainingText(episode)
     val description = remember(episode.description) { cleanPodcastDescription(episode.description) }
@@ -353,12 +351,23 @@ private fun ResumeEpisodeCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    remaining ?: "${episode.progressPercent}% played",
-                    color = Orange400,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        remaining ?: "${episode.progressPercent}% played",
+                        color = Orange400,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    AvailabilityBadge(
+                        availability = availability,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
                 IconButton(onClick = onMarkPlayed, modifier = Modifier.size(36.dp)) {
                     Icon(
                         if (episode.played) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
@@ -511,10 +520,8 @@ fun EpisodeListItem(
 ) {
     var showDetails by remember(episode.id) { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
-    val isOnline = LocalIsOnline.current
-    val isPlayable = remember(episode.id, isOnline) {
-        isOnline || AudioCacheManager.isEpisodeCached(episode.id)
-    }
+    val availability = episodeAvailability(episode.id)
+    val isPlayable = availability.isPlayable
     val description = remember(episode.description) { cleanPodcastDescription(episode.description) }
 
     if (showDetails) {
@@ -585,13 +592,20 @@ fun EpisodeListItem(
                 }
 
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    episodeMetaText(episode, includeProgress = true),
-                    color = OnSurfaceSubtle,
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        episodeMetaText(episode, includeProgress = true),
+                        modifier = Modifier.weight(1f, fill = false),
+                        color = OnSurfaceSubtle,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    AvailabilityBadge(
+                        availability = availability,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
 
                 if (showDescription && description.isNotBlank()) {
                     Spacer(Modifier.height(5.dp))

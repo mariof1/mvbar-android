@@ -30,12 +30,13 @@ import com.mvbar.android.data.model.Episode
 import com.mvbar.android.data.model.Playlist
 import com.mvbar.android.data.model.SmartPlaylist
 import com.mvbar.android.data.model.Track
-import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerState
-import com.mvbar.android.ui.LocalIsOnline
+import com.mvbar.android.ui.components.AvailabilityBadge
 import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.components.GlowingProgressLine
+import com.mvbar.android.ui.components.episodeAvailability
+import com.mvbar.android.ui.components.trackAvailability
 import com.mvbar.android.ui.theme.*
 
 private enum class QueueTab(val label: String) {
@@ -446,10 +447,8 @@ private fun PodcastQueueItem(
     isActive: Boolean,
     onPlay: () -> Unit
 ) {
-    val isOnline = LocalIsOnline.current
-    val isPlayable = remember(episode.id, isOnline) {
-        isOnline || AudioCacheManager.isEpisodeCached(episode.id)
-    }
+    val availability = episodeAvailability(episode.id)
+    val isPlayable = availability.isPlayable
     val artModel = episode.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
         ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
         ?: ApiClient.episodeArtUrl(episode.id)
@@ -490,13 +489,17 @@ private fun PodcastQueueItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 if (episode.durationFormatted.isNotEmpty()) {
                     Text(episode.durationFormatted, style = MaterialTheme.typography.labelSmall, color = OnSurfaceSubtle)
                 }
                 if (episode.positionMs > 0 && !episode.played) {
                     Text("${episode.progressPercent}% played", style = MaterialTheme.typography.labelSmall, color = Orange400)
                 }
+                AvailabilityBadge(availability = availability)
             }
             if (episode.positionMs > 0 && !episode.played && episode.durationMs != null) {
                 Spacer(Modifier.height(4.dp))
@@ -522,11 +525,8 @@ private fun QueueItem(
     onRemove: () -> Unit,
     showRemove: Boolean = true
 ) {
-    val isOnline = LocalIsOnline.current
-    val isPlayable = remember(track.id, isOnline) {
-        isOnline || if (track.id > 0) AudioCacheManager.isTrackCached(track.id)
-        else AudioCacheManager.isEpisodeCached(-track.id)
-    }
+    val availability = trackAvailability(track.id)
+    val isPlayable = availability.isPlayable
     val bgColor = if (isActive) Cyan500.copy(alpha = 0.12f) else Color.Transparent
 
     Row(
@@ -534,7 +534,7 @@ private fun QueueItem(
             .fillMaxWidth()
             .graphicsLayer { alpha = if (isPlayable) 1f else 0.38f }
             .background(bgColor)
-            .clickable(onClick = onPlay)
+            .clickable(enabled = isPlayable, onClick = onPlay)
             .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -572,13 +572,20 @@ private fun QueueItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                track.displayArtist,
-                style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceDim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    track.displayArtist,
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                AvailabilityBadge(
+                    availability = availability,
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
         }
 
         Text(

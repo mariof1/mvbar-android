@@ -25,6 +25,9 @@ internal fun CompactUpdateButton(
 ) {
     val update = state.availableUpdate
     val busy = state.isChecking || state.isDownloading
+    val hasDownloadedApk = state.downloadedFile?.exists() == true
+    val needsInstallPermission = state.installPermissionNeeded
+    val accent = if (needsInstallPermission || hasDownloadedApk || update != null) Orange400 else Cyan500
 
     OutlinedButton(
         onClick = onClick,
@@ -32,17 +35,19 @@ internal fun CompactUpdateButton(
         modifier = Modifier.height(32.dp),
         shape = RoundedCornerShape(8.dp),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = if (update != null) Orange400 else Cyan500)
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = accent)
     ) {
         if (busy) {
             CircularProgressIndicator(
                 modifier = Modifier.size(14.dp),
-                color = if (update != null) Orange400 else Cyan500,
+                color = accent,
                 strokeWidth = 2.dp
             )
         } else {
             Icon(
                 when {
+                    needsInstallPermission -> Icons.Filled.Security
+                    hasDownloadedApk -> Icons.Filled.InstallMobile
                     update != null -> Icons.Filled.SystemUpdate
                     state.hasChecked -> Icons.Filled.CheckCircle
                     else -> Icons.Filled.Refresh
@@ -56,6 +61,8 @@ internal fun CompactUpdateButton(
             when {
                 state.isChecking -> "Checking"
                 state.isDownloading -> "Loading"
+                needsInstallPermission -> "Permit"
+                hasDownloadedApk -> "Install"
                 update != null -> "Update"
                 state.hasChecked -> "Latest"
                 else -> "Check"
@@ -95,6 +102,8 @@ internal fun UpdateDialog(
             Text(
                 when {
                     state.isChecking -> "Checking GitHub releases..."
+                    state.installPermissionNeeded -> "Android needs permission before mvbar can install the downloaded APK."
+                    state.downloadedFile != null && update != null -> "Version ${update.version} is downloaded and ready to install."
                     update != null -> "Version ${update.version} is available."
                     state.hasChecked -> "You are on the latest version."
                     else -> "Current version ${BuildConfig.VERSION_NAME}."
@@ -118,7 +127,7 @@ internal fun UpdateDialog(
 
                 Text(update.releaseName, style = MaterialTheme.typography.bodyLarge, color = OnSurface)
                 Text(
-                    "${update.assetName} - ${formatBytes(update.sizeBytes)}",
+                    "${update.assetName} - ${formatBytes(update.sizeBytes)}${if (state.downloadedFile != null) " - downloaded" else ""}",
                     style = MaterialTheme.typography.bodySmall,
                     color = OnSurfaceDim
                 )
@@ -151,6 +160,15 @@ internal fun UpdateDialog(
             state.error?.let { error ->
                 Spacer(Modifier.height(10.dp))
                 Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+
+            if (update == null && state.hasChecked && state.error == null && !state.isChecking) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Settings checks for updates automatically while it is open.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim
+                )
             }
 
             if (state.installPermissionNeeded) {

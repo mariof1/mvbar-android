@@ -53,6 +53,8 @@ internal data class UpdateUiState(
     val installPermissionNeeded: Boolean = false
 )
 
+private const val UPDATE_AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
@@ -141,8 +143,14 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
         }
     }
 
-    fun checkForAppUpdate() {
+    fun checkForAppUpdate(force: Boolean = false) {
         if (updateState.isChecking || updateState.isDownloading) return
+        val now = System.currentTimeMillis()
+        if (!force && updateState.hasChecked && updateState.lastCheckedAt?.let { now - it < UPDATE_AUTO_CHECK_INTERVAL_MS } == true) {
+            return
+        }
+        val existingDownloadedFile = updateState.downloadedFile?.takeIf { it.exists() }
+        val existingUpdateVersion = updateState.availableUpdate?.version
         scope.launch {
             updateState = updateState.copy(
                 isChecking = true,
@@ -152,11 +160,15 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
             )
             try {
                 val check = AppUpdateManager.checkForUpdates()
+                val latest = if (check.updateAvailable) check.latest else null
+                val keepDownloadedFile = latest != null &&
+                    existingDownloadedFile != null &&
+                    latest.version == existingUpdateVersion
                 updateState = updateState.copy(
                     isChecking = false,
                     hasChecked = true,
-                    availableUpdate = if (check.updateAvailable) check.latest else null,
-                    downloadedFile = null,
+                    availableUpdate = latest,
+                    downloadedFile = if (keepDownloadedFile) existingDownloadedFile else null,
                     lastCheckedAt = System.currentTimeMillis(),
                     message = when {
                         check.updateAvailable -> null
@@ -205,7 +217,11 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     }
 
     LaunchedEffect(Unit) {
-        checkForAppUpdate()
+        checkForAppUpdate(force = true)
+        while (true) {
+            kotlinx.coroutines.delay(UPDATE_AUTO_CHECK_INTERVAL_MS)
+            checkForAppUpdate()
+        }
     }
 
     if (showLogViewer) {
@@ -224,7 +240,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
         UpdateDialog(
             state = updateState,
             onDismiss = { showUpdateDialog = false },
-            onCheck = { checkForAppUpdate() },
+            onCheck = { checkForAppUpdate(force = true) },
             onDownload = { updateState.availableUpdate?.let { downloadAppUpdate(it) } },
             onInstall = { updateState.downloadedFile?.let { startDownloadedUpdate(it) } },
             onOpenInstallSettings = { AppUpdateManager.openInstallPermissionSettings(context) }
@@ -266,7 +282,9 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                                     state = updateState,
                                     onClick = {
                                         showUpdateDialog = true
-                                        checkForAppUpdate()
+                                        if (!updateState.hasChecked && updateState.downloadedFile == null) {
+                                            checkForAppUpdate(force = true)
+                                        }
                                     }
                                 )
                             }

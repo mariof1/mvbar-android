@@ -23,8 +23,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Track
-import com.mvbar.android.player.AudioCacheManager
-import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.theme.*
 
 @Composable
@@ -37,11 +35,8 @@ fun TrackListItem(
     onMore: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val isOnline = LocalIsOnline.current
-    val isPlayable = remember(track.id, isOnline) {
-        isOnline || if (track.id > 0) AudioCacheManager.isTrackCached(track.id)
-        else AudioCacheManager.isEpisodeCached(-track.id)
-    }
+    val availability = trackAvailability(track.id)
+    val isPlayable = availability.isPlayable
 
     val bgColor by animateColorAsState(
         if (isPlaying) Cyan500.copy(alpha = 0.15f) else androidx.compose.ui.graphics.Color.Transparent,
@@ -93,13 +88,20 @@ fun TrackListItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                track.displayArtist,
-                style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceDim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    track.displayArtist,
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                AvailabilityBadge(
+                    availability = availability,
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
         }
 
         if (isPlaying) {

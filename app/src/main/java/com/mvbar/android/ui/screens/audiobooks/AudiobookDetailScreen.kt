@@ -31,9 +31,9 @@ import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Audiobook
 import com.mvbar.android.data.model.AudiobookChapter
 import com.mvbar.android.data.model.AudiobookDetailProgress
-import com.mvbar.android.player.AudioCacheManager
-import com.mvbar.android.ui.LocalIsOnline
+import com.mvbar.android.ui.components.AvailabilityBadge
 import com.mvbar.android.ui.components.ArtworkImage
+import com.mvbar.android.ui.components.chapterAvailability
 import com.mvbar.android.ui.theme.*
 
 @Composable
@@ -195,10 +195,8 @@ private fun ChapterListItem(
     hasProgress: Boolean,
     onClick: () -> Unit
 ) {
-    val isOnline = LocalIsOnline.current
-    val isPlayable = remember(chapter.id, chapter.audiobookId, isOnline) {
-        isOnline || AudioCacheManager.isChapterCached(chapter.audiobookId, chapter.id)
-    }
+    val availability = chapterAvailability(chapter.audiobookId, chapter.id)
+    val isPlayable = availability.isPlayable
     val highlight = isPlaying || hasProgress
     Row(
         modifier = Modifier
@@ -235,11 +233,20 @@ private fun ChapterListItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (chapter.durationFormatted.isNotEmpty()) {
-                Text(
-                    chapter.durationFormatted,
-                    color = OnSurfaceSubtle,
-                    style = MaterialTheme.typography.labelSmall
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (chapter.durationFormatted.isNotEmpty()) {
+                    Text(
+                        chapter.durationFormatted,
+                        modifier = Modifier.weight(1f, fill = false),
+                        color = OnSurfaceSubtle,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                AvailabilityBadge(
+                    availability = availability,
+                    modifier = Modifier.padding(start = if (chapter.durationFormatted.isNotEmpty()) 6.dp else 0.dp)
                 )
             }
         }
