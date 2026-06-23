@@ -10,6 +10,7 @@ import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 data class BrowseState(
@@ -29,7 +30,13 @@ data class BrowseState(
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val artistLetter: String? = null,
-    val albumLetter: String? = null
+    val albumLetter: String? = null,
+    val artistStartOffset: Int = 0,
+    val albumStartOffset: Int = 0,
+    val artistScrollTarget: Int? = null,
+    val albumScrollTarget: Int? = null,
+    val artistUsesCachedSeek: Boolean = false,
+    val albumUsesCachedSeek: Boolean = false
 )
 
 class BrowseViewModel(app: Application) : AndroidViewModel(app) {
@@ -77,6 +84,8 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     val isLoadingMoreCountryTracks: StateFlow<Boolean> = _isLoadingMoreCountryTracks.asStateFlow()
 
     private var currentCountryName: String = ""
+    private var artistLetterJob: Job? = null
+    private var albumLetterJob: Job? = null
 
     private val _languageTracks = MutableStateFlow<List<Track>>(emptyList())
     val languageTracks: StateFlow<List<Track>> = _languageTracks.asStateFlow()
@@ -109,17 +118,29 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val PAGE_SIZE = 50
+        const val SEEK_CONTEXT_SIZE = 100
+        const val SEEK_PAGE_SIZE = 200
     }
 
     fun loadAll(isRefresh: Boolean = false) {
-        val artistLetter = _state.value.artistLetter
-        val albumLetter = _state.value.albumLetter
+        artistLetterJob?.cancel()
+        albumLetterJob?.cancel()
         viewModelScope.launch {
             _state.value = _state.value.copy(
-                isLoading = !isRefresh, isRefreshing = isRefresh, error = null
+                isLoading = !isRefresh,
+                isRefreshing = isRefresh,
+                error = null,
+                artistLetter = null,
+                albumLetter = null,
+                artistStartOffset = 0,
+                albumStartOffset = 0,
+                artistScrollTarget = null,
+                albumScrollTarget = null,
+                artistUsesCachedSeek = false,
+                albumUsesCachedSeek = false
             )
             // Load from cache first
-            if (!isRefresh && artistLetter == null && albumLetter == null) {
+            if (!isRefresh) {
                 val cachedArtists = try { repo.getCachedArtists(PAGE_SIZE, 0) } catch (_: Exception) { null }
                 val cachedAlbums = try { repo.getCachedAlbums(PAGE_SIZE, 0) } catch (_: Exception) { null }
                 val cachedGenres = try { repo.getCachedGenres(PAGE_SIZE, 0) } catch (_: Exception) { null }
@@ -150,18 +171,18 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 DebugLog.i("Browse", "Loading artists, albums, genres...")
                 val artists = try {
-                    val r = repo.getArtists(PAGE_SIZE, 0, artistLetter)
+                    val r = repo.getArtists(PAGE_SIZE, 0)
                     DebugLog.i("Browse", "Got ${r.artists.size} artists (total: ${r.total})")
-                    _state.value = _state.value.copy(hasMoreArtists = r.artists.size >= PAGE_SIZE)
+                    _state.value = _state.value.copy(hasMoreArtists = r.artists.size < r.total)
                     r.artists
                 } catch (e: Exception) {
                     DebugLog.e("Browse", "Artists failed", e)
                     _state.value.artists.ifEmpty { emptyList() }
                 }
                 val albums = try {
-                    val r = repo.getAlbums(PAGE_SIZE, 0, albumLetter)
+                    val r = repo.getAlbums(PAGE_SIZE, 0)
                     DebugLog.i("Browse", "Got ${r.albums.size} albums (total: ${r.total})")
-                    _state.value = _state.value.copy(hasMoreAlbums = r.albums.size >= PAGE_SIZE)
+                    _state.value = _state.value.copy(hasMoreAlbums = r.albums.size < r.total)
                     r.albums
                 } catch (e: Exception) {
                     DebugLog.e("Browse", "Albums failed", e)
@@ -215,13 +236,27 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.value = s.copy(isLoadingMore = true)
             try {
-                val r = repo.getArtists(PAGE_SIZE, s.artists.size, s.artistLetter)
-                DebugLog.i("Browse", "Loaded ${r.artists.size} more artists (offset ${s.artists.size})")
-                _state.value = _state.value.copy(
-                    artists = s.artists + r.artists,
-                    hasMoreArtists = r.artists.size >= PAGE_SIZE,
-                    isLoadingMore = false
-                )
+                val offset = s.artistStartOffset + s.artists.size
+                if (s.artistUsesCachedSeek) {
+                    val page = repo.getCachedArtists(PAGE_SIZE, offset).orEmpty()
+                    val total = repo.getCachedArtistCount()
+                    DebugLog.i("Browse", "Loaded ${page.size} more cached artists (offset $offset)")
+                    _state.value = _state.value.copy(
+                        artists = s.artists + page,
+                        hasMoreArtists = offset + page.size < total,
+                        isLoadingMore = false,
+                        artistScrollTarget = null
+                    )
+                } else {
+                    val r = repo.getArtists(PAGE_SIZE, offset)
+                    DebugLog.i("Browse", "Loaded ${r.artists.size} more artists (offset $offset)")
+                    _state.value = _state.value.copy(
+                        artists = s.artists + r.artists,
+                        hasMoreArtists = offset + r.artists.size < r.total,
+                        isLoadingMore = false,
+                        artistScrollTarget = null
+                    )
+                }
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more artists failed", e)
                 _state.value = _state.value.copy(isLoadingMore = false)
@@ -235,13 +270,27 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.value = s.copy(isLoadingMore = true)
             try {
-                val r = repo.getAlbums(PAGE_SIZE, s.albums.size, s.albumLetter)
-                DebugLog.i("Browse", "Loaded ${r.albums.size} more albums (offset ${s.albums.size})")
-                _state.value = _state.value.copy(
-                    albums = s.albums + r.albums,
-                    hasMoreAlbums = r.albums.size >= PAGE_SIZE,
-                    isLoadingMore = false
-                )
+                val offset = s.albumStartOffset + s.albums.size
+                if (s.albumUsesCachedSeek) {
+                    val page = repo.getCachedAlbums(PAGE_SIZE, offset).orEmpty()
+                    val total = repo.getCachedAlbumCount()
+                    DebugLog.i("Browse", "Loaded ${page.size} more cached albums (offset $offset)")
+                    _state.value = _state.value.copy(
+                        albums = s.albums + page,
+                        hasMoreAlbums = offset + page.size < total,
+                        isLoadingMore = false,
+                        albumScrollTarget = null
+                    )
+                } else {
+                    val r = repo.getAlbums(PAGE_SIZE, offset)
+                    DebugLog.i("Browse", "Loaded ${r.albums.size} more albums (offset $offset)")
+                    _state.value = _state.value.copy(
+                        albums = s.albums + r.albums,
+                        hasMoreAlbums = offset + r.albums.size < r.total,
+                        isLoadingMore = false,
+                        albumScrollTarget = null
+                    )
+                }
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more albums failed", e)
                 _state.value = _state.value.copy(isLoadingMore = false)
@@ -315,19 +364,57 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         val normalized = normalizeBrowseLetter(letter)
         val s = _state.value
         if (s.artistLetter == normalized && s.artists.isNotEmpty()) return
-        viewModelScope.launch {
+        artistLetterJob?.cancel()
+        artistLetterJob = viewModelScope.launch {
             _state.value = s.copy(
                 artistLetter = normalized,
                 artists = emptyList(),
                 hasMoreArtists = true,
                 isLoadingMore = true,
+                artistStartOffset = 0,
+                artistScrollTarget = null,
+                artistUsesCachedSeek = false,
                 error = null
             )
             try {
+                if (normalized == null) {
+                    val r = repo.getArtists(PAGE_SIZE, 0)
+                    _state.value = _state.value.copy(
+                        artists = r.artists,
+                        hasMoreArtists = r.artists.size < r.total,
+                        artistStartOffset = 0,
+                        artistScrollTarget = 0,
+                        artistUsesCachedSeek = false,
+                        isLoadingMore = false
+                    )
+                    return@launch
+                }
+
+                val cacheCount = repo.getCachedArtistCount()
+                val targetOffset = repo.getCachedArtistOffsetForLetter(normalized)
+                if (cacheCount > 0 && targetOffset != null) {
+                    val window = cachedSeekWindow(cacheCount, targetOffset)
+                    val artists = repo.getCachedArtists(window.limit, window.startOffset).orEmpty()
+                    if (artists.isNotEmpty()) {
+                        _state.value = _state.value.copy(
+                            artists = artists,
+                            hasMoreArtists = window.startOffset + artists.size < cacheCount,
+                            artistStartOffset = window.startOffset,
+                            artistScrollTarget = window.targetIndex.coerceIn(0, artists.lastIndex),
+                            artistUsesCachedSeek = true,
+                            isLoadingMore = false
+                        )
+                        return@launch
+                    }
+                }
+
                 val r = repo.getArtists(PAGE_SIZE, 0, normalized)
                 _state.value = _state.value.copy(
                     artists = r.artists,
-                    hasMoreArtists = r.artists.size >= PAGE_SIZE,
+                    hasMoreArtists = r.artists.size < r.total,
+                    artistStartOffset = 0,
+                    artistScrollTarget = 0,
+                    artistUsesCachedSeek = false,
                     isLoadingMore = false
                 )
             } catch (e: Exception) {
@@ -341,19 +428,57 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         val normalized = normalizeBrowseLetter(letter)
         val s = _state.value
         if (s.albumLetter == normalized && s.albums.isNotEmpty()) return
-        viewModelScope.launch {
+        albumLetterJob?.cancel()
+        albumLetterJob = viewModelScope.launch {
             _state.value = s.copy(
                 albumLetter = normalized,
                 albums = emptyList(),
                 hasMoreAlbums = true,
                 isLoadingMore = true,
+                albumStartOffset = 0,
+                albumScrollTarget = null,
+                albumUsesCachedSeek = false,
                 error = null
             )
             try {
+                if (normalized == null) {
+                    val r = repo.getAlbums(PAGE_SIZE, 0)
+                    _state.value = _state.value.copy(
+                        albums = r.albums,
+                        hasMoreAlbums = r.albums.size < r.total,
+                        albumStartOffset = 0,
+                        albumScrollTarget = 0,
+                        albumUsesCachedSeek = false,
+                        isLoadingMore = false
+                    )
+                    return@launch
+                }
+
+                val cacheCount = repo.getCachedAlbumCount()
+                val targetOffset = repo.getCachedAlbumOffsetForLetter(normalized)
+                if (cacheCount > 0 && targetOffset != null) {
+                    val window = cachedSeekWindow(cacheCount, targetOffset)
+                    val albums = repo.getCachedAlbums(window.limit, window.startOffset).orEmpty()
+                    if (albums.isNotEmpty()) {
+                        _state.value = _state.value.copy(
+                            albums = albums,
+                            hasMoreAlbums = window.startOffset + albums.size < cacheCount,
+                            albumStartOffset = window.startOffset,
+                            albumScrollTarget = window.targetIndex.coerceIn(0, albums.lastIndex),
+                            albumUsesCachedSeek = true,
+                            isLoadingMore = false
+                        )
+                        return@launch
+                    }
+                }
+
                 val r = repo.getAlbums(PAGE_SIZE, 0, normalized)
                 _state.value = _state.value.copy(
                     albums = r.albums,
-                    hasMoreAlbums = r.albums.size >= PAGE_SIZE,
+                    hasMoreAlbums = r.albums.size < r.total,
+                    albumStartOffset = 0,
+                    albumScrollTarget = 0,
+                    albumUsesCachedSeek = false,
                     isLoadingMore = false
                 )
             } catch (e: Exception) {
@@ -370,6 +495,23 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             value.length == 1 && value[0] in 'A'..'Z' -> value
             else -> null
         }
+    }
+
+    private data class CachedSeekWindow(
+        val startOffset: Int,
+        val limit: Int,
+        val targetIndex: Int
+    )
+
+    private fun cachedSeekWindow(total: Int, targetOffset: Int): CachedSeekWindow {
+        val boundedTarget = targetOffset.coerceIn(0, total.coerceAtLeast(0))
+        val startOffset = (boundedTarget - SEEK_CONTEXT_SIZE).coerceAtLeast(0)
+        val limit = minOf(SEEK_PAGE_SIZE, (total - startOffset).coerceAtLeast(PAGE_SIZE))
+        return CachedSeekWindow(
+            startOffset = startOffset,
+            limit = limit,
+            targetIndex = boundedTarget - startOffset
+        )
     }
 
     fun loadArtistDetail(artist: Artist) {

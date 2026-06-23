@@ -16,6 +16,13 @@ interface BrowseDao {
     @Query("SELECT COUNT(*) FROM artists")
     suspend fun artistCount(): Int
 
+    @Query("""
+        SELECT COUNT(*) FROM artists
+        WHERE :letter != '#'
+        AND UPPER(SUBSTR(name, 1, 1)) < :letter
+    """)
+    suspend fun artistOffsetForLetter(letter: String): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertArtists(artists: List<ArtistEntity>)
 
@@ -37,6 +44,13 @@ interface BrowseDao {
 
     @Query("SELECT COUNT(*) FROM albums")
     suspend fun albumCount(): Int
+
+    @Query("""
+        SELECT COUNT(*) FROM albums
+        WHERE :letter != '#'
+        AND UPPER(SUBSTR(displayName, 1, 1)) < :letter
+    """)
+    suspend fun albumOffsetForLetter(letter: String): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAlbums(albums: List<AlbumEntity>)
