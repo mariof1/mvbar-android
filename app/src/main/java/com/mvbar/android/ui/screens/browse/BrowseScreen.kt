@@ -3,9 +3,7 @@ package com.mvbar.android.ui.screens.browse
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -14,6 +12,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,9 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -36,11 +35,12 @@ import com.mvbar.android.ui.components.AlbumCard
 import com.mvbar.android.ui.components.ArtistCard
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.BrowseState
-import kotlin.math.floor
+import kotlinx.coroutines.delay
 
 private val BROWSE_LETTERS = listOf("#") + ('A'..'Z').map { it.toString() }
+private val BROWSE_FILTERS = listOf<String?>(null) + BROWSE_LETTERS
 private val BrowseArtworkCellMin = 118.dp
-private val BrowseRailWidth = 36.dp
+private val BrowseRailWidth = 44.dp
 
 @Composable
 fun BrowseScreen(
@@ -103,7 +103,6 @@ fun BrowseScreen(
                     hasMore = state.hasMoreArtists,
                     isLoadingMore = state.isLoadingMore,
                     selectedLetter = state.artistLetter,
-                    scrollTargetIndex = state.artistScrollTarget,
                     onClick = onArtistClick,
                     onLoadMore = onLoadMoreArtists,
                     onLetterSelected = onArtistLetterSelected,
@@ -115,7 +114,6 @@ fun BrowseScreen(
                     hasMore = state.hasMoreAlbums,
                     isLoadingMore = state.isLoadingMore,
                     selectedLetter = state.albumLetter,
-                    scrollTargetIndex = state.albumScrollTarget,
                     onClick = onAlbumClick,
                     onLoadMore = onLoadMoreAlbums,
                     onLetterSelected = onAlbumLetterSelected,
@@ -136,7 +134,6 @@ private fun ArtistsGrid(
     hasMore: Boolean,
     isLoadingMore: Boolean,
     selectedLetter: String?,
-    scrollTargetIndex: Int?,
     onClick: (Artist) -> Unit,
     onLoadMore: () -> Unit,
     onLetterSelected: (String?) -> Unit,
@@ -153,11 +150,8 @@ private fun ArtistsGrid(
         }.collect { if (it) onLoadMore() }
     }
 
-    LaunchedEffect(scrollTargetIndex, artists.size) {
-        val target = scrollTargetIndex ?: return@LaunchedEffect
-        if (artists.isNotEmpty()) {
-            gridState.scrollToItem(target.coerceIn(0, artists.lastIndex))
-        }
+    LaunchedEffect(selectedLetter) {
+        gridState.scrollToItem(0)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -196,6 +190,12 @@ private fun ArtistsGrid(
             bottomPadding = bottomPadding,
             modifier = Modifier.align(Alignment.CenterEnd)
         )
+        LetterStepper(
+            selectedLetter = selectedLetter,
+            onLetterSelected = onLetterSelected,
+            bottomPadding = bottomPadding,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 
@@ -205,7 +205,6 @@ private fun AlbumsGrid(
     hasMore: Boolean,
     isLoadingMore: Boolean,
     selectedLetter: String?,
-    scrollTargetIndex: Int?,
     onClick: (Album) -> Unit,
     onLoadMore: () -> Unit,
     onLetterSelected: (String?) -> Unit,
@@ -221,11 +220,8 @@ private fun AlbumsGrid(
         }.collect { if (it) onLoadMore() }
     }
 
-    LaunchedEffect(scrollTargetIndex, albums.size) {
-        val target = scrollTargetIndex ?: return@LaunchedEffect
-        if (albums.isNotEmpty()) {
-            gridState.scrollToItem(target.coerceIn(0, albums.lastIndex))
-        }
+    LaunchedEffect(selectedLetter) {
+        gridState.scrollToItem(0)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -264,6 +260,12 @@ private fun AlbumsGrid(
             bottomPadding = bottomPadding,
             modifier = Modifier.align(Alignment.CenterEnd)
         )
+        LetterStepper(
+            selectedLetter = selectedLetter,
+            onLetterSelected = onLetterSelected,
+            bottomPadding = bottomPadding,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 
@@ -274,11 +276,17 @@ private fun AlphabetRail(
     bottomPadding: Dp,
     modifier: Modifier = Modifier
 ) {
-    val items = remember { listOf<String?>(null) + BROWSE_LETTERS }
-    var activeLetter by remember { mutableStateOf<String?>(null) }
-    var activeIndex by remember { mutableIntStateOf(-1) }
-    var isInteracting by remember { mutableStateOf(false) }
-    val density = LocalDensity.current
+    val items = remember { BROWSE_FILTERS }
+    var bubbleLabel by remember { mutableStateOf<String?>(null) }
+    var bubbleIndex by remember { mutableIntStateOf(0) }
+    var bubbleToken by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(bubbleToken) {
+        if (bubbleToken > 0) {
+            delay(700)
+            bubbleLabel = null
+        }
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -288,21 +296,16 @@ private fun AlphabetRail(
         contentAlignment = Alignment.Center
     ) {
         val rawHeight = (maxHeight - 10.dp) / items.size.toFloat()
-        val itemHeight = rawHeight.coerceIn(8.dp, 20.dp)
+        val itemHeight = rawHeight.coerceIn(12.dp, 22.dp)
         val totalRailHeight = itemHeight * items.size.toFloat() + 8.dp
-        val fontSize = if (itemHeight < 11.dp) 6.sp else if (itemHeight < 13.dp) 7.sp else 9.sp
-        val itemHeightPx = with(density) { itemHeight.toPx() }
-        val railPaddingPx = with(density) { 4.dp.toPx() }
-        val bubbleLetter = if (activeIndex >= 0) items[activeIndex] else selectedLetter
-        val bubbleIndex = items.indexOfFirst { it == bubbleLetter }.takeIf { it >= 0 } ?: 0
-        val bubbleLabel = bubbleLetter ?: "All"
+        val fontSize = if (itemHeight < 14.dp) 8.sp else 10.sp
         val bubbleAlpha by animateFloatAsState(
-            targetValue = if (isInteracting) 1f else 0f,
+            targetValue = if (bubbleLabel != null) 1f else 0f,
             animationSpec = tween(durationMillis = 140),
             label = "alphabetBubbleAlpha"
         )
         val bubbleScale by animateFloatAsState(
-            targetValue = if (isInteracting) 1f else 0.82f,
+            targetValue = if (bubbleLabel != null) 1f else 0.82f,
             animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
             label = "alphabetBubbleScale"
         )
@@ -312,43 +315,17 @@ private fun AlphabetRail(
             label = "alphabetBubbleY"
         )
 
-        fun selectAt(y: Float) {
-            val index = floor((y - railPaddingPx) / itemHeightPx)
-                .toInt()
-                .coerceIn(0, items.lastIndex)
-            val letter = items[index]
-            if (index != activeIndex) {
-                activeIndex = index
-                activeLetter = letter
-                onLetterSelected(letter)
-            }
-        }
-
         Column(
             modifier = Modifier
                 .height(totalRailHeight)
                 .background(SurfaceDark.copy(alpha = 0.78f), RoundedCornerShape(18.dp))
-                .pointerInput(items, itemHeightPx, railPaddingPx) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        isInteracting = true
-                        selectAt(down.position.y)
-                        drag(down.id) { change ->
-                            selectAt(change.position.y)
-                            change.consume()
-                        }
-                        isInteracting = false
-                        activeIndex = -1
-                        activeLetter = null
-                    }
-                }
                 .padding(vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            items.forEach { letter ->
+            items.forEachIndexed { index, letter ->
                 val label = letter ?: "All"
-                val selected = selectedLetter == letter || activeLetter == letter
+                val selected = selectedLetter == letter
                 val scale by animateFloatAsState(
                     targetValue = if (selected) 1.12f else 1f,
                     animationSpec = tween(durationMillis = 120),
@@ -357,13 +334,19 @@ private fun AlphabetRail(
                 Box(
                     modifier = Modifier
                         .height(itemHeight)
-                        .width(if (letter == null) 28.dp else 22.dp)
+                        .width(if (letter == null) 34.dp else 26.dp)
                         .graphicsLayer {
                             scaleX = scale
                             scaleY = scale
                         }
                         .clip(CircleShape)
-                        .background(if (selected) Cyan500.copy(alpha = 0.22f) else Color.Transparent),
+                        .background(if (selected) Cyan500.copy(alpha = 0.22f) else Color.Transparent)
+                        .clickable {
+                            bubbleLabel = label
+                            bubbleIndex = index
+                            bubbleToken += 1
+                            onLetterSelected(letter)
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -377,7 +360,8 @@ private fun AlphabetRail(
             }
         }
 
-        if (bubbleAlpha > 0.01f) {
+        val visibleBubbleLabel = bubbleLabel
+        if (bubbleAlpha > 0.01f && visibleBubbleLabel != null) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -393,18 +377,79 @@ private fun AlphabetRail(
             ) {
                 Box(
                     modifier = Modifier
-                        .width(if (bubbleLabel == "All") 52.dp else 44.dp)
+                        .width(if (visibleBubbleLabel == "All") 52.dp else 44.dp)
                         .height(44.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = bubbleLabel,
+                        text = visibleBubbleLabel,
                         color = Color.Black,
-                        fontSize = if (bubbleLabel == "All") 14.sp else 20.sp,
+                        fontSize = if (visibleBubbleLabel == "All") 14.sp else 20.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LetterStepper(
+    selectedLetter: String?,
+    onLetterSelected: (String?) -> Unit,
+    bottomPadding: Dp,
+    modifier: Modifier = Modifier
+) {
+    val currentIndex = BROWSE_FILTERS.indexOf(selectedLetter).takeIf { it >= 0 } ?: 0
+    val canPrevious = currentIndex > 0
+    val canNext = currentIndex < BROWSE_FILTERS.lastIndex
+    val previousLetter = if (canPrevious) BROWSE_FILTERS[currentIndex - 1] else null
+    val nextLetter = if (canNext) BROWSE_FILTERS[currentIndex + 1] else null
+
+    Surface(
+        modifier = modifier.padding(bottom = bottomPadding + 12.dp),
+        shape = RoundedCornerShape(22.dp),
+        color = SurfaceDark.copy(alpha = 0.92f),
+        tonalElevation = 4.dp,
+        shadowElevation = 6.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .height(44.dp)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = { if (canPrevious) onLetterSelected(previousLetter) },
+                enabled = canPrevious,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    Icons.Filled.KeyboardArrowUp,
+                    contentDescription = "Previous letter",
+                    tint = if (canPrevious) Cyan500 else OnSurfaceDim.copy(alpha = 0.35f)
+                )
+            }
+            Text(
+                text = selectedLetter ?: "All",
+                color = Cyan500,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.widthIn(min = 32.dp)
+            )
+            IconButton(
+                onClick = { if (canNext) onLetterSelected(nextLetter) },
+                enabled = canNext,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    Icons.Filled.KeyboardArrowDown,
+                    contentDescription = "Next letter",
+                    tint = if (canNext) Cyan500 else OnSurfaceDim.copy(alpha = 0.35f)
+                )
             }
         }
     }
