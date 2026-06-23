@@ -327,12 +327,22 @@ fun MainScreen(
             track = track,
             onDismiss = { contextTrack = null },
             onPlayNext = {
-                mainVm.playerManager.playNext(track)
-                ToastManager.show("\"${track.displayTitle}\" will play next", ToastIcon.QUEUE)
+                val added = mainVm.playerManager.playNext(track)
+                if (added) {
+                    ToastManager.show("\"${track.displayTitle}\" will play next", ToastIcon.QUEUE)
+                } else {
+                    val message = if (isOnline) "Unable to queue track" else "Track is not cached for offline playback"
+                    ToastManager.show(message, ToastIcon.ERROR)
+                }
             },
             onAddToQueue = {
-                mainVm.addToQueue(track)
-                ToastManager.show("Added to queue", ToastIcon.QUEUE)
+                val added = mainVm.addToQueue(track)
+                if (added) {
+                    ToastManager.show("Added to queue", ToastIcon.QUEUE)
+                } else {
+                    val message = if (isOnline) "Unable to queue track" else "Track is not cached for offline playback"
+                    ToastManager.show(message, ToastIcon.ERROR)
+                }
             },
             onToggleFavorite = { mainVm.toggleFavorite(track.id) },
             onAddToPlaylist = {
@@ -391,14 +401,24 @@ fun MainScreen(
             },
             onPlayNext = {
                 if (collectionTracks.isNotEmpty()) {
-                    mainVm.playerManager.playNextMany(collectionTracks)
-                    ToastManager.show("${collectionTracks.size} tracks will play next", ToastIcon.QUEUE)
+                    val added = mainVm.playerManager.playNextMany(collectionTracks)
+                    if (added > 0) {
+                        ToastManager.show("$added tracks will play next", ToastIcon.QUEUE)
+                    } else {
+                        val message = if (isOnline) "Unable to queue tracks" else "No cached tracks available offline"
+                        ToastManager.show(message, ToastIcon.ERROR)
+                    }
                 }
             },
             onAddToQueue = {
                 if (collectionTracks.isNotEmpty()) {
-                    mainVm.playerManager.appendTracks(collectionTracks)
-                    ToastManager.show("Added ${collectionTracks.size} tracks to queue", ToastIcon.QUEUE)
+                    val added = mainVm.playerManager.appendTracks(collectionTracks)
+                    if (added > 0) {
+                        ToastManager.show("Added $added tracks to queue", ToastIcon.QUEUE)
+                    } else {
+                        val message = if (isOnline) "Unable to queue tracks" else "No cached tracks available offline"
+                        ToastManager.show(message, ToastIcon.ERROR)
+                    }
                 }
             },
             onAddToPlaylist = {

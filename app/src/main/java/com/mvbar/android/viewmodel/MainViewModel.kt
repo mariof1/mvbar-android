@@ -364,10 +364,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _playlistLoading.value = true
             try {
+                val cached = repo.getCachedPlaylistItems(playlist.id)
+                    ?.mapNotNull { it.toTrack() }
+                    .orEmpty()
+                if (cached.isNotEmpty()) _playlistTracks.value = cached
+                if (!NetworkMonitor.isOnline.value) return@launch
                 val resp = repo.getPlaylistItems(playlist.id)
                 _playlistTracks.value = resp.items.mapNotNull { it.toTrack() }
             } catch (e: Exception) {
                 DebugLog.e("Playlist", "Load items failed", e)
+                val cached = repo.getCachedPlaylistItems(playlist.id)
+                    ?.mapNotNull { it.toTrack() }
+                    .orEmpty()
+                if (cached.isNotEmpty()) _playlistTracks.value = cached
             } finally {
                 _playlistLoading.value = false
             }
@@ -604,7 +613,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     tracks.add(0, selectedTrack)
                 }
 
-                playerManager.playTracks(tracks, 0)
+                val started = playerManager.playTracks(tracks, 0)
+                if (!started) return@launch
 
                 // Enable shuffle mode
                 if (playerManager.state.value.playMode != PlayMode.SHUFFLE) {
@@ -614,7 +624,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         safety++
                     }
                 }
-                selectedTrack?.let { prefetchLyrics(it.id) }
+                playerManager.state.value.currentTrack?.takeIf { it.id > 0 }?.let { prefetchLyrics(it.id) }
             } catch (e: Exception) {
                 DebugLog.e("AllTracks", "Shuffle all failed", e)
             }
@@ -803,20 +813,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun playTrack(track: Track, queue: List<Track>? = null) {
         val tracks = queue ?: listOf(track)
         val idx = tracks.indexOf(track).coerceAtLeast(0)
-        playerManager.playTracks(tracks, idx)
+        val started = playerManager.playTracks(tracks, idx)
+        if (!started) return
+        val activeTrack = playerManager.state.value.currentTrack ?: track
         // Sync favorite state for the new track
-        playerManager.setFavorite(track.id in _favoriteIds.value)
+        playerManager.setFavorite(activeTrack.id in _favoriteIds.value)
         // Play recording is handled centrally by PlaybackService.onMediaItemTransition
         // Prefetch lyrics for the track
-        prefetchLyrics(track.id)
+        if (activeTrack.id > 0) prefetchLyrics(activeTrack.id)
         // If playing a single track (e.g. from search), fetch similar tracks as radio queue
-        if (tracks.size == 1 && track.id > 0) {
+        if (tracks.size == 1 && activeTrack.id > 0 && NetworkMonitor.isOnline.value) {
             viewModelScope.launch {
                 try {
-                    val resp = repo.getSimilarTracks(track.id)
+                    val resp = repo.getSimilarTracks(activeTrack.id)
                     if (resp.tracks.isNotEmpty()) {
                         playerManager.appendTracks(resp.tracks)
-                        DebugLog.i("Radio", "Appended ${resp.tracks.size} similar tracks for ${track.displayTitle}")
+                        DebugLog.i("Radio", "Appended ${resp.tracks.size} similar tracks for ${activeTrack.displayTitle}")
                     }
                 } catch (e: Exception) {
                     DebugLog.e("Radio", "Failed to fetch similar tracks", e)
@@ -849,7 +861,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         playerManager.setFavorite(currentTrack.id in _favoriteIds.value)
     }
 
-    fun addToQueue(track: Track) { playerManager.addToQueue(track) }
+    fun addToQueue(track: Track): Boolean = playerManager.addToQueue(track)
 
     /** Save current playback state for auto-resume */
     fun savePlaybackState() {

@@ -50,11 +50,25 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
 
     // ── Cached page reads ──
 
-    suspend fun getCachedArtists(limit: Int, offset: Int): List<Artist>? =
-        db?.browseDao()?.getArtists(limit, offset)?.map { it.toModel() }
+    suspend fun getCachedArtists(limit: Int, offset: Int, letter: String? = null): List<Artist>? {
+        val dao = db?.browseDao() ?: return null
+        val entities = if (letter == null) {
+            dao.getArtists(limit, offset)
+        } else {
+            dao.getArtistsByLetter(letter, limit, offset)
+        }
+        return entities.map { it.toModel() }
+    }
 
-    suspend fun getCachedAlbums(limit: Int, offset: Int): List<Album>? =
-        db?.browseDao()?.getAlbums(limit, offset)?.map { it.toModel() }
+    suspend fun getCachedAlbums(limit: Int, offset: Int, letter: String? = null): List<Album>? {
+        val dao = db?.browseDao() ?: return null
+        val entities = if (letter == null) {
+            dao.getAlbums(limit, offset)
+        } else {
+            dao.getAlbumsByLetter(letter, limit, offset)
+        }
+        return entities.map { it.toModel() }
+    }
 
     suspend fun getCachedGenres(limit: Int, offset: Int): List<Genre>? =
         db?.browseDao()?.getGenres(limit, offset)?.map { it.toModel() }
@@ -65,8 +79,14 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun getCachedLanguages(limit: Int, offset: Int): List<Language>? =
         db?.browseDao()?.getLanguages(limit, offset)?.map { it.toModel() }
 
-    suspend fun getCachedArtistCount(): Int = db?.browseDao()?.artistCount() ?: 0
-    suspend fun getCachedAlbumCount(): Int = db?.browseDao()?.albumCount() ?: 0
+    suspend fun getCachedArtistCount(letter: String? = null): Int {
+        val dao = db?.browseDao() ?: return 0
+        return if (letter == null) dao.artistCount() else dao.artistCountByLetter(letter)
+    }
+    suspend fun getCachedAlbumCount(letter: String? = null): Int {
+        val dao = db?.browseDao() ?: return 0
+        return if (letter == null) dao.albumCount() else dao.albumCountByLetter(letter)
+    }
     suspend fun getCachedGenreCount(): Int = db?.browseDao()?.genreCount() ?: 0
     suspend fun getCachedCountryCount(): Int = db?.browseDao()?.countryCount() ?: 0
     suspend fun getCachedLanguageCount(): Int = db?.browseDao()?.languageCount() ?: 0
@@ -75,6 +95,18 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
         db?.trackDao()?.getPage(limit, offset)?.map { it.toModel() }
 
     suspend fun getCachedTrackCount(): Int = db?.trackDao()?.count() ?: 0
+
+    suspend fun getCachedAlbumTracks(album: String): List<Track>? =
+        db?.trackDao()?.getByAlbum(album)?.map { it.toModel() }
+
+    suspend fun getCachedArtistTracks(artist: String): List<Track>? =
+        db?.trackDao()?.getByArtist(artist)?.map { it.toModel() }
+
+    suspend fun getCachedGenreTracks(genre: String, limit: Int, offset: Int): List<Track>? =
+        db?.trackDao()?.getByGenre(genre, limit, offset)?.map { it.toModel() }
+
+    suspend fun getCachedGenreTrackCount(genre: String): Int =
+        db?.trackDao()?.countByGenre(genre) ?: 0
 
     suspend fun getTracksByIds(ids: List<Int>): List<Track>? =
         db?.trackDao()?.getByIds(ids)?.map { it.toModel() }

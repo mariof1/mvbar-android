@@ -24,10 +24,17 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE genre = :genre LIMIT :limit OFFSET :offset")
     suspend fun getByGenre(genre: String, limit: Int, offset: Int): List<TrackEntity>
 
+    @Query("SELECT COUNT(*) FROM tracks WHERE genre = :genre")
+    suspend fun countByGenre(genre: String): Int
+
     @Query("SELECT * FROM tracks WHERE album = :album ORDER BY discNumber, trackNumber")
     suspend fun getByAlbum(album: String): List<TrackEntity>
 
-    @Query("SELECT * FROM tracks WHERE artist = :artist OR displayArtistName = :artist OR albumArtist = :artist")
+    @Query("""
+        SELECT * FROM tracks
+        WHERE artist = :artist OR displayArtistName = :artist OR albumArtist = :artist
+        ORDER BY album COLLATE NOCASE ASC, discNumber, trackNumber, title COLLATE NOCASE ASC
+    """)
     suspend fun getByArtist(artist: String): List<TrackEntity>
 
     @Query("SELECT COUNT(*) FROM tracks")

@@ -3,6 +3,7 @@ package com.mvbar.android.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
@@ -114,6 +115,92 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         const val PAGE_SIZE = 50
     }
 
+    private data class BrowsePage<T>(val items: List<T>, val total: Int)
+
+    private fun hasMore(offset: Int, fetched: Int, total: Int): Boolean =
+        if (total > 0) offset + fetched < total else fetched >= PAGE_SIZE
+
+    private suspend fun cachedArtistsPage(letter: String?, limit: Int, offset: Int): BrowsePage<Artist> =
+        BrowsePage(
+            repo.getCachedArtists(limit, offset, letter).orEmpty(),
+            repo.getCachedArtistCount(letter)
+        )
+
+    private suspend fun artistsPage(letter: String?, limit: Int, offset: Int): BrowsePage<Artist> {
+        if (NetworkMonitor.isOnline.value) {
+            try {
+                val response = repo.getArtists(limit, offset, letter)
+                return BrowsePage(response.artists, response.total)
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Artists API page failed, falling back to cache", e)
+            }
+        }
+        return cachedArtistsPage(letter, limit, offset)
+    }
+
+    private suspend fun cachedAlbumsPage(letter: String?, limit: Int, offset: Int): BrowsePage<Album> =
+        BrowsePage(
+            repo.getCachedAlbums(limit, offset, letter).orEmpty(),
+            repo.getCachedAlbumCount(letter)
+        )
+
+    private suspend fun albumsPage(letter: String?, limit: Int, offset: Int): BrowsePage<Album> {
+        if (NetworkMonitor.isOnline.value) {
+            try {
+                val response = repo.getAlbums(limit, offset, letter)
+                return BrowsePage(response.albums, response.total)
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Albums API page failed, falling back to cache", e)
+            }
+        }
+        return cachedAlbumsPage(letter, limit, offset)
+    }
+
+    private suspend fun cachedGenresPage(limit: Int, offset: Int): BrowsePage<Genre> =
+        BrowsePage(repo.getCachedGenres(limit, offset).orEmpty(), repo.getCachedGenreCount())
+
+    private suspend fun genresPage(limit: Int, offset: Int): BrowsePage<Genre> {
+        if (NetworkMonitor.isOnline.value) {
+            try {
+                val response = repo.getGenres(limit, offset)
+                return BrowsePage(response.genres, response.total)
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Genres API page failed, falling back to cache", e)
+            }
+        }
+        return cachedGenresPage(limit, offset)
+    }
+
+    private suspend fun cachedCountriesPage(limit: Int, offset: Int): BrowsePage<Country> =
+        BrowsePage(repo.getCachedCountries(limit, offset).orEmpty(), repo.getCachedCountryCount())
+
+    private suspend fun countriesPage(limit: Int, offset: Int): BrowsePage<Country> {
+        if (NetworkMonitor.isOnline.value) {
+            try {
+                val response = repo.getCountries(limit, offset)
+                return BrowsePage(response.countries, response.total)
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Countries API page failed, falling back to cache", e)
+            }
+        }
+        return cachedCountriesPage(limit, offset)
+    }
+
+    private suspend fun cachedLanguagesPage(limit: Int, offset: Int): BrowsePage<Language> =
+        BrowsePage(repo.getCachedLanguages(limit, offset).orEmpty(), repo.getCachedLanguageCount())
+
+    private suspend fun languagesPage(limit: Int, offset: Int): BrowsePage<Language> {
+        if (NetworkMonitor.isOnline.value) {
+            try {
+                val response = repo.getLanguages(limit, offset)
+                return BrowsePage(response.languages, response.total)
+            } catch (e: Exception) {
+                DebugLog.e("Browse", "Languages API page failed, falling back to cache", e)
+            }
+        }
+        return cachedLanguagesPage(limit, offset)
+    }
+
     fun loadAll(isRefresh: Boolean = false) {
         artistLetterJob?.cancel()
         albumLetterJob?.cancel()
@@ -125,86 +212,64 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 artistLetter = null,
                 albumLetter = null
             )
-            // Load from cache first
-            if (!isRefresh) {
-                val cachedArtists = try { repo.getCachedArtists(PAGE_SIZE, 0) } catch (_: Exception) { null }
-                val cachedAlbums = try { repo.getCachedAlbums(PAGE_SIZE, 0) } catch (_: Exception) { null }
-                val cachedGenres = try { repo.getCachedGenres(PAGE_SIZE, 0) } catch (_: Exception) { null }
-                val cachedCountries = try { repo.getCachedCountries(PAGE_SIZE, 0) } catch (_: Exception) { null }
-                val cachedLanguages = try { repo.getCachedLanguages(PAGE_SIZE, 0) } catch (_: Exception) { null }
-                val totalArtists = try { repo.getCachedArtistCount() } catch (_: Exception) { 0 }
-                val totalAlbums = try { repo.getCachedAlbumCount() } catch (_: Exception) { 0 }
-                val totalGenres = try { repo.getCachedGenreCount() } catch (_: Exception) { 0 }
-                val totalCountries = try { repo.getCachedCountryCount() } catch (_: Exception) { 0 }
-                val totalLanguages = try { repo.getCachedLanguageCount() } catch (_: Exception) { 0 }
-                if (!cachedArtists.isNullOrEmpty() || !cachedAlbums.isNullOrEmpty()) {
-                    _state.value = _state.value.copy(
-                        artists = cachedArtists ?: emptyList(),
-                        albums = cachedAlbums ?: emptyList(),
-                        genres = cachedGenres ?: emptyList(),
-                        countries = cachedCountries ?: emptyList(),
-                        languages = cachedLanguages ?: emptyList(),
-                        hasMoreArtists = (cachedArtists?.size ?: 0) < totalArtists,
-                        hasMoreAlbums = (cachedAlbums?.size ?: 0) < totalAlbums,
-                        hasMoreGenres = (cachedGenres?.size ?: 0) < totalGenres,
-                        hasMoreCountries = (cachedCountries?.size ?: 0) < totalCountries,
-                        hasMoreLanguages = (cachedLanguages?.size ?: 0) < totalLanguages,
-                        isLoading = false, isRefreshing = false
-                    )
-                }
-            }
-            // Then fetch from API
             try {
+                val offline = !NetworkMonitor.isOnline.value
+                if (!isRefresh || offline) {
+                    val cachedArtists = cachedArtistsPage(null, PAGE_SIZE, 0)
+                    val cachedAlbums = cachedAlbumsPage(null, PAGE_SIZE, 0)
+                    val cachedGenres = cachedGenresPage(PAGE_SIZE, 0)
+                    val cachedCountries = cachedCountriesPage(PAGE_SIZE, 0)
+                    val cachedLanguages = cachedLanguagesPage(PAGE_SIZE, 0)
+                    val hasCachedBrowse = cachedArtists.items.isNotEmpty() ||
+                        cachedAlbums.items.isNotEmpty() ||
+                        cachedGenres.items.isNotEmpty() ||
+                        cachedCountries.items.isNotEmpty() ||
+                        cachedLanguages.items.isNotEmpty()
+                    if (hasCachedBrowse || offline) {
+                        DebugLog.i("Browse", "Loaded cached browse root (offline=$offline)")
+                        _state.value = _state.value.copy(
+                            artists = cachedArtists.items,
+                            albums = cachedAlbums.items,
+                            genres = cachedGenres.items,
+                            countries = cachedCountries.items,
+                            languages = cachedLanguages.items,
+                            hasMoreArtists = hasMore(0, cachedArtists.items.size, cachedArtists.total),
+                            hasMoreAlbums = hasMore(0, cachedAlbums.items.size, cachedAlbums.total),
+                            hasMoreGenres = hasMore(0, cachedGenres.items.size, cachedGenres.total),
+                            hasMoreCountries = hasMore(0, cachedCountries.items.size, cachedCountries.total),
+                            hasMoreLanguages = hasMore(0, cachedLanguages.items.size, cachedLanguages.total),
+                            isLoading = false,
+                            isRefreshing = false
+                        )
+                    }
+                    if (offline) return@launch
+                }
+
                 DebugLog.i("Browse", "Loading artists, albums, genres...")
-                val artists = try {
-                    val r = repo.getArtists(PAGE_SIZE, 0)
-                    DebugLog.i("Browse", "Got ${r.artists.size} artists (total: ${r.total})")
-                    _state.value = _state.value.copy(hasMoreArtists = r.artists.size < r.total)
-                    r.artists
-                } catch (e: Exception) {
-                    DebugLog.e("Browse", "Artists failed", e)
-                    _state.value.artists.ifEmpty { emptyList() }
-                }
-                val albums = try {
-                    val r = repo.getAlbums(PAGE_SIZE, 0)
-                    DebugLog.i("Browse", "Got ${r.albums.size} albums (total: ${r.total})")
-                    _state.value = _state.value.copy(hasMoreAlbums = r.albums.size < r.total)
-                    r.albums
-                } catch (e: Exception) {
-                    DebugLog.e("Browse", "Albums failed", e)
-                    _state.value.albums.ifEmpty { emptyList() }
-                }
-                val genres = try {
-                    val r = repo.getGenres(PAGE_SIZE, 0)
-                    DebugLog.i("Browse", "Got ${r.genres.size} genres (total: ${r.total})")
-                    _state.value = _state.value.copy(hasMoreGenres = r.genres.size >= PAGE_SIZE)
-                    r.genres
-                } catch (e: Exception) {
-                    DebugLog.e("Browse", "Genres failed", e)
-                    _state.value.genres.ifEmpty { emptyList() }
-                }
-                val countries = try {
-                    val r = repo.getCountries(PAGE_SIZE, 0)
-                    DebugLog.i("Browse", "Got ${r.countries.size} countries (total: ${r.total})")
-                    _state.value = _state.value.copy(hasMoreCountries = r.countries.size >= PAGE_SIZE)
-                    r.countries
-                } catch (e: Exception) {
-                    DebugLog.e("Browse", "Countries failed", e)
-                    _state.value.countries.ifEmpty { emptyList() }
-                }
-                val languages = try {
-                    val r = repo.getLanguages(PAGE_SIZE, 0)
-                    DebugLog.i("Browse", "Got ${r.languages.size} languages (total: ${r.total})")
-                    _state.value = _state.value.copy(hasMoreLanguages = r.languages.size >= PAGE_SIZE)
-                    r.languages
-                } catch (e: Exception) {
-                    DebugLog.e("Browse", "Languages failed", e)
-                    _state.value.languages.ifEmpty { emptyList() }
-                }
+                val artists = artistsPage(null, PAGE_SIZE, 0)
+                DebugLog.i("Browse", "Got ${artists.items.size} artists (total: ${artists.total})")
+                val albums = albumsPage(null, PAGE_SIZE, 0)
+                DebugLog.i("Browse", "Got ${albums.items.size} albums (total: ${albums.total})")
+                val genres = genresPage(PAGE_SIZE, 0)
+                DebugLog.i("Browse", "Got ${genres.items.size} genres (total: ${genres.total})")
+                val countries = countriesPage(PAGE_SIZE, 0)
+                DebugLog.i("Browse", "Got ${countries.items.size} countries (total: ${countries.total})")
+                val languages = languagesPage(PAGE_SIZE, 0)
+                DebugLog.i("Browse", "Got ${languages.items.size} languages (total: ${languages.total})")
+
                 _state.value = _state.value.copy(
-                    artists = artists, albums = albums, genres = genres,
-                    countries = countries, languages = languages,
-                    isLoading = false, isRefreshing = false
+                    artists = artists.items,
+                    albums = albums.items,
+                    genres = genres.items,
+                    countries = countries.items,
+                    languages = languages.items,
+                    hasMoreArtists = hasMore(0, artists.items.size, artists.total),
+                    hasMoreAlbums = hasMore(0, albums.items.size, albums.total),
+                    hasMoreGenres = hasMore(0, genres.items.size, genres.total),
+                    hasMoreCountries = hasMore(0, countries.items.size, countries.total),
+                    hasMoreLanguages = hasMore(0, languages.items.size, languages.total),
+                    isLoading = false,
+                    isRefreshing = false
                 )
             } catch (e: Exception) {
                 DebugLog.e("Browse", "loadAll failed", e)
@@ -223,11 +288,11 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = s.copy(isLoadingMore = true)
             try {
                 val offset = s.artists.size
-                val r = repo.getArtists(PAGE_SIZE, offset, s.artistLetter)
-                DebugLog.i("Browse", "Loaded ${r.artists.size} more artists (letter=${s.artistLetter ?: "All"}, offset=$offset, total=${r.total})")
+                val page = artistsPage(s.artistLetter, PAGE_SIZE, offset)
+                DebugLog.i("Browse", "Loaded ${page.items.size} more artists (letter=${s.artistLetter ?: "All"}, offset=$offset, total=${page.total})")
                 _state.value = _state.value.copy(
-                    artists = s.artists + r.artists,
-                    hasMoreArtists = offset + r.artists.size < r.total,
+                    artists = s.artists + page.items,
+                    hasMoreArtists = hasMore(offset, page.items.size, page.total),
                     isLoadingMore = false
                 )
             } catch (e: Exception) {
@@ -244,11 +309,11 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = s.copy(isLoadingMore = true)
             try {
                 val offset = s.albums.size
-                val r = repo.getAlbums(PAGE_SIZE, offset, s.albumLetter)
-                DebugLog.i("Browse", "Loaded ${r.albums.size} more albums (letter=${s.albumLetter ?: "All"}, offset=$offset, total=${r.total})")
+                val page = albumsPage(s.albumLetter, PAGE_SIZE, offset)
+                DebugLog.i("Browse", "Loaded ${page.items.size} more albums (letter=${s.albumLetter ?: "All"}, offset=$offset, total=${page.total})")
                 _state.value = _state.value.copy(
-                    albums = s.albums + r.albums,
-                    hasMoreAlbums = offset + r.albums.size < r.total,
+                    albums = s.albums + page.items,
+                    hasMoreAlbums = hasMore(offset, page.items.size, page.total),
                     isLoadingMore = false
                 )
             } catch (e: Exception) {
@@ -264,11 +329,12 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.value = s.copy(isLoadingMore = true)
             try {
-                val r = repo.getGenres(PAGE_SIZE, s.genres.size)
-                DebugLog.i("Browse", "Loaded ${r.genres.size} more genres (offset ${s.genres.size})")
+                val offset = s.genres.size
+                val page = genresPage(PAGE_SIZE, offset)
+                DebugLog.i("Browse", "Loaded ${page.items.size} more genres (offset $offset, total=${page.total})")
                 _state.value = _state.value.copy(
-                    genres = s.genres + r.genres,
-                    hasMoreGenres = r.genres.size >= PAGE_SIZE,
+                    genres = s.genres + page.items,
+                    hasMoreGenres = hasMore(offset, page.items.size, page.total),
                     isLoadingMore = false
                 )
             } catch (e: Exception) {
@@ -284,11 +350,12 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.value = s.copy(isLoadingMore = true)
             try {
-                val r = repo.getCountries(PAGE_SIZE, s.countries.size)
-                DebugLog.i("Browse", "Loaded ${r.countries.size} more countries (offset ${s.countries.size})")
+                val offset = s.countries.size
+                val page = countriesPage(PAGE_SIZE, offset)
+                DebugLog.i("Browse", "Loaded ${page.items.size} more countries (offset $offset, total=${page.total})")
                 _state.value = _state.value.copy(
-                    countries = s.countries + r.countries,
-                    hasMoreCountries = r.countries.size >= PAGE_SIZE,
+                    countries = s.countries + page.items,
+                    hasMoreCountries = hasMore(offset, page.items.size, page.total),
                     isLoadingMore = false
                 )
             } catch (e: Exception) {
@@ -304,11 +371,12 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.value = s.copy(isLoadingMore = true)
             try {
-                val r = repo.getLanguages(PAGE_SIZE, s.languages.size)
-                DebugLog.i("Browse", "Loaded ${r.languages.size} more languages (offset ${s.languages.size})")
+                val offset = s.languages.size
+                val page = languagesPage(PAGE_SIZE, offset)
+                DebugLog.i("Browse", "Loaded ${page.items.size} more languages (offset $offset, total=${page.total})")
                 _state.value = _state.value.copy(
-                    languages = s.languages + r.languages,
-                    hasMoreLanguages = r.languages.size >= PAGE_SIZE,
+                    languages = s.languages + page.items,
+                    hasMoreLanguages = hasMore(offset, page.items.size, page.total),
                     isLoadingMore = false
                 )
             } catch (e: Exception) {
@@ -334,11 +402,11 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 error = null
             )
             try {
-                val r = repo.getArtists(PAGE_SIZE, 0, normalized)
-                DebugLog.i("Browse", "Selected artist letter ${normalized ?: "All"}: ${r.artists.size}/${r.total}")
+                val page = artistsPage(normalized, PAGE_SIZE, 0)
+                DebugLog.i("Browse", "Selected artist letter ${normalized ?: "All"}: ${page.items.size}/${page.total}")
                 _state.value = _state.value.copy(
-                    artists = r.artists,
-                    hasMoreArtists = r.artists.size < r.total,
+                    artists = page.items,
+                    hasMoreArtists = hasMore(0, page.items.size, page.total),
                     isLoadingMore = false
                 )
             } catch (e: Exception) {
@@ -362,11 +430,11 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 error = null
             )
             try {
-                val r = repo.getAlbums(PAGE_SIZE, 0, normalized)
-                DebugLog.i("Browse", "Selected album letter ${normalized ?: "All"}: ${r.albums.size}/${r.total}")
+                val page = albumsPage(normalized, PAGE_SIZE, 0)
+                DebugLog.i("Browse", "Selected album letter ${normalized ?: "All"}: ${page.items.size}/${page.total}")
                 _state.value = _state.value.copy(
-                    albums = r.albums,
-                    hasMoreAlbums = r.albums.size < r.total,
+                    albums = page.items,
+                    hasMoreAlbums = hasMore(0, page.items.size, page.total),
                     isLoadingMore = false
                 )
             } catch (e: Exception) {
@@ -393,48 +461,65 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         currentArtistId = artist.id
         viewModelScope.launch {
             try {
-                artist.id?.let { id ->
-                    DebugLog.i("Browse", "Loading artist detail for id=$id")
-                    // Load tracks and albums in parallel
-                    launch {
-                        try {
-                            val response = repo.getArtistTracks(id, PAGE_SIZE, 0)
-                            _artistTracks.value = response.tracks
-                            _hasMoreArtistTracks.value = response.tracks.size >= PAGE_SIZE
-                            if (response.tracks.isNotEmpty()) {
-                                val current = _selectedArtist.value ?: artist
-                                if (current.trackCount <= 0) {
-                                    _selectedArtist.value = current.copy(trackCount = response.tracks.size)
-                                }
+                val id = artist.id
+                if (id == null) {
+                    val cached = repo.getCachedArtistTracks(artist.name).orEmpty()
+                    _artistTracks.value = cached.take(PAGE_SIZE)
+                    _hasMoreArtistTracks.value = cached.size > PAGE_SIZE
+                    return@launch
+                }
+                DebugLog.i("Browse", "Loading artist detail for id=$id")
+                // Load tracks and albums in parallel
+                launch {
+                    try {
+                        if (!NetworkMonitor.isOnline.value) {
+                            val cached = repo.getCachedArtistTracks(artist.name).orEmpty()
+                            _artistTracks.value = cached.take(PAGE_SIZE)
+                            _hasMoreArtistTracks.value = cached.size > PAGE_SIZE
+                            return@launch
+                        }
+                        val response = repo.getArtistTracks(id, PAGE_SIZE, 0)
+                        _artistTracks.value = response.tracks
+                        _hasMoreArtistTracks.value = response.tracks.size >= PAGE_SIZE
+                        if (response.tracks.isNotEmpty()) {
+                            val current = _selectedArtist.value ?: artist
+                            if (current.trackCount <= 0) {
+                                _selectedArtist.value = current.copy(trackCount = response.tracks.size)
                             }
-                        } catch (e: Exception) {
-                            DebugLog.e("Browse", "Artist tracks failed", e)
+                        }
+                    } catch (e: Exception) {
+                        DebugLog.e("Browse", "Artist tracks failed", e)
+                        val cached = repo.getCachedArtistTracks(artist.name).orEmpty()
+                        if (cached.isNotEmpty()) {
+                            _artistTracks.value = cached.take(PAGE_SIZE)
+                            _hasMoreArtistTracks.value = cached.size > PAGE_SIZE
                         }
                     }
-                    launch {
-                        try {
-                            val detail = repo.getArtistDetail(id)
-                            _artistAlbums.value = detail.albums
-                            _artistAppearsOn.value = detail.appearsOn
-                            val current = _selectedArtist.value ?: artist
-                            val detailArtist = detail.artist
-                            _selectedArtist.value = current.copy(
-                                name = detailArtist?.name?.takeIf { it.isNotBlank() }
-                                    ?: current.name.ifBlank { artist.name },
-                                trackCount = maxOf(
-                                    current.trackCount,
-                                    detailArtist?.trackCount ?: 0
-                                ),
-                                albumCount = maxOf(
-                                    current.albumCount,
-                                    detailArtist?.albumCount ?: 0,
-                                    detail.albums.size
-                                ),
-                                artPath = detailArtist?.artPath ?: current.artPath ?: artist.artPath
-                            )
-                        } catch (e: Exception) {
-                            DebugLog.e("Browse", "Artist detail failed", e)
-                        }
+                }
+                launch {
+                    try {
+                        if (!NetworkMonitor.isOnline.value) return@launch
+                        val detail = repo.getArtistDetail(id)
+                        _artistAlbums.value = detail.albums
+                        _artistAppearsOn.value = detail.appearsOn
+                        val current = _selectedArtist.value ?: artist
+                        val detailArtist = detail.artist
+                        _selectedArtist.value = current.copy(
+                            name = detailArtist?.name?.takeIf { it.isNotBlank() }
+                                ?: current.name.ifBlank { artist.name },
+                            trackCount = maxOf(
+                                current.trackCount,
+                                detailArtist?.trackCount ?: 0
+                            ),
+                            albumCount = maxOf(
+                                current.albumCount,
+                                detailArtist?.albumCount ?: 0,
+                                detail.albums.size
+                            ),
+                            artPath = detailArtist?.artPath ?: current.artPath ?: artist.artPath
+                        )
+                    } catch (e: Exception) {
+                        DebugLog.e("Browse", "Artist detail failed", e)
                     }
                 }
             } catch (e: Exception) {
@@ -450,12 +535,28 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             _isLoadingMoreArtistTracks.value = true
             try {
                 val offset = _artistTracks.value.size
+                if (!NetworkMonitor.isOnline.value) {
+                    val artistName = _selectedArtist.value?.name.orEmpty()
+                    val cached = repo.getCachedArtistTracks(artistName).orEmpty()
+                    val next = cached.drop(offset).take(PAGE_SIZE)
+                    _artistTracks.value = _artistTracks.value + next
+                    _hasMoreArtistTracks.value = offset + next.size < cached.size
+                    return@launch
+                }
                 val response = repo.getArtistTracks(id, PAGE_SIZE, offset)
                 DebugLog.i("Browse", "Loaded ${response.tracks.size} more artist tracks (offset $offset)")
                 _artistTracks.value = _artistTracks.value + response.tracks
                 _hasMoreArtistTracks.value = response.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more artist tracks failed", e)
+                val artistName = _selectedArtist.value?.name.orEmpty()
+                val offset = _artistTracks.value.size
+                val cached = repo.getCachedArtistTracks(artistName).orEmpty()
+                val next = cached.drop(offset).take(PAGE_SIZE)
+                if (next.isNotEmpty()) {
+                    _artistTracks.value = _artistTracks.value + next
+                    _hasMoreArtistTracks.value = offset + next.size < cached.size
+                }
             } finally {
                 _isLoadingMoreArtistTracks.value = false
             }
@@ -465,6 +566,12 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     fun loadAlbumTracks(albumName: String) {
         viewModelScope.launch {
             try {
+                if (!NetworkMonitor.isOnline.value) {
+                    val cached = repo.getCachedAlbumTracks(albumName).orEmpty()
+                    _albumTracks.value = cached
+                    _selectedAlbum.value = _state.value.albums.firstOrNull { it.displayName == albumName }
+                    return@launch
+                }
                 DebugLog.i("Browse", "Loading album tracks for '$albumName'")
                 val response: AlbumDetailResponse = repo.getAlbumTracks(albumName)
                 DebugLog.i("Browse", "Got ${response.tracks.size} tracks for album")
@@ -472,6 +579,11 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 _selectedAlbum.value = response.album
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Album tracks failed for '$albumName'", e)
+                val cached = repo.getCachedAlbumTracks(albumName).orEmpty()
+                if (cached.isNotEmpty()) {
+                    _albumTracks.value = cached
+                    _selectedAlbum.value = _state.value.albums.firstOrNull { it.displayName == albumName }
+                }
             }
         }
     }
@@ -483,6 +595,13 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             _genreTracks.value = emptyList()
             _hasMoreGenreTracks.value = true
             try {
+                if (!NetworkMonitor.isOnline.value) {
+                    val cached = repo.getCachedGenreTracks(genreName, PAGE_SIZE, 0).orEmpty()
+                    val total = repo.getCachedGenreTrackCount(genreName)
+                    _genreTracks.value = cached
+                    _hasMoreGenreTracks.value = hasMore(0, cached.size, total)
+                    return@launch
+                }
                 DebugLog.i("Browse", "Loading genre tracks for '$genreName'")
                 val response = repo.getGenreTracks(genreName, PAGE_SIZE, 0)
                 DebugLog.i("Browse", "Got ${response.tracks.size} tracks for genre '$genreName'")
@@ -490,6 +609,12 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 _hasMoreGenreTracks.value = response.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Genre tracks failed for '$genreName'", e)
+                val cached = repo.getCachedGenreTracks(genreName, PAGE_SIZE, 0).orEmpty()
+                if (cached.isNotEmpty()) {
+                    val total = repo.getCachedGenreTrackCount(genreName)
+                    _genreTracks.value = cached
+                    _hasMoreGenreTracks.value = hasMore(0, cached.size, total)
+                }
             } finally {
                 _genreLoading.value = false
             }
@@ -502,12 +627,26 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             _isLoadingMoreGenreTracks.value = true
             try {
                 val offset = _genreTracks.value.size
+                if (!NetworkMonitor.isOnline.value) {
+                    val cached = repo.getCachedGenreTracks(currentGenreName, PAGE_SIZE, offset).orEmpty()
+                    val total = repo.getCachedGenreTrackCount(currentGenreName)
+                    _genreTracks.value = _genreTracks.value + cached
+                    _hasMoreGenreTracks.value = hasMore(offset, cached.size, total)
+                    return@launch
+                }
                 val response = repo.getGenreTracks(currentGenreName, PAGE_SIZE, offset)
                 DebugLog.i("Browse", "Loaded ${response.tracks.size} more genre tracks (offset $offset)")
                 _genreTracks.value = _genreTracks.value + response.tracks
                 _hasMoreGenreTracks.value = response.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more genre tracks failed", e)
+                val offset = _genreTracks.value.size
+                val cached = repo.getCachedGenreTracks(currentGenreName, PAGE_SIZE, offset).orEmpty()
+                if (cached.isNotEmpty()) {
+                    val total = repo.getCachedGenreTrackCount(currentGenreName)
+                    _genreTracks.value = _genreTracks.value + cached
+                    _hasMoreGenreTracks.value = hasMore(offset, cached.size, total)
+                }
             } finally {
                 _isLoadingMoreGenreTracks.value = false
             }

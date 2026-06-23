@@ -19,6 +19,7 @@ import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.google.android.gms.common.images.WebImage
 import com.google.android.gms.cast.MediaMetadata as CastMediaMetadata
+import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.debug.DebugLog
@@ -525,31 +526,97 @@ class PlayerManager private constructor(private val context: Context) {
         )
     }
 
+    private data class QueueStart(val tracks: List<Track>, val startIndex: Int)
+
+    private fun playbackQueueForCurrentNetwork(tracks: List<Track>, startIndex: Int): QueueStart? {
+        val safeStartIndex = startIndex.coerceIn(tracks.indices)
+        val isSpecialPlayback = tracks.any { it.id < 0 }
+        if (NetworkMonitor.isOnline.value || isSpecialPlayback) {
+            return QueueStart(tracks, safeStartIndex)
+        }
+
+        val playable = tracks.filter { track -> track.id > 0 && AudioCacheManager.isTrackCached(track.id) }
+        val skipped = tracks.size - playable.size
+        if (skipped > 0) {
+            DebugLog.i("Player", "Offline queue skipped $skipped uncached music tracks")
+        }
+        if (playable.isEmpty()) {
+            DebugLog.w("Player", "Offline queue has no cached music tracks to play")
+            return null
+        }
+
+        val requested = tracks.getOrNull(safeStartIndex)
+        val requestedIndex = requested?.let { selected ->
+            playable.indexOfFirst { it.id == selected.id }
+        } ?: -1
+        val adjustedStartIndex = if (requestedIndex >= 0) {
+            requestedIndex
+        } else {
+            val nextCached = tracks.asSequence()
+                .drop(safeStartIndex + 1)
+                .firstOrNull { it.id > 0 && AudioCacheManager.isTrackCached(it.id) }
+            nextCached?.let { next ->
+                playable.indexOfFirst { it.id == next.id }
+            }?.takeIf { it >= 0 } ?: 0
+        }
+
+        return QueueStart(playable, adjustedStartIndex)
+    }
+
+    private fun queueableMusicTracks(tracks: List<Track>): List<Track> {
+        val playable = tracks.filter { track ->
+            track.id > 0 && (NetworkMonitor.isOnline.value || AudioCacheManager.isTrackCached(track.id))
+        }
+        val skipped = tracks.size - playable.size
+        if (skipped > 0) {
+            DebugLog.i("Player", "Skipped $skipped tracks that cannot be queued while offline")
+        }
+        return playable
+    }
+
+    private fun musicMediaItem(track: Track): MediaItem {
+        val streamUrl = ApiClient.streamUrl(track.id)
+        val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+        return MediaItem.Builder()
+            .setUri(streamUrl)
+            .setMediaId(track.id.toString())
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.displayTitle)
+                    .setArtist(track.displayArtist)
+                    .setArtworkUri(ArtworkProvider.buildUri(artUrl))
+                    .build()
+            )
+            .build()
+    }
+
     fun playTracks(
         tracks: List<Track>,
         startIndex: Int = 0,
         customStreamUrls: Map<Int, String> = emptyMap(),
         customArtUrls: Map<Int, String> = emptyMap(),
         customResumePositions: Map<Int, Long> = emptyMap()
-    ) {
+    ): Boolean {
         val ctrl = controller ?: run {
             DebugLog.e("Player", "Controller is null, cannot play")
-            return
+            return false
         }
         if (tracks.isEmpty()) {
             DebugLog.w("Player", "playTracks called with an empty track list")
-            return
+            return false
         }
-        val safeStartIndex = startIndex.coerceIn(tracks.indices)
+        val queueStart = playbackQueueForCurrentNetwork(tracks, startIndex) ?: return false
+        val playbackTracks = queueStart.tracks
+        val safeStartIndex = queueStart.startIndex
         _queue.clear()
-        _queue.addAll(tracks)
+        _queue.addAll(playbackTracks)
         _customArtUrls = customArtUrls
-        _isAudiobookMode = customArtUrls.isNotEmpty() && tracks.any { it.id < 0 && customArtUrls.containsKey(it.id) }
-        val isSpecialPlayback = tracks.any { it.id < 0 }
+        _isAudiobookMode = customArtUrls.isNotEmpty() && playbackTracks.any { it.id < 0 && customArtUrls.containsKey(it.id) }
+        val isSpecialPlayback = playbackTracks.any { it.id < 0 }
 
-        DebugLog.i("Player", "Playing ${tracks.size} tracks from index $safeStartIndex")
+        DebugLog.i("Player", "Playing ${playbackTracks.size} tracks from index $safeStartIndex")
 
-        val items = tracks.map { track ->
+        val items = playbackTracks.map { track ->
             val isPodcast = track.id < 0
             val streamUrl = customStreamUrls[track.id]
                 ?: if (isPodcast) ApiClient.episodeStreamUrl(-track.id) else ApiClient.streamUrl(track.id)
@@ -611,108 +678,70 @@ class PlayerManager private constructor(private val context: Context) {
         }
 
         _state.value = _state.value.copy(
-            queue = tracks.toList(),
+            queue = playbackTracks.toList(),
             queueIndex = safeStartIndex,
-            currentTrack = tracks.getOrNull(safeStartIndex),
+            currentTrack = playbackTracks.getOrNull(safeStartIndex),
             playMode = if (isSpecialPlayback) PlayMode.NORMAL else _state.value.playMode,
             isAudiobookMode = _isAudiobookMode,
             isPodcastModeOverride = isSpecialPlayback && !_isAudiobookMode,
             isCasting = keepCasting || _state.value.isCasting,
-            artworkUrl = artworkUrlForTrack(tracks.getOrNull(safeStartIndex))
+            artworkUrl = artworkUrlForTrack(playbackTracks.getOrNull(safeStartIndex))
         )
         if (keepCasting) {
             playCastQueueIndex(safeStartIndex)
         }
         // Prefetch is handled by onMediaItemTransition listener — no need to call here
+        return true
     }
 
-    fun addToQueue(track: Track) {
-        val ctrl = controller ?: return
-        _queue.add(track)
-        val streamUrl = ApiClient.streamUrl(track.id)
-        val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
-        val item = MediaItem.Builder()
-            .setUri(streamUrl)
-            .setMediaId(track.id.toString())
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(track.displayTitle)
-                    .setArtist(track.displayArtist)
-                    .setArtworkUri(ArtworkProvider.buildUri(artUrl))
-                    .build()
-            )
-            .build()
+    fun addToQueue(track: Track): Boolean {
+        val ctrl = controller ?: return false
+        val playable = queueableMusicTracks(listOf(track)).firstOrNull() ?: return false
+        _queue.add(playable)
+        val item = musicMediaItem(playable)
         ctrl.addMediaItem(item)
         _state.value = _state.value.copy(queue = _queue.toList())
+        return true
     }
 
     /** Append multiple tracks to the end of the queue (e.g. similar tracks radio) */
-    fun appendTracks(tracks: List<Track>) {
-        val ctrl = controller ?: return
-        val items = tracks.map { track ->
-            val streamUrl = ApiClient.streamUrl(track.id)
-            val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+    fun appendTracks(tracks: List<Track>): Int {
+        val ctrl = controller ?: return 0
+        val playableTracks = queueableMusicTracks(tracks)
+        if (playableTracks.isEmpty()) return 0
+        val items = playableTracks.map { track ->
             _queue.add(track)
-            MediaItem.Builder()
-                .setUri(streamUrl)
-                .setMediaId(track.id.toString())
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(track.displayTitle)
-                        .setArtist(track.displayArtist)
-                        .setArtworkUri(ArtworkProvider.buildUri(artUrl))
-                        .build()
-                )
-                .build()
+            musicMediaItem(track)
         }
         ctrl.addMediaItems(items)
         _state.value = _state.value.copy(queue = _queue.toList())
+        return playableTracks.size
     }
 
-    fun playNext(track: Track) {
-        val ctrl = controller ?: return
+    fun playNext(track: Track): Boolean {
+        val ctrl = controller ?: return false
+        val playable = queueableMusicTracks(listOf(track)).firstOrNull() ?: return false
         val insertAt = (ctrl.currentMediaItemIndex + 1).coerceAtMost(_queue.size)
-        _queue.add(insertAt, track)
-        val streamUrl = ApiClient.streamUrl(track.id)
-        val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
-        val item = MediaItem.Builder()
-            .setUri(streamUrl)
-            .setMediaId(track.id.toString())
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(track.displayTitle)
-                    .setArtist(track.displayArtist)
-                    .setArtworkUri(ArtworkProvider.buildUri(artUrl))
-                    .build()
-            )
-            .build()
+        _queue.add(insertAt, playable)
+        val item = musicMediaItem(playable)
         ctrl.addMediaItem(insertAt, item)
         _state.value = _state.value.copy(queue = _queue.toList())
+        return true
     }
 
     /** Insert multiple tracks right after the current one, preserving order. */
-    fun playNextMany(tracks: List<Track>) {
-        val ctrl = controller ?: return
-        if (tracks.isEmpty()) return
+    fun playNextMany(tracks: List<Track>): Int {
+        val ctrl = controller ?: return 0
+        val playableTracks = queueableMusicTracks(tracks)
+        if (playableTracks.isEmpty()) return 0
         val baseIndex = (ctrl.currentMediaItemIndex + 1).coerceAtMost(_queue.size)
-        val items = tracks.mapIndexed { offset, track ->
+        val items = playableTracks.mapIndexed { offset, track ->
             _queue.add(baseIndex + offset, track)
-            val streamUrl = ApiClient.streamUrl(track.id)
-            val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
-            MediaItem.Builder()
-                .setUri(streamUrl)
-                .setMediaId(track.id.toString())
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(track.displayTitle)
-                        .setArtist(track.displayArtist)
-                        .setArtworkUri(ArtworkProvider.buildUri(artUrl))
-                        .build()
-                )
-                .build()
+            musicMediaItem(track)
         }
         ctrl.addMediaItems(baseIndex, items)
         _state.value = _state.value.copy(queue = _queue.toList())
+        return playableTracks.size
     }
 
     fun removeFromQueue(index: Int) {

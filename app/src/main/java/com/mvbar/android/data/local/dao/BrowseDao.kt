@@ -13,8 +13,36 @@ interface BrowseDao {
     @Query("SELECT * FROM artists ORDER BY name COLLATE NOCASE ASC LIMIT :limit OFFSET :offset")
     suspend fun getArtists(limit: Int, offset: Int): List<ArtistEntity>
 
+    @Query("""
+        SELECT * FROM artists
+        WHERE (
+            (:letter = '#' AND (
+                TRIM(name) = ''
+                OR UPPER(SUBSTR(TRIM(name), 1, 1)) < 'A'
+                OR UPPER(SUBSTR(TRIM(name), 1, 1)) > 'Z'
+            ))
+            OR (:letter != '#' AND UPPER(SUBSTR(TRIM(name), 1, 1)) = :letter)
+        )
+        ORDER BY name COLLATE NOCASE ASC
+        LIMIT :limit OFFSET :offset
+    """)
+    suspend fun getArtistsByLetter(letter: String, limit: Int, offset: Int): List<ArtistEntity>
+
     @Query("SELECT COUNT(*) FROM artists")
     suspend fun artistCount(): Int
+
+    @Query("""
+        SELECT COUNT(*) FROM artists
+        WHERE (
+            (:letter = '#' AND (
+                TRIM(name) = ''
+                OR UPPER(SUBSTR(TRIM(name), 1, 1)) < 'A'
+                OR UPPER(SUBSTR(TRIM(name), 1, 1)) > 'Z'
+            ))
+            OR (:letter != '#' AND UPPER(SUBSTR(TRIM(name), 1, 1)) = :letter)
+        )
+    """)
+    suspend fun artistCountByLetter(letter: String): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertArtists(artists: List<ArtistEntity>)
@@ -35,8 +63,36 @@ interface BrowseDao {
     @Query("SELECT * FROM albums ORDER BY displayName COLLATE NOCASE ASC LIMIT :limit OFFSET :offset")
     suspend fun getAlbums(limit: Int, offset: Int): List<AlbumEntity>
 
+    @Query("""
+        SELECT * FROM albums
+        WHERE (
+            (:letter = '#' AND (
+                TRIM(displayName) = ''
+                OR UPPER(SUBSTR(TRIM(displayName), 1, 1)) < 'A'
+                OR UPPER(SUBSTR(TRIM(displayName), 1, 1)) > 'Z'
+            ))
+            OR (:letter != '#' AND UPPER(SUBSTR(TRIM(displayName), 1, 1)) = :letter)
+        )
+        ORDER BY displayName COLLATE NOCASE ASC
+        LIMIT :limit OFFSET :offset
+    """)
+    suspend fun getAlbumsByLetter(letter: String, limit: Int, offset: Int): List<AlbumEntity>
+
     @Query("SELECT COUNT(*) FROM albums")
     suspend fun albumCount(): Int
+
+    @Query("""
+        SELECT COUNT(*) FROM albums
+        WHERE (
+            (:letter = '#' AND (
+                TRIM(displayName) = ''
+                OR UPPER(SUBSTR(TRIM(displayName), 1, 1)) < 'A'
+                OR UPPER(SUBSTR(TRIM(displayName), 1, 1)) > 'Z'
+            ))
+            OR (:letter != '#' AND UPPER(SUBSTR(TRIM(displayName), 1, 1)) = :letter)
+        )
+    """)
+    suspend fun albumCountByLetter(letter: String): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAlbums(albums: List<AlbumEntity>)
