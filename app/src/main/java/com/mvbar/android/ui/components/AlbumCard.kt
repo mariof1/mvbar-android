@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.api.ApiClient
@@ -29,10 +30,12 @@ fun AlbumCard(
     album: Album,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onLongPress: (() -> Unit)? = null
+    onLongPress: (() -> Unit)? = null,
+    isAvailable: Boolean = true
 ) {
     Column(
         modifier = modifier
+            .graphicsLayer { alpha = if (isAvailable) 1f else 0.38f }
             .clip(RoundedCornerShape(12.dp))
             .combinedClickable(
                 onClick = onClick,

@@ -138,6 +138,65 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
         }
     }
 
+    suspend fun searchCached(query: String, limit: Int = 50, offset: Int = 0): SearchResults {
+        val database = db ?: return SearchResults(ok = true)
+        val tracks = database.trackDao().search(query, limit, offset).map { it.toModel() }
+        if (offset > 0) return SearchResults(ok = true, hits = tracks)
+
+        val artists = database.browseDao().searchArtists(query, 8).map { entity ->
+            SearchArtist(
+                id = entity.artistId ?: 0,
+                name = entity.name,
+                artPath = entity.artPath,
+                trackCount = entity.trackCount,
+                albumCount = entity.albumCount
+            )
+        }
+        val albums = database.browseDao().searchAlbums(query, 8).map { entity ->
+            SearchAlbum(
+                album = entity.displayName,
+                displayArtist = entity.displayArtist ?: entity.albumArtist ?: entity.artist,
+                artPath = entity.artPath,
+                artHash = entity.artHash,
+                trackCount = entity.trackCount
+            )
+        }
+        val playlists = database.playlistDao().search(query, 8).map { entity ->
+            SearchPlaylist(id = entity.id, name = entity.name, kind = "playlist")
+        }
+        return SearchResults(
+            ok = true,
+            hits = tracks,
+            artists = artists,
+            albums = albums,
+            playlists = playlists
+        )
+    }
+
+    suspend fun createCachedPlaylist(name: String): Playlist? {
+        val dao = db?.playlistDao() ?: return null
+        val id = dao.nextLocalPlaylistId()
+        val entity = PlaylistEntity(id = id, name = name, userId = 0, createdAt = null, itemCount = 0)
+        dao.insertPlaylist(entity)
+        return entity.toModel()
+    }
+
+    suspend fun renameCachedPlaylist(id: Int, name: String) {
+        db?.playlistDao()?.renamePlaylist(id, name)
+    }
+
+    suspend fun deleteCachedPlaylist(id: Int) {
+        db?.playlistDao()?.deletePlaylistWithItems(id)
+    }
+
+    suspend fun addCachedTrackToPlaylist(playlistId: Int, trackId: Int) {
+        db?.playlistDao()?.addTrack(playlistId, trackId)
+    }
+
+    suspend fun removeCachedTrackFromPlaylist(playlistId: Int, trackId: Int) {
+        db?.playlistDao()?.removeTrack(playlistId, trackId)
+    }
+
     // Audiobooks
     suspend fun getCachedAudiobooks(): List<Audiobook>? =
         db?.audiobookDao()?.getAllAudiobooks()?.map { it.toModel() }

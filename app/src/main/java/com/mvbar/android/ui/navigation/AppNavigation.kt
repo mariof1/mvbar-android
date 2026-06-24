@@ -364,7 +364,7 @@ fun MainScreen(
         LaunchedEffect(ref) {
             collectionTracks = when (ref) {
                 is CollectionRef.AlbumByName -> mainVm.fetchAlbumTracks(ref.name)
-                is CollectionRef.ArtistById -> mainVm.fetchArtistTracks(ref.id)
+                is CollectionRef.ArtistById -> mainVm.fetchArtistTracks(ref.id, ref.name)
             }
         }
         val title = when (ref) {

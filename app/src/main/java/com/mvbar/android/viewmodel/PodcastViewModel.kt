@@ -3,8 +3,11 @@ package com.mvbar.android.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mvbar.android.data.ActivityQueue
+import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
+import com.mvbar.android.data.local.entity.toEntity
 import com.mvbar.android.data.local.entity.toModel
 import com.mvbar.android.data.model.*
 import com.mvbar.android.debug.DebugLog
@@ -61,9 +64,16 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
     fun loadPodcasts() {
         viewModelScope.launch {
             _isLoading.value = true
+            val cached = try { db.podcastDao().getAllPodcasts().map { it.toModel() } } catch (_: Exception) { emptyList() }
+            if (cached.isNotEmpty()) _podcasts.value = cached
+            if (!NetworkMonitor.isOnline.value) {
+                _isLoading.value = false
+                return@launch
+            }
             try {
                 val r = api.getPodcasts()
                 _podcasts.value = r.podcasts
+                db.podcastDao().insertPodcasts(r.podcasts.map { it.toEntity() })
                 DebugLog.i("Podcast", "Loaded ${r.podcasts.size} subscriptions")
             } catch (e: Exception) {
                 DebugLog.e("Podcast", "Failed to load podcasts from API", e)
@@ -88,9 +98,13 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadContinueListening() {
         viewModelScope.launch {
+            val cached = try { db.podcastDao().getContinueListening(50).map { it.toModel() } } catch (_: Exception) { emptyList() }
+            if (cached.isNotEmpty()) _continueListening.value = cached
+            if (!NetworkMonitor.isOnline.value) return@launch
             try {
                 val r = api.getNewEpisodes()
                 _continueListening.value = r.episodes
+                db.podcastDao().insertEpisodes(r.episodes.map { it.toEntity() })
             } catch (e: Exception) {
                 DebugLog.e("Podcast", "Failed to load continue listening", e)
             }
@@ -100,10 +114,24 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
     fun loadPodcastDetail(podcastId: Int) {
         viewModelScope.launch {
             _isLoading.value = true
+            val cachedPodcast = try {
+                db.podcastDao().getAllPodcasts().find { it.id == podcastId }?.toModel()
+            } catch (_: Exception) { null }
+            val cachedEpisodes = try {
+                db.podcastDao().getEpisodes(podcastId).map { it.toModel() }
+            } catch (_: Exception) { emptyList() }
+            if (cachedPodcast != null) _selectedPodcast.value = cachedPodcast
+            if (cachedEpisodes.isNotEmpty()) _episodes.value = cachedEpisodes
+            if (!NetworkMonitor.isOnline.value) {
+                _isLoading.value = false
+                return@launch
+            }
             try {
                 val r = api.getPodcastDetail(podcastId)
                 _selectedPodcast.value = r.podcast
                 _episodes.value = r.episodes
+                r.podcast?.let { db.podcastDao().insertPodcasts(listOf(it.toEntity())) }
+                db.podcastDao().replaceEpisodes(podcastId, r.episodes.map { it.toEntity() })
                 DebugLog.i("Podcast", "Loaded ${r.episodes.size} episodes for podcast $podcastId")
             } catch (e: Exception) {
                 DebugLog.e("Podcast", "Failed to load podcast detail from API", e)
@@ -156,6 +184,12 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
             _subscribing.value = true
             _error.value = null
             try {
+                if (!NetworkMonitor.isOnline.value) {
+                    ActivityQueue.enqueuePodcastSubscribe(feedUrl)
+                    _error.value = "Subscription will sync when online"
+                    _subscribing.value = false
+                    return@launch
+                }
                 api.subscribePodcast(PodcastSubscribeRequest(feedUrl))
                 DebugLog.i("Podcast", "Subscribed to $feedUrl")
                 loadPodcasts()
@@ -171,12 +205,15 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
 
     fun unsubscribe(podcastId: Int) {
         viewModelScope.launch {
+            _podcasts.value = _podcasts.value.filter { it.id != podcastId }
+            try { db.podcastDao().deletePodcast(podcastId) } catch (_: Exception) {}
             try {
-                api.unsubscribePodcast(podcastId)
-                _podcasts.value = _podcasts.value.filter { it.id != podcastId }
+                if (NetworkMonitor.isOnline.value) api.unsubscribePodcast(podcastId)
+                else ActivityQueue.enqueuePodcastUnsubscribe(podcastId)
                 DebugLog.i("Podcast", "Unsubscribed from podcast $podcastId")
             } catch (e: Exception) {
                 DebugLog.e("Podcast", "Unsubscribe failed", e)
+                ActivityQueue.enqueuePodcastUnsubscribe(podcastId)
             }
         }
     }
@@ -195,19 +232,19 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
 
     fun markEpisodePlayed(episodeId: Int, played: Boolean) {
         viewModelScope.launch {
+            ActivityQueue.enqueuePodcastPlayed(episodeId, played)
+            _episodes.value = _episodes.value.map {
+                if (it.id == episodeId) it.copy(played = played) else it
+            }
+            _continueListening.value = if (played) {
+                _continueListening.value.filter { it.id != episodeId }
+            } else {
+                _continueListening.value.map {
+                    if (it.id == episodeId) it.copy(played = false) else it
+                }
+            }
             try {
-                api.markEpisodePlayed(episodeId, EpisodePlayedRequest(played))
-                _episodes.value = _episodes.value.map {
-                    if (it.id == episodeId) it.copy(played = played) else it
-                }
-                _continueListening.value = if (played) {
-                    _continueListening.value.filter { it.id != episodeId }
-                } else {
-                    _continueListening.value.map {
-                        if (it.id == episodeId) it.copy(played = false) else it
-                    }
-                }
-                loadPodcasts() // refresh unplayed counts
+                if (NetworkMonitor.isOnline.value) loadPodcasts() // refresh unplayed counts
             } catch (e: Exception) {
                 DebugLog.e("Podcast", "Mark played failed", e)
             }
@@ -254,12 +291,7 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
                 kotlinx.coroutines.delay(15_000)
                 val state = playerManager.state.value
                 if (state.isPlaying && state.position > 0) {
-                    try {
-                        api.updateEpisodeProgress(
-                            episodeId,
-                            EpisodeProgressRequest(positionMs = state.position)
-                        )
-                    } catch (_: Exception) {}
+                    ActivityQueue.enqueuePodcastProgress(episodeId, state.position)
                 }
             }
         }

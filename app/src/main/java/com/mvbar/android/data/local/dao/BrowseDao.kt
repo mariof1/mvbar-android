@@ -32,6 +32,14 @@ interface BrowseDao {
     suspend fun artistCount(): Int
 
     @Query("""
+        SELECT * FROM artists
+        WHERE name LIKE '%' || :q || '%'
+        ORDER BY name COLLATE NOCASE ASC
+        LIMIT :limit
+    """)
+    suspend fun searchArtists(q: String, limit: Int): List<ArtistEntity>
+
+    @Query("""
         SELECT COUNT(*) FROM artists
         WHERE (
             (:letter = '#' AND (
@@ -80,6 +88,17 @@ interface BrowseDao {
 
     @Query("SELECT COUNT(*) FROM albums")
     suspend fun albumCount(): Int
+
+    @Query("""
+        SELECT * FROM albums
+        WHERE displayName LIKE '%' || :q || '%'
+            OR artist LIKE '%' || :q || '%'
+            OR displayArtist LIKE '%' || :q || '%'
+            OR albumArtist LIKE '%' || :q || '%'
+        ORDER BY displayName COLLATE NOCASE ASC
+        LIMIT :limit
+    """)
+    suspend fun searchAlbums(q: String, limit: Int): List<AlbumEntity>
 
     @Query("""
         SELECT COUNT(*) FROM albums

@@ -8,6 +8,7 @@ import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
 import com.mvbar.android.debug.DebugLog
+import com.mvbar.android.player.AudioCacheManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,7 +32,9 @@ data class BrowseState(
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val artistLetter: String? = null,
-    val albumLetter: String? = null
+    val albumLetter: String? = null,
+    val offlinePlayableArtists: Set<String> = emptySet(),
+    val offlinePlayableAlbums: Set<String> = emptySet()
 )
 
 class BrowseViewModel(app: Application) : AndroidViewModel(app) {
@@ -119,6 +122,20 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun hasMore(offset: Int, fetched: Int, total: Int): Boolean =
         if (total > 0) offset + fetched < total else fetched >= PAGE_SIZE
+
+    private fun availabilityKey(value: String?): String =
+        value?.trim()?.lowercase().orEmpty()
+
+    private suspend fun cachedPlayableCollections(): Pair<Set<String>, Set<String>> {
+        val ids = AudioCacheManager.getCachedTrackIds()
+        if (ids.isEmpty()) return emptySet<String>() to emptySet()
+        val tracks = repo.getTracksByIds(ids).orEmpty()
+        val artists = tracks.flatMap { track ->
+            listOf(track.artist, track.displayArtistName, track.albumArtist)
+        }.map(::availabilityKey).filter { it.isNotEmpty() }.toSet()
+        val albums = tracks.map { availabilityKey(it.album) }.filter { it.isNotEmpty() }.toSet()
+        return artists to albums
+    }
 
     private suspend fun cachedArtistsPage(letter: String?, limit: Int, offset: Int): BrowsePage<Artist> =
         BrowsePage(
@@ -215,6 +232,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val offline = !NetworkMonitor.isOnline.value
                 if (!isRefresh || offline) {
+                    val (playableArtists, playableAlbums) = cachedPlayableCollections()
                     val cachedArtists = cachedArtistsPage(null, PAGE_SIZE, 0)
                     val cachedAlbums = cachedAlbumsPage(null, PAGE_SIZE, 0)
                     val cachedGenres = cachedGenresPage(PAGE_SIZE, 0)
@@ -238,6 +256,8 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                             hasMoreGenres = hasMore(0, cachedGenres.items.size, cachedGenres.total),
                             hasMoreCountries = hasMore(0, cachedCountries.items.size, cachedCountries.total),
                             hasMoreLanguages = hasMore(0, cachedLanguages.items.size, cachedLanguages.total),
+                            offlinePlayableArtists = playableArtists,
+                            offlinePlayableAlbums = playableAlbums,
                             isLoading = false,
                             isRefreshing = false
                         )
@@ -246,6 +266,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 DebugLog.i("Browse", "Loading artists, albums, genres...")
+                val (playableArtists, playableAlbums) = cachedPlayableCollections()
                 val artists = artistsPage(null, PAGE_SIZE, 0)
                 DebugLog.i("Browse", "Got ${artists.items.size} artists (total: ${artists.total})")
                 val albums = albumsPage(null, PAGE_SIZE, 0)
@@ -268,6 +289,8 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                     hasMoreGenres = hasMore(0, genres.items.size, genres.total),
                     hasMoreCountries = hasMore(0, countries.items.size, countries.total),
                     hasMoreLanguages = hasMore(0, languages.items.size, languages.total),
+                    offlinePlayableArtists = playableArtists,
+                    offlinePlayableAlbums = playableAlbums,
                     isLoading = false,
                     isRefreshing = false
                 )

@@ -18,8 +18,17 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<Int>): List<TrackEntity>
 
-    @Query("SELECT * FROM tracks WHERE title LIKE '%' || :q || '%' OR artist LIKE '%' || :q || '%' OR album LIKE '%' || :q || '%' LIMIT :limit")
-    suspend fun search(q: String, limit: Int = 50): List<TrackEntity>
+    @Query("""
+        SELECT * FROM tracks
+        WHERE title LIKE '%' || :q || '%'
+            OR artist LIKE '%' || :q || '%'
+            OR displayArtistName LIKE '%' || :q || '%'
+            OR album LIKE '%' || :q || '%'
+            OR genre LIKE '%' || :q || '%'
+        ORDER BY title COLLATE NOCASE ASC
+        LIMIT :limit OFFSET :offset
+    """)
+    suspend fun search(q: String, limit: Int = 50, offset: Int = 0): List<TrackEntity>
 
     @Query("SELECT * FROM tracks WHERE genre = :genre LIMIT :limit OFFSET :offset")
     suspend fun getByGenre(genre: String, limit: Int, offset: Int): List<TrackEntity>

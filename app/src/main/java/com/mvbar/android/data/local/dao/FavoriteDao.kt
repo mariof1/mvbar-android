@@ -24,6 +24,12 @@ interface FavoriteDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(favorites: List<FavoriteTrackEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(favorite: FavoriteTrackEntity)
+
+    @Query("DELETE FROM favorite_tracks WHERE trackId = :trackId")
+    suspend fun deleteTrack(trackId: Int)
+
     @Query("DELETE FROM favorite_tracks")
     suspend fun deleteAll()
 

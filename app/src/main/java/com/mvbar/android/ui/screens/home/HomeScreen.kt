@@ -29,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.model.RecBucket
 import com.mvbar.android.data.model.Track
+import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.components.ArtGrid
 import com.mvbar.android.ui.components.BucketCard
 import com.mvbar.android.ui.components.ErrorMessage
@@ -104,6 +106,7 @@ private fun HomeContent(
     onTrackLongPress: ((Track) -> Unit)? = null
 ) {
     val pullRefreshState = rememberPullToRefreshState()
+    val isOnline = LocalIsOnline.current
 
     PullToRefreshBox(
         isRefreshing = state.isLoading || state.isRefreshing,
@@ -163,6 +166,9 @@ private fun HomeContent(
                         horizontalArrangement = Arrangement.spacedBy(if (isPhoneLandscape) 8.dp else 12.dp)
                     ) {
                         for ((colIndex, bucket) in row.withIndex()) {
+                            val bucketAvailable = remember(isOnline, bucket.tracks) {
+                                isOnline || bucket.tracks.any { it.id > 0 && AudioCacheManager.isTrackCached(it.id) }
+                            }
                             BucketCard(
                                 bucket = bucket,
                                 onClick = { onBucketClick(bucket) },
@@ -174,6 +180,7 @@ private fun HomeContent(
                                 bucketIndex = rowIndex * bucketColumns + colIndex,
                                 compact = isPhoneLandscape,
                                 artAspectRatio = bucketAspectRatio,
+                                isAvailable = bucketAvailable,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -236,6 +243,10 @@ private fun BucketDetailView(
     onBack: () -> Unit
 ) {
     val configuration = LocalConfiguration.current
+    val isOnline = LocalIsOnline.current
+    val canPlayAny = remember(isOnline, bucket.tracks) {
+        isOnline || bucket.tracks.any { it.id > 0 && AudioCacheManager.isTrackCached(it.id) }
+    }
     val isPhoneLandscape = configuration.smallestScreenWidthDp < 600 &&
             configuration.screenWidthDp > configuration.screenHeightDp
     val headerHeight = if (isPhoneLandscape) 160.dp else 280.dp
@@ -303,6 +314,7 @@ private fun BucketDetailView(
                                 onPlayTrack(bucket.tracks.first(), bucket.tracks)
                             }
                         },
+                        enabled = canPlayAny,
                         shape = RoundedCornerShape(24.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
                     ) {

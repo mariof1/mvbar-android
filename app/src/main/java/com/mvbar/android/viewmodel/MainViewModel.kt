@@ -155,8 +155,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Auto-reload home data when network is restored after being offline
         viewModelScope.launch {
             NetworkMonitor.reconnectEvents(app).collect {
-                DebugLog.i("Home", "Network restored — refreshing home data")
+                DebugLog.i("Offline", "Network restored — refreshing cached app data")
                 loadHome(isRefresh = true)
+                loadFavorites(isRefresh = true)
+                loadHistory(isRefresh = true)
+                loadPlaylists()
+                loadSmartPlaylists()
+                _selectedPlaylist.value?.let { loadPlaylistDetail(it) }
             }
         }
         // Poll favorites every 5 minutes so changes from other devices appear quickly
@@ -194,7 +199,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 isRefreshing = isRefresh, error = null
             )
             // Load from cache first for instant display
-            if (!isRefresh) {
+            if (!isRefresh || !NetworkMonitor.isOnline.value) {
                 val cachedBuckets = try {
                     repo.getCachedRecommendations()?.withCompleteRecommendationPayloads()
                 } catch (_: Exception) { null }
@@ -205,6 +210,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         recentlyAdded = cachedRecent ?: emptyList()
                     )
                 }
+            }
+            if (!NetworkMonitor.isOnline.value) {
+                _homeState.value = _homeState.value.copy(isLoading = false, isRefreshing = false)
+                homeLoadedOnce = true
+                return@launch
             }
             // Then fetch from API in parallel
             try {
@@ -253,7 +263,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun loadFavorites(isRefresh: Boolean = false) {
         // Debounce: skip if successfully loaded within last 30 seconds
         val now = System.currentTimeMillis()
-        if (isRefresh && now - lastFavoritesLoadTime < 30_000) {
+        if (NetworkMonitor.isOnline.value && isRefresh && now - lastFavoritesLoadTime < 30_000) {
             return
         }
         favoritesJob?.cancel()
@@ -261,13 +271,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (!isRefresh) _favoritesLoading.value = true
             _favoritesError.value = null
             // Load from cache first
-            if (!isRefresh) {
+            if (!isRefresh || !NetworkMonitor.isOnline.value) {
                 val cached = try { repo.getCachedFavorites() } catch (_: Exception) { null }
                 if (!cached.isNullOrEmpty()) {
                     _favorites.value = cached
                     _favoriteIds.value = cached.map { it.id }.toSet()
                     _favoritesLoading.value = false
                 }
+            }
+            if (!NetworkMonitor.isOnline.value) {
+                syncPlayerFavoriteState()
+                _favoritesLoading.value = false
+                return@launch
             }
             // Then fetch from API
             try {
@@ -295,12 +310,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _historyError.value = null
             _hasMoreHistory.value = true
             // Load from cache first
-            if (!isRefresh) {
+            if (!isRefresh || !NetworkMonitor.isOnline.value) {
                 val cached = try { repo.getCachedHistory() } catch (_: Exception) { null }
                 if (!cached.isNullOrEmpty()) {
                     _history.value = cached
                     _historyLoading.value = false
                 }
+            }
+            if (!NetworkMonitor.isOnline.value) {
+                _hasMoreHistory.value = false
+                _historyLoading.value = false
+                return@launch
             }
             // Then fetch from API
             try {
@@ -321,6 +341,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _isLoadingMoreHistory.value = true
             try {
+                if (!NetworkMonitor.isOnline.value) {
+                    _hasMoreHistory.value = false
+                    return@launch
+                }
                 val offset = _history.value.size
                 val result = repo.getHistory(PAGE_SIZE, offset)
                 DebugLog.i("History", "Loaded ${result.tracks.size} more history tracks (offset $offset)")
@@ -339,6 +363,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Load from cache first
             val cached = try { repo.getCachedPlaylists() } catch (_: Exception) { null }
             if (!cached.isNullOrEmpty()) _playlists.value = cached
+            if (!NetworkMonitor.isOnline.value) return@launch
             // Then fetch from API
             try {
                 _playlists.value = repo.getPlaylists().playlists
@@ -350,6 +375,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadSmartPlaylists() {
         viewModelScope.launch {
+            if (!NetworkMonitor.isOnline.value) return@launch
             try {
                 _smartPlaylists.value = repo.getSmartPlaylists().items
             } catch (e: Exception) {
@@ -383,13 +409,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private suspend fun refreshCachedPlaylistsState() {
+        _playlists.value = repo.getCachedPlaylists().orEmpty()
+        _selectedPlaylist.value?.let { selected ->
+            _selectedPlaylist.value = _playlists.value.firstOrNull { it.id == selected.id } ?: selected
+        }
+    }
+
     fun createPlaylist(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
         viewModelScope.launch {
             try {
-                repo.createPlaylist(name)
-                loadPlaylists()
+                if (NetworkMonitor.isOnline.value) {
+                    repo.createPlaylist(trimmed)
+                    loadPlaylists()
+                } else {
+                    val playlist = repo.createCachedPlaylist(trimmed) ?: return@launch
+                    ActivityQueue.enqueuePlaylistCreate(playlist.id, trimmed)
+                    refreshCachedPlaylistsState()
+                }
             } catch (e: Exception) {
                 DebugLog.e("Playlist", "Create failed", e)
+                val playlist = repo.createCachedPlaylist(trimmed) ?: return@launch
+                ActivityQueue.enqueuePlaylistCreate(playlist.id, trimmed)
+                refreshCachedPlaylistsState()
             }
         }
     }
@@ -398,41 +442,66 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
         viewModelScope.launch {
+            repo.renameCachedPlaylist(id, trimmed)
+            val open = _selectedPlaylist.value
+            if (open != null && open.id == id) {
+                _selectedPlaylist.value = open.copy(name = trimmed)
+            }
+            refreshCachedPlaylistsState()
             try {
-                repo.renamePlaylist(id, trimmed)
-                val open = _selectedPlaylist.value
-                if (open != null && open.id == id) {
-                    _selectedPlaylist.value = open.copy(name = trimmed)
+                if (id < 0 || !NetworkMonitor.isOnline.value) {
+                    ActivityQueue.enqueuePlaylistRename(id, trimmed)
+                } else {
+                    repo.renamePlaylist(id, trimmed)
+                    loadPlaylists()
                 }
-                loadPlaylists()
             } catch (e: Exception) {
                 DebugLog.e("Playlist", "Rename failed", e)
+                ActivityQueue.enqueuePlaylistRename(id, trimmed)
             }
         }
     }
 
     fun deletePlaylist(id: Int) {
         viewModelScope.launch {
+            repo.deleteCachedPlaylist(id)
+            if (_selectedPlaylist.value?.id == id) {
+                _selectedPlaylist.value = null
+                _playlistTracks.value = emptyList()
+            }
+            refreshCachedPlaylistsState()
             try {
-                repo.deletePlaylist(id)
-                loadPlaylists()
+                if (id < 0 || !NetworkMonitor.isOnline.value) {
+                    ActivityQueue.enqueuePlaylistDelete(id)
+                } else {
+                    repo.deletePlaylist(id)
+                    loadPlaylists()
+                }
             } catch (e: Exception) {
                 DebugLog.e("Playlist", "Delete failed", e)
+                ActivityQueue.enqueuePlaylistDelete(id)
             }
         }
     }
 
     fun addToPlaylist(playlistId: Int, track: Track) {
         viewModelScope.launch {
+            repo.addCachedTrackToPlaylist(playlistId, track.id)
+            if (_selectedPlaylist.value?.id == playlistId) {
+                val existing = _playlistTracks.value
+                if (existing.none { it.id == track.id }) _playlistTracks.value = existing + track
+            }
+            refreshCachedPlaylistsState()
             try {
-                repo.addToPlaylist(playlistId, track.id)
-                // Refresh detail if this playlist is currently open (mirrors removeFromPlaylist)
-                val open = _selectedPlaylist.value
-                if (open != null && open.id == playlistId) loadPlaylistDetail(open)
-                // Always refresh the playlists list so itemCount stays current
-                loadPlaylists()
+                if (playlistId < 0 || !NetworkMonitor.isOnline.value) {
+                    ActivityQueue.enqueuePlaylistAddTrack(playlistId, track.id)
+                } else {
+                    repo.addToPlaylist(playlistId, track.id)
+                    loadPlaylists()
+                }
             } catch (e: Exception) {
                 DebugLog.e("Playlist", "Add track failed", e)
+                ActivityQueue.enqueuePlaylistAddTrack(playlistId, track.id)
             }
         }
     }
@@ -440,13 +509,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun addTracksToPlaylist(playlistId: Int, tracks: List<Track>) {
         if (tracks.isEmpty()) return
         viewModelScope.launch {
+            tracks.forEach { repo.addCachedTrackToPlaylist(playlistId, it.id) }
+            if (_selectedPlaylist.value?.id == playlistId) {
+                val existing = _playlistTracks.value
+                _playlistTracks.value = (existing + tracks).distinctBy { it.id }
+            }
+            refreshCachedPlaylistsState()
             try {
-                repo.addTracksToPlaylist(playlistId, tracks.map { it.id })
-                val open = _selectedPlaylist.value
-                if (open != null && open.id == playlistId) loadPlaylistDetail(open)
-                loadPlaylists()
+                if (playlistId < 0 || !NetworkMonitor.isOnline.value) {
+                    tracks.forEach { ActivityQueue.enqueuePlaylistAddTrack(playlistId, it.id) }
+                } else {
+                    repo.addTracksToPlaylist(playlistId, tracks.map { it.id })
+                    loadPlaylists()
+                }
             } catch (e: Exception) {
                 DebugLog.e("Playlist", "Add tracks failed", e)
+                tracks.forEach { ActivityQueue.enqueuePlaylistAddTrack(playlistId, it.id) }
             }
         }
     }
@@ -454,47 +532,77 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun createPlaylistAndAddTracks(name: String, tracks: List<Track>) {
         if (name.isBlank()) return
         viewModelScope.launch {
+            val trimmed = name.trim()
             try {
-                val resp = repo.createPlaylist(name.trim())
-                loadPlaylists()
-                val newId = resp.playlist?.id ?: run {
-                    DebugLog.e("Playlist", "Create returned no id")
-                    return@launch
-                }
-                if (tracks.isNotEmpty()) {
-                    repo.addTracksToPlaylist(newId, tracks.map { it.id })
+                if (NetworkMonitor.isOnline.value) {
+                    val resp = repo.createPlaylist(trimmed)
                     loadPlaylists()
+                    val newId = resp.playlist?.id ?: run {
+                        DebugLog.e("Playlist", "Create returned no id")
+                        return@launch
+                    }
+                    if (tracks.isNotEmpty()) {
+                        repo.addTracksToPlaylist(newId, tracks.map { it.id })
+                        loadPlaylists()
+                    }
+                } else {
+                    val playlist = repo.createCachedPlaylist(trimmed) ?: return@launch
+                    ActivityQueue.enqueuePlaylistCreate(playlist.id, trimmed)
+                    tracks.forEach {
+                        repo.addCachedTrackToPlaylist(playlist.id, it.id)
+                        ActivityQueue.enqueuePlaylistAddTrack(playlist.id, it.id)
+                    }
+                    refreshCachedPlaylistsState()
                 }
             } catch (e: Exception) {
                 DebugLog.e("Playlist", "Create+add failed", e)
+                val playlist = repo.createCachedPlaylist(trimmed) ?: return@launch
+                ActivityQueue.enqueuePlaylistCreate(playlist.id, trimmed)
+                tracks.forEach {
+                    repo.addCachedTrackToPlaylist(playlist.id, it.id)
+                    ActivityQueue.enqueuePlaylistAddTrack(playlist.id, it.id)
+                }
+                refreshCachedPlaylistsState()
             }
         }
     }
 
     /** Fetch all tracks for an album by display name. */
     suspend fun fetchAlbumTracks(albumName: String): List<Track> = try {
-        repo.getAlbumTracks(albumName).tracks
+        if (!NetworkMonitor.isOnline.value) repo.getCachedAlbumTracks(albumName).orEmpty()
+        else repo.getAlbumTracks(albumName).tracks
     } catch (e: Exception) {
         DebugLog.e("Collection", "fetchAlbumTracks failed", e)
-        emptyList()
+        repo.getCachedAlbumTracks(albumName).orEmpty()
     }
 
     /** Fetch all tracks for an artist (paginated; uses large page). */
-    suspend fun fetchArtistTracks(artistId: Int): List<Track> = try {
-        if (artistId <= 0) emptyList()
+    suspend fun fetchArtistTracks(artistId: Int, artistName: String? = null): List<Track> = try {
+        if (!NetworkMonitor.isOnline.value) artistName?.let { repo.getCachedArtistTracks(it).orEmpty() } ?: emptyList()
+        else if (artistId <= 0) artistName?.let { repo.getCachedArtistTracks(it).orEmpty() } ?: emptyList()
         else repo.getArtistTracks(artistId, limit = 1000, offset = 0).tracks
     } catch (e: Exception) {
         DebugLog.e("Collection", "fetchArtistTracks failed", e)
-        emptyList()
+        artistName?.let { repo.getCachedArtistTracks(it).orEmpty() } ?: emptyList()
     }
 
     fun removeFromPlaylist(playlistId: Int, trackId: Int) {
         viewModelScope.launch {
+            repo.removeCachedTrackFromPlaylist(playlistId, trackId)
+            if (_selectedPlaylist.value?.id == playlistId) {
+                _playlistTracks.value = _playlistTracks.value.filter { it.id != trackId }
+            }
+            refreshCachedPlaylistsState()
             try {
-                repo.removeFromPlaylist(playlistId, trackId)
-                _selectedPlaylist.value?.let { loadPlaylistDetail(it) }
+                if (playlistId < 0 || !NetworkMonitor.isOnline.value) {
+                    ActivityQueue.enqueuePlaylistRemoveTrack(playlistId, trackId)
+                } else {
+                    repo.removeFromPlaylist(playlistId, trackId)
+                    loadPlaylists()
+                }
             } catch (e: Exception) {
                 DebugLog.e("Playlist", "Remove track failed", e)
+                ActivityQueue.enqueuePlaylistRemoveTrack(playlistId, trackId)
             }
         }
     }
@@ -519,6 +627,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // or when NetworkMonitor reports offline.
 
     private suspend fun getTracksWithFallback(limit: Int, offset: Int): List<Track> {
+        if (!NetworkMonitor.isOnline.value) {
+            return repo.getCachedTracksPage(limit, offset) ?: emptyList()
+        }
         // Try API first
         try {
             val response = repo.getTracks(limit, offset)
@@ -775,10 +886,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         searchJob = viewModelScope.launch {
             kotlinx.coroutines.delay(200)
             try {
-                val results = repo.search(query, PAGE_SIZE, 0)
+                val results = if (NetworkMonitor.isOnline.value) {
+                    repo.search(query, PAGE_SIZE, 0)
+                } else {
+                    repo.searchCached(query, PAGE_SIZE, 0)
+                }
                 _searchResults.value = results
                 _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                DebugLog.e("Search", "Search failed, falling back to cache", e)
+                val results = repo.searchCached(query, PAGE_SIZE, 0)
+                _searchResults.value = results
+                _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
+            }
             _searchLoading.value = false
         }
     }
@@ -790,12 +910,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _isLoadingMoreSearch.value = true
             try {
                 val offset = current.hits.size
-                val results = repo.search(currentSearchQuery, PAGE_SIZE, offset)
+                val results = if (NetworkMonitor.isOnline.value) {
+                    repo.search(currentSearchQuery, PAGE_SIZE, offset)
+                } else {
+                    repo.searchCached(currentSearchQuery, PAGE_SIZE, offset)
+                }
                 DebugLog.i("Search", "Loaded ${results.hits.size} more hits (offset $offset)")
                 _searchResults.value = current.copy(hits = current.hits + results.hits)
                 _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Search", "Load more failed", e)
+                val offset = current.hits.size
+                val results = repo.searchCached(currentSearchQuery, PAGE_SIZE, offset)
+                _searchResults.value = current.copy(hits = current.hits + results.hits)
+                _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
             } finally {
                 _isLoadingMoreSearch.value = false
             }
@@ -842,6 +970,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val currentIds = _favoriteIds.value
         val isCurrentlyFav = trackId in currentIds
         _favoriteIds.value = if (isCurrentlyFav) currentIds - trackId else currentIds + trackId
+        if (isCurrentlyFav) {
+            _favorites.value = _favorites.value.filter { it.id != trackId }
+        } else {
+            knownTrackById(trackId)?.let { track ->
+                if (_favorites.value.none { it.id == trackId }) {
+                    _favorites.value = (_favorites.value + track.copy(isFavorite = true))
+                        .sortedBy { it.displayTitle.lowercase() }
+                }
+            }
+        }
         // Update player state if this is the current track
         playerManager.state.value.currentTrack?.let {
             if (it.id == trackId) playerManager.setFavorite(!isCurrentlyFav)
@@ -854,6 +992,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!isCurrentlyFav && AudioCacheManager.autoCacheFavorites) {
             AudioCacheManager.cacheTrackById(trackId)
         }
+    }
+
+    private fun knownTrackById(trackId: Int): Track? {
+        return playerManager.state.value.currentTrack?.takeIf { it.id == trackId }
+            ?: _allTracks.value.firstOrNull { it.id == trackId }
+            ?: _history.value.firstOrNull { it.id == trackId }
+            ?: _favorites.value.firstOrNull { it.id == trackId }
+            ?: _playlistTracks.value.firstOrNull { it.id == trackId }
+            ?: _homeState.value.recentlyAdded.firstOrNull { it.id == trackId }
+            ?: _homeState.value.buckets.asSequence().flatMap { it.tracks.asSequence() }.firstOrNull { it.id == trackId }
     }
 
     private fun syncPlayerFavoriteState() {

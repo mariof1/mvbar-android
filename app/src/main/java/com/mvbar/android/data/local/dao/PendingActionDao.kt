@@ -16,6 +16,12 @@ interface PendingActionDao {
     @Query("DELETE FROM pending_actions WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query("DELETE FROM pending_actions WHERE actionType = :actionType AND trackId = :trackId")
+    suspend fun deleteByTypeAndTrack(actionType: String, trackId: Int)
+
+    @Query("UPDATE pending_actions SET trackId = :newId WHERE trackId = :oldId")
+    suspend fun replaceTrackId(oldId: Int, newId: Int)
+
     @Query("DELETE FROM pending_actions")
     suspend fun deleteAll()
 

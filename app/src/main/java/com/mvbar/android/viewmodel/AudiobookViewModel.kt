@@ -3,7 +3,11 @@ package com.mvbar.android.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mvbar.android.data.ActivityQueue
+import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.local.MvbarDatabase
+import com.mvbar.android.data.local.entity.toEntity
 import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
 import com.mvbar.android.debug.DebugLog
@@ -12,7 +16,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
-    private val repo = MusicRepository.getInstance()
+    private val db = MvbarDatabase.getInstance(app)
+    private val repo = MusicRepository.getInstance(db)
     val playerManager = PlayerManager.getInstance(app)
 
     private val _audiobooks = MutableStateFlow<List<Audiobook>>(emptyList())
@@ -63,10 +68,15 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
                 val cached = repo.getCachedAudiobooks()
                 if (!cached.isNullOrEmpty()) _audiobooks.value = cached
             } catch (_: Exception) {}
+            if (!NetworkMonitor.isOnline.value) {
+                _isLoading.value = false
+                return@launch
+            }
             // Then API
             try {
                 val books = ApiClient.api.getAudiobooks()
                 _audiobooks.value = books
+                db.audiobookDao().insertAudiobooks(books.map { it.toEntity() })
                 DebugLog.i("Audiobooks", "Loaded ${books.size} audiobooks")
             } catch (e: Exception) {
                 DebugLog.e("Audiobooks", "Failed to load audiobooks", e)
@@ -86,12 +96,19 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
                 val cached = repo.getCachedAudiobookChapters(audiobookId)
                 if (!cached.isNullOrEmpty()) _chapters.value = cached
             } catch (_: Exception) {}
+            if (!NetworkMonitor.isOnline.value) {
+                _selectedAudiobook.value = _audiobooks.value.firstOrNull { it.id == audiobookId }
+                _isLoading.value = false
+                return@launch
+            }
             // Then API
             try {
                 val resp = ApiClient.api.getAudiobookDetail(audiobookId)
                 _selectedAudiobook.value = resp.audiobook
                 _chapters.value = resp.chapters
                 _detailProgress.value = resp.progress
+                resp.audiobook?.let { db.audiobookDao().insertAudiobooks(listOf(it.toEntity())) }
+                db.audiobookDao().replaceChapters(audiobookId, resp.chapters.map { it.toEntity() })
                 DebugLog.i("Audiobooks", "Loaded detail for audiobook $audiobookId: ${resp.chapters.size} chapters")
             } catch (e: Exception) {
                 DebugLog.e("Audiobooks", "Failed to load audiobook detail", e)
@@ -163,10 +180,7 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
                         val chId = -(trackId) - audiobookId * 100000
                         if (chId <= 0) continue
                         val posMs = state.position
-                        ApiClient.api.updateAudiobookProgress(
-                            audiobookId,
-                            AudiobookProgressRequest(chapterId = chId, positionMs = posMs)
-                        )
+                        ActivityQueue.enqueueAudiobookProgress(audiobookId, chId, posMs)
                     }
                 } catch (e: Exception) {
                     DebugLog.e("Audiobooks", "Progress sync failed", e)
@@ -184,9 +198,11 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
     fun markFinished(audiobookId: Int) {
         viewModelScope.launch {
             try {
-                ApiClient.api.markAudiobookFinished(audiobookId)
-                loadAudiobooks()
-                loadAudiobookDetail(audiobookId)
+                ActivityQueue.enqueueAudiobookFinished(audiobookId)
+                if (NetworkMonitor.isOnline.value) {
+                    loadAudiobooks()
+                    loadAudiobookDetail(audiobookId)
+                }
             } catch (e: Exception) {
                 DebugLog.e("Audiobooks", "Failed to mark finished", e)
             }

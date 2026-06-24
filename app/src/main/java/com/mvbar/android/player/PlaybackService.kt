@@ -1423,16 +1423,16 @@ class PlaybackService : MediaLibraryService() {
             if (first != null && first.mediaId.startsWith("shuffle:")) {
                 val parentId = first.mediaId.removePrefix("shuffle:")
                 return serviceScope.future {
-                    val tracks = loadTracksForParent(parentId).shuffled()
-                    DebugLog.i("Auto", "Shuffle play: $parentId → ${tracks.size} tracks")
+                    val tracks = playableMediaItemsNow(loadTracksForParent(parentId).shuffled())
+                    DebugLog.i("Auto", "Shuffle play: $parentId → ${tracks.size} playable tracks")
                     tracks.map { resolveStreamUri(it) }.toMutableList()
                 }
             }
             // Handle bucket tap: load all tracks, shuffle, and play
             if (first != null && first.mediaId.startsWith("bucket:")) {
                 return serviceScope.future {
-                    val tracks = getBucketTracks(first.mediaId.removePrefix("bucket:")).shuffled()
-                    DebugLog.i("Auto", "Bucket play: ${first.mediaId} → ${tracks.size} tracks")
+                    val tracks = playableMediaItemsNow(getBucketTracks(first.mediaId.removePrefix("bucket:")).shuffled())
+                    DebugLog.i("Auto", "Bucket play: ${first.mediaId} → ${tracks.size} playable tracks")
                     tracks.map { resolveStreamUri(it) }.toMutableList()
                 }
             }
@@ -1468,7 +1468,7 @@ class PlaybackService : MediaLibraryService() {
                                 DebugLog.w("Auto", "Similar tracks fetch failed", e)
                             }
                         }
-                        queue
+                        playableMediaItemsNow(queue).toMutableList()
                     }
                 }
 
@@ -1491,13 +1491,13 @@ class PlaybackService : MediaLibraryService() {
                             mediaSession.player.shuffleModeEnabled = false
                             pendingShuffleRestore = true
                         }
-                        val resolved = reordered.map { resolveStreamUri(it) }.toMutableList()
+                        val resolved = playableMediaItemsNow(reordered).map { resolveStreamUri(it) }.toMutableList()
                         return Futures.immediateFuture(resolved)
                     }
                 }
             }
             // Fallback: resolve URIs as-is
-            val resolved = mediaItems.map { resolveStreamUri(it) }.toMutableList()
+            val resolved = playableMediaItemsNow(mediaItems).map { resolveStreamUri(it) }.toMutableList()
             return Futures.immediateFuture(resolved)
         }
 
@@ -2335,6 +2335,25 @@ class PlaybackService : MediaLibraryService() {
         return item.buildUpon().setUri(uri).build()
     }
 
+    private fun playableMediaItemsNow(items: List<MediaItem>): List<MediaItem> {
+        if (NetworkMonitor.isOnline.value) return items
+        val playable = items.filter { item ->
+            val target = specialPlaybackTarget(item)
+            when (target?.kind) {
+                SpecialPlaybackKind.PODCAST -> target.episodeId?.let { AudioCacheManager.isEpisodeCached(it) } == true
+                SpecialPlaybackKind.AUDIOBOOK -> {
+                    val audiobookId = target.audiobookId
+                    val chapterId = target.chapterId
+                    audiobookId != null && chapterId != null && AudioCacheManager.isChapterCached(audiobookId, chapterId)
+                }
+                null -> item.mediaId.toIntOrNull()?.let { AudioCacheManager.isTrackCached(it) } == true
+            }
+        }
+        val skipped = items.size - playable.size
+        if (skipped > 0) DebugLog.i("Auto", "Skipped $skipped unavailable offline media items")
+        return playable
+    }
+
     /** Prepend a "Shuffle All" item and cache tracks for queue-all on tap */
     private fun withShuffle(parentId: String, tracks: List<MediaItem>): List<MediaItem> {
         if (tracks.isEmpty()) return tracks
@@ -2429,34 +2448,14 @@ class PlaybackService : MediaLibraryService() {
                     try {
                         db.podcastDao().updateEpisodePosition(epId, posMs)
                     } catch (_: Exception) {}
-                    try {
-                        if (NetworkMonitor.isOnline.value) {
-                            ApiClient.api.updateEpisodeProgress(
-                                epId,
-                                com.mvbar.android.data.model.EpisodeProgressRequest(positionMs = posMs)
-                            )
-                        }
-                    } catch (e: Exception) {
-                        DebugLog.w("Player", "Failed to save episode progress", e)
-                    }
+                    ActivityQueue.enqueuePodcastProgress(epId, posMs)
                 }
             }
             SpecialPlaybackKind.AUDIOBOOK -> {
                 val audiobookId = target.audiobookId ?: return
                 val chapterId = target.chapterId ?: return
                 serviceScope.launch {
-                    try {
-                        if (NetworkMonitor.isOnline.value) {
-                            ApiClient.api.updateAudiobookProgress(
-                                audiobookId,
-                                com.mvbar.android.data.model.AudiobookProgressRequest(
-                                    chapterId = chapterId, positionMs = posMs
-                                )
-                            )
-                        }
-                    } catch (e: Exception) {
-                        DebugLog.w("Player", "Failed to save audiobook progress", e)
-                    }
+                    ActivityQueue.enqueueAudiobookProgress(audiobookId, chapterId, posMs)
                 }
             }
         }

@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.mvbar.android.data.CountryFlags
 import com.mvbar.android.data.model.*
+import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.components.AlbumCard
 import com.mvbar.android.ui.components.ArtistCard
 import com.mvbar.android.ui.theme.*
@@ -63,6 +64,7 @@ fun BrowseScreen(
     onAlbumLongPress: ((Album) -> Unit)? = null,
     bottomPadding: Dp = 0.dp
 ) {
+    val isOnline = LocalIsOnline.current
     LaunchedEffect(Unit) {
         if (state.artists.isEmpty() && state.albums.isEmpty() && !state.isLoading) {
             onRefresh()
@@ -100,6 +102,8 @@ fun BrowseScreen(
             when (state.selectedTab) {
                 0 -> ArtistsGrid(
                     artists = state.artists,
+                    playableArtists = state.offlinePlayableArtists,
+                    isOnline = isOnline,
                     hasMore = state.hasMoreArtists,
                     isLoadingMore = state.isLoadingMore,
                     selectedLetter = state.artistLetter,
@@ -111,6 +115,8 @@ fun BrowseScreen(
                 )
                 1 -> AlbumsGrid(
                     albums = state.albums,
+                    playableAlbums = state.offlinePlayableAlbums,
+                    isOnline = isOnline,
                     hasMore = state.hasMoreAlbums,
                     isLoadingMore = state.isLoadingMore,
                     selectedLetter = state.albumLetter,
@@ -131,6 +137,8 @@ fun BrowseScreen(
 @Composable
 private fun ArtistsGrid(
     artists: List<Artist>,
+    playableArtists: Set<String>,
+    isOnline: Boolean,
     hasMore: Boolean,
     isLoadingMore: Boolean,
     selectedLetter: String?,
@@ -174,7 +182,13 @@ private fun ArtistsGrid(
                 }
             }
             items(artists, key = { artist -> artist.id ?: artist.name }) { artist ->
-                ArtistCard(artist = artist, onClick = { onClick(artist) }, onLongPress = onLongPress?.let { { it(artist) } })
+                val isAvailable = isOnline || artist.name.trim().lowercase() in playableArtists
+                ArtistCard(
+                    artist = artist,
+                    isAvailable = isAvailable,
+                    onClick = { onClick(artist) },
+                    onLongPress = onLongPress?.let { { it(artist) } }
+                )
             }
             if (isLoadingMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -202,6 +216,8 @@ private fun ArtistsGrid(
 @Composable
 private fun AlbumsGrid(
     albums: List<Album>,
+    playableAlbums: Set<String>,
+    isOnline: Boolean,
     hasMore: Boolean,
     isLoadingMore: Boolean,
     selectedLetter: String?,
@@ -244,7 +260,13 @@ private fun AlbumsGrid(
                 }
             }
             items(albums, key = { album -> "${album.displayName}_${album.albumArtist ?: album.artist.orEmpty()}" }) { album ->
-                AlbumCard(album = album, onClick = { onClick(album) }, onLongPress = onLongPress?.let { { it(album) } })
+                val isAvailable = isOnline || album.displayName.trim().lowercase() in playableAlbums
+                AlbumCard(
+                    album = album,
+                    isAvailable = isAvailable,
+                    onClick = { onClick(album) },
+                    onLongPress = onLongPress?.let { { it(album) } }
+                )
             }
             if (isLoadingMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {

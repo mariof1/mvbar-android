@@ -24,6 +24,22 @@ interface HistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(entries: List<HistoryEntryEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entry: HistoryEntryEntity)
+
+    @Query("DELETE FROM history_entries WHERE trackId = :trackId")
+    suspend fun deleteTrack(trackId: Int)
+
+    @Query("UPDATE history_entries SET position = position + 1")
+    suspend fun incrementPositions()
+
+    @Transaction
+    suspend fun recordPlay(trackId: Int) {
+        deleteTrack(trackId)
+        incrementPositions()
+        insert(HistoryEntryEntity(trackId = trackId, position = 0))
+    }
+
     @Query("DELETE FROM history_entries")
     suspend fun deleteAll()
 

@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -30,10 +31,12 @@ fun BucketCard(
     bucketIndex: Int = 0,
     compact: Boolean = false,
     artAspectRatio: Float = 1f,
+    isAvailable: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
+            .graphicsLayer { alpha = if (isAvailable) 1f else 0.38f }
             .clip(RoundedCornerShape(if (compact) 8.dp else 12.dp))
             .clickable(onClick = onClick)
     ) {
@@ -50,6 +53,7 @@ fun BucketCard(
             // Play button overlay — plays bucket directly
             IconButton(
                 onClick = onPlay,
+                enabled = isAvailable,
                 modifier = Modifier
                     .align(Alignment.Center)
                     .size(if (compact) 36.dp else 44.dp)
