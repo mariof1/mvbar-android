@@ -733,7 +733,7 @@ fun MainScreen(
                         onTabChange = { browseVm.setTab(it) },
                         onArtistClick = { artist ->
                             browseVm.loadArtistDetail(artist)
-                            navController.navigate("artist/${artist.id}")
+                            navController.navigate("artist/${artist.id ?: -1}")
                         },
                         onAlbumClick = { album ->
                             DebugLog.i("Nav", "Browse album click: '${album.displayName}'")

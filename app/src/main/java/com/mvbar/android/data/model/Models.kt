@@ -47,6 +47,8 @@ data class Track(
     @SerialName("duration_ms") val durationMs: Double? = null,
     val duration: Double? = null,
     val genre: String? = null,
+    val country: String? = null,
+    val language: String? = null,
     @SerialName("track_number") val trackNumber: Int? = null,
     @SerialName("disc_number") val discNumber: Int? = null,
     val year: Int? = null,

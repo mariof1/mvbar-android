@@ -34,7 +34,10 @@ data class BrowseState(
     val artistLetter: String? = null,
     val albumLetter: String? = null,
     val offlinePlayableArtists: Set<String> = emptySet(),
-    val offlinePlayableAlbums: Set<String> = emptySet()
+    val offlinePlayableAlbums: Set<String> = emptySet(),
+    val offlinePlayableGenres: Set<String> = emptySet(),
+    val offlinePlayableCountries: Set<String> = emptySet(),
+    val offlinePlayableLanguages: Set<String> = emptySet()
 )
 
 class BrowseViewModel(app: Application) : AndroidViewModel(app) {
@@ -113,10 +116,19 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     val isLoadingMoreArtistTracks: StateFlow<Boolean> = _isLoadingMoreArtistTracks.asStateFlow()
 
     private var currentArtistId: Int? = null
+    private var currentArtistName: String = ""
 
     private companion object {
         const val PAGE_SIZE = 50
     }
+
+    private data class PlayableCollections(
+        val artists: Set<String> = emptySet(),
+        val albums: Set<String> = emptySet(),
+        val genres: Set<String> = emptySet(),
+        val countries: Set<String> = emptySet(),
+        val languages: Set<String> = emptySet()
+    )
 
     private data class BrowsePage<T>(val items: List<T>, val total: Int)
 
@@ -126,15 +138,35 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     private fun availabilityKey(value: String?): String =
         value?.trim()?.lowercase().orEmpty()
 
-    private suspend fun cachedPlayableCollections(): Pair<Set<String>, Set<String>> {
+    private fun splitMetadataValues(value: String?): List<String> =
+        value
+            ?.split(';', ',')
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            .orEmpty()
+
+    private suspend fun cachedPlayableCollections(): PlayableCollections {
         val ids = AudioCacheManager.getCachedTrackIds()
-        if (ids.isEmpty()) return emptySet<String>() to emptySet()
+        if (ids.isEmpty()) return PlayableCollections()
         val tracks = repo.getTracksByIds(ids).orEmpty()
         val artists = tracks.flatMap { track ->
             listOf(track.artist, track.displayArtistName, track.albumArtist)
+                .flatMap(::splitMetadataValues)
         }.map(::availabilityKey).filter { it.isNotEmpty() }.toSet()
         val albums = tracks.map { availabilityKey(it.album) }.filter { it.isNotEmpty() }.toSet()
-        return artists to albums
+        val genres = tracks.flatMap { splitMetadataValues(it.genre) }
+            .map(::availabilityKey)
+            .filter { it.isNotEmpty() }
+            .toSet()
+        val countries = tracks.flatMap { splitMetadataValues(it.country) }
+            .map(::availabilityKey)
+            .filter { it.isNotEmpty() }
+            .toSet()
+        val languages = tracks.flatMap { splitMetadataValues(it.language) }
+            .map(::availabilityKey)
+            .filter { it.isNotEmpty() }
+            .toSet()
+        return PlayableCollections(artists, albums, genres, countries, languages)
     }
 
     private suspend fun cachedArtistsPage(letter: String?, limit: Int, offset: Int): BrowsePage<Artist> =
@@ -232,7 +264,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val offline = !NetworkMonitor.isOnline.value
                 if (!isRefresh || offline) {
-                    val (playableArtists, playableAlbums) = cachedPlayableCollections()
+                    val playable = cachedPlayableCollections()
                     val cachedArtists = cachedArtistsPage(null, PAGE_SIZE, 0)
                     val cachedAlbums = cachedAlbumsPage(null, PAGE_SIZE, 0)
                     val cachedGenres = cachedGenresPage(PAGE_SIZE, 0)
@@ -256,8 +288,11 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                             hasMoreGenres = hasMore(0, cachedGenres.items.size, cachedGenres.total),
                             hasMoreCountries = hasMore(0, cachedCountries.items.size, cachedCountries.total),
                             hasMoreLanguages = hasMore(0, cachedLanguages.items.size, cachedLanguages.total),
-                            offlinePlayableArtists = playableArtists,
-                            offlinePlayableAlbums = playableAlbums,
+                            offlinePlayableArtists = playable.artists,
+                            offlinePlayableAlbums = playable.albums,
+                            offlinePlayableGenres = playable.genres,
+                            offlinePlayableCountries = playable.countries,
+                            offlinePlayableLanguages = playable.languages,
                             isLoading = false,
                             isRefreshing = false
                         )
@@ -266,7 +301,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 DebugLog.i("Browse", "Loading artists, albums, genres...")
-                val (playableArtists, playableAlbums) = cachedPlayableCollections()
+                val playable = cachedPlayableCollections()
                 val artists = artistsPage(null, PAGE_SIZE, 0)
                 DebugLog.i("Browse", "Got ${artists.items.size} artists (total: ${artists.total})")
                 val albums = albumsPage(null, PAGE_SIZE, 0)
@@ -289,8 +324,11 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                     hasMoreGenres = hasMore(0, genres.items.size, genres.total),
                     hasMoreCountries = hasMore(0, countries.items.size, countries.total),
                     hasMoreLanguages = hasMore(0, languages.items.size, languages.total),
-                    offlinePlayableArtists = playableArtists,
-                    offlinePlayableAlbums = playableAlbums,
+                    offlinePlayableArtists = playable.artists,
+                    offlinePlayableAlbums = playable.albums,
+                    offlinePlayableGenres = playable.genres,
+                    offlinePlayableCountries = playable.countries,
+                    offlinePlayableLanguages = playable.languages,
                     isLoading = false,
                     isRefreshing = false
                 )
@@ -482,6 +520,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
         _artistAppearsOn.value = emptyList()
         _hasMoreArtistTracks.value = true
         currentArtistId = artist.id
+        currentArtistName = artist.name
         viewModelScope.launch {
             try {
                 val id = artist.id
@@ -553,13 +592,13 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadMoreArtistTracks() {
         if (_isLoadingMoreArtistTracks.value || !_hasMoreArtistTracks.value) return
-        val id = currentArtistId ?: return
+        val id = currentArtistId
         viewModelScope.launch {
             _isLoadingMoreArtistTracks.value = true
             try {
                 val offset = _artistTracks.value.size
-                if (!NetworkMonitor.isOnline.value) {
-                    val artistName = _selectedArtist.value?.name.orEmpty()
+                if (id == null || !NetworkMonitor.isOnline.value) {
+                    val artistName = _selectedArtist.value?.name?.takeIf { it.isNotBlank() } ?: currentArtistName
                     val cached = repo.getCachedArtistTracks(artistName).orEmpty()
                     val next = cached.drop(offset).take(PAGE_SIZE)
                     _artistTracks.value = _artistTracks.value + next
@@ -572,7 +611,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 _hasMoreArtistTracks.value = response.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more artist tracks failed", e)
-                val artistName = _selectedArtist.value?.name.orEmpty()
+                val artistName = _selectedArtist.value?.name?.takeIf { it.isNotBlank() } ?: currentArtistName
                 val offset = _artistTracks.value.size
                 val cached = repo.getCachedArtistTracks(artistName).orEmpty()
                 val next = cached.drop(offset).take(PAGE_SIZE)
@@ -683,6 +722,13 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             _countryTracks.value = emptyList()
             _hasMoreCountryTracks.value = true
             try {
+                if (!NetworkMonitor.isOnline.value) {
+                    val cached = repo.getCachedCountryTracks(name, PAGE_SIZE, 0).orEmpty()
+                    val total = repo.getCachedCountryTrackCount(name)
+                    _countryTracks.value = cached
+                    _hasMoreCountryTracks.value = hasMore(0, cached.size, total)
+                    return@launch
+                }
                 DebugLog.i("Browse", "Loading country tracks for '$name'")
                 val response = repo.getCountryTracks(name, PAGE_SIZE, 0)
                 DebugLog.i("Browse", "Got ${response.tracks.size} tracks for country '$name'")
@@ -690,6 +736,12 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 _hasMoreCountryTracks.value = response.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Country tracks failed for '$name'", e)
+                val cached = repo.getCachedCountryTracks(name, PAGE_SIZE, 0).orEmpty()
+                if (cached.isNotEmpty()) {
+                    val total = repo.getCachedCountryTrackCount(name)
+                    _countryTracks.value = cached
+                    _hasMoreCountryTracks.value = hasMore(0, cached.size, total)
+                }
             } finally {
                 _countryLoading.value = false
             }
@@ -702,12 +754,26 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             _isLoadingMoreCountryTracks.value = true
             try {
                 val offset = _countryTracks.value.size
+                if (!NetworkMonitor.isOnline.value) {
+                    val cached = repo.getCachedCountryTracks(currentCountryName, PAGE_SIZE, offset).orEmpty()
+                    val total = repo.getCachedCountryTrackCount(currentCountryName)
+                    _countryTracks.value = _countryTracks.value + cached
+                    _hasMoreCountryTracks.value = hasMore(offset, cached.size, total)
+                    return@launch
+                }
                 val response = repo.getCountryTracks(currentCountryName, PAGE_SIZE, offset)
                 DebugLog.i("Browse", "Loaded ${response.tracks.size} more country tracks (offset $offset)")
                 _countryTracks.value = _countryTracks.value + response.tracks
                 _hasMoreCountryTracks.value = response.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more country tracks failed", e)
+                val offset = _countryTracks.value.size
+                val cached = repo.getCachedCountryTracks(currentCountryName, PAGE_SIZE, offset).orEmpty()
+                if (cached.isNotEmpty()) {
+                    val total = repo.getCachedCountryTrackCount(currentCountryName)
+                    _countryTracks.value = _countryTracks.value + cached
+                    _hasMoreCountryTracks.value = hasMore(offset, cached.size, total)
+                }
             } finally {
                 _isLoadingMoreCountryTracks.value = false
             }
@@ -721,6 +787,13 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             _languageTracks.value = emptyList()
             _hasMoreLanguageTracks.value = true
             try {
+                if (!NetworkMonitor.isOnline.value) {
+                    val cached = repo.getCachedLanguageTracks(name, PAGE_SIZE, 0).orEmpty()
+                    val total = repo.getCachedLanguageTrackCount(name)
+                    _languageTracks.value = cached
+                    _hasMoreLanguageTracks.value = hasMore(0, cached.size, total)
+                    return@launch
+                }
                 DebugLog.i("Browse", "Loading language tracks for '$name'")
                 val response = repo.getLanguageTracks(name, PAGE_SIZE, 0)
                 DebugLog.i("Browse", "Got ${response.tracks.size} tracks for language '$name'")
@@ -728,6 +801,12 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 _hasMoreLanguageTracks.value = response.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Language tracks failed for '$name'", e)
+                val cached = repo.getCachedLanguageTracks(name, PAGE_SIZE, 0).orEmpty()
+                if (cached.isNotEmpty()) {
+                    val total = repo.getCachedLanguageTrackCount(name)
+                    _languageTracks.value = cached
+                    _hasMoreLanguageTracks.value = hasMore(0, cached.size, total)
+                }
             } finally {
                 _languageLoading.value = false
             }
@@ -740,12 +819,26 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             _isLoadingMoreLanguageTracks.value = true
             try {
                 val offset = _languageTracks.value.size
+                if (!NetworkMonitor.isOnline.value) {
+                    val cached = repo.getCachedLanguageTracks(currentLanguageName, PAGE_SIZE, offset).orEmpty()
+                    val total = repo.getCachedLanguageTrackCount(currentLanguageName)
+                    _languageTracks.value = _languageTracks.value + cached
+                    _hasMoreLanguageTracks.value = hasMore(offset, cached.size, total)
+                    return@launch
+                }
                 val response = repo.getLanguageTracks(currentLanguageName, PAGE_SIZE, offset)
                 DebugLog.i("Browse", "Loaded ${response.tracks.size} more language tracks (offset $offset)")
                 _languageTracks.value = _languageTracks.value + response.tracks
                 _hasMoreLanguageTracks.value = response.tracks.size >= PAGE_SIZE
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more language tracks failed", e)
+                val offset = _languageTracks.value.size
+                val cached = repo.getCachedLanguageTracks(currentLanguageName, PAGE_SIZE, offset).orEmpty()
+                if (cached.isNotEmpty()) {
+                    val total = repo.getCachedLanguageTrackCount(currentLanguageName)
+                    _languageTracks.value = _languageTracks.value + cached
+                    _hasMoreLanguageTracks.value = hasMore(offset, cached.size, total)
+                }
             } finally {
                 _isLoadingMoreLanguageTracks.value = false
             }

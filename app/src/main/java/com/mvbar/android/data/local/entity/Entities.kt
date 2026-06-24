@@ -13,6 +13,8 @@ data class TrackEntity(
     val durationMs: Double?,
     val duration: Double?,
     val genre: String?,
+    val country: String?,
+    val language: String?,
     val trackNumber: Int?,
     val discNumber: Int?,
     val year: Int?,

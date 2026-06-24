@@ -126,9 +126,9 @@ fun BrowseScreen(
                     onLongPress = onAlbumLongPress,
                     bottomPadding = bottomPadding
                 )
-                2 -> GenresGrid(state.genres, state.hasMoreGenres, state.isLoadingMore, onGenreClick, onLoadMoreGenres)
-                3 -> CountriesGrid(state.countries, state.hasMoreCountries, state.isLoadingMore, onCountryClick, onLoadMoreCountries)
-                4 -> LanguagesGrid(state.languages, state.hasMoreLanguages, state.isLoadingMore, onLanguageClick, onLoadMoreLanguages)
+                2 -> GenresGrid(state.genres, state.offlinePlayableGenres, isOnline, state.hasMoreGenres, state.isLoadingMore, onGenreClick, onLoadMoreGenres)
+                3 -> CountriesGrid(state.countries, state.offlinePlayableCountries, isOnline, state.hasMoreCountries, state.isLoadingMore, onCountryClick, onLoadMoreCountries)
+                4 -> LanguagesGrid(state.languages, state.offlinePlayableLanguages, isOnline, state.hasMoreLanguages, state.isLoadingMore, onLanguageClick, onLoadMoreLanguages)
             }
         }
     }
@@ -496,6 +496,8 @@ private fun LetterEmptyState(kind: String, selectedLetter: String) {
 @Composable
 private fun GenresGrid(
     genres: List<Genre>,
+    playableGenres: Set<String>,
+    isOnline: Boolean,
     hasMore: Boolean,
     isLoadingMore: Boolean,
     onClick: (Genre) -> Unit,
@@ -525,7 +527,8 @@ private fun GenresGrid(
     ) {
         items(genres) { genre ->
             val colors = gradients[genres.indexOf(genre) % gradients.size]
-            GenreChip(genre = genre, colors = colors, onClick = { onClick(genre) })
+            val isAvailable = isOnline || genre.name.trim().lowercase() in playableGenres
+            GenreChip(genre = genre, colors = colors, isAvailable = isAvailable, onClick = { if (isAvailable) onClick(genre) })
         }
         if (isLoadingMore) {
             item {
@@ -539,11 +542,17 @@ private fun GenresGrid(
 }
 
 @Composable
-private fun GenreChip(genre: Genre, colors: List<androidx.compose.ui.graphics.Color>, onClick: () -> Unit = {}) {
+private fun GenreChip(
+    genre: Genre,
+    colors: List<androidx.compose.ui.graphics.Color>,
+    isAvailable: Boolean = true,
+    onClick: () -> Unit = {}
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(80.dp),
+            .height(80.dp)
+            .graphicsLayer { alpha = if (isAvailable) 1f else 0.38f },
         shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = colors[0].copy(alpha = 0.3f)),
         onClick = onClick
@@ -571,6 +580,8 @@ private fun GenreChip(genre: Genre, colors: List<androidx.compose.ui.graphics.Co
 @Composable
 private fun CountriesGrid(
     countries: List<Country>,
+    playableCountries: Set<String>,
+    isOnline: Boolean,
     hasMore: Boolean,
     isLoadingMore: Boolean,
     onClick: (Country) -> Unit,
@@ -594,7 +605,8 @@ private fun CountriesGrid(
         modifier = Modifier.fillMaxSize()
     ) {
         items(countries) { country ->
-            CountryCard(country = country, onClick = { onClick(country) })
+            val isAvailable = isOnline || country.name.trim().lowercase() in playableCountries
+            CountryCard(country = country, isAvailable = isAvailable, onClick = { if (isAvailable) onClick(country) })
         }
         if (isLoadingMore) {
             item {
@@ -610,6 +622,8 @@ private fun CountriesGrid(
 @Composable
 private fun LanguagesGrid(
     languages: List<Language>,
+    playableLanguages: Set<String>,
+    isOnline: Boolean,
     hasMore: Boolean,
     isLoadingMore: Boolean,
     onClick: (Language) -> Unit,
@@ -639,7 +653,8 @@ private fun LanguagesGrid(
     ) {
         items(languages) { language ->
             val colors = gradients[languages.indexOf(language) % gradients.size]
-            CategoryChip(name = language.name, trackCount = language.trackCount, colors = colors, onClick = { onClick(language) })
+            val isAvailable = isOnline || language.name.trim().lowercase() in playableLanguages
+            CategoryChip(name = language.name, trackCount = language.trackCount, colors = colors, isAvailable = isAvailable, onClick = { if (isAvailable) onClick(language) })
         }
         if (isLoadingMore) {
             item {
@@ -653,11 +668,18 @@ private fun LanguagesGrid(
 }
 
 @Composable
-private fun CategoryChip(name: String, trackCount: Int, colors: List<Color>, onClick: () -> Unit = {}) {
+private fun CategoryChip(
+    name: String,
+    trackCount: Int,
+    colors: List<Color>,
+    isAvailable: Boolean = true,
+    onClick: () -> Unit = {}
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(80.dp),
+            .height(80.dp)
+            .graphicsLayer { alpha = if (isAvailable) 1f else 0.38f },
         shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = colors[0].copy(alpha = 0.3f)),
         onClick = onClick
@@ -683,10 +705,11 @@ private fun CategoryChip(name: String, trackCount: Int, colors: List<Color>, onC
 }
 
 @Composable
-private fun CountryCard(country: Country, onClick: () -> Unit) {
+private fun CountryCard(country: Country, isAvailable: Boolean = true, onClick: () -> Unit) {
     val flagUrl = CountryFlags.flagUrl(country.name)
     Card(
         onClick = onClick,
+        modifier = Modifier.graphicsLayer { alpha = if (isAvailable) 1f else 0.38f },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
     ) {

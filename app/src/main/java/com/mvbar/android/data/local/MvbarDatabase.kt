@@ -25,6 +25,14 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+/** Migration 3→4: keep country/language metadata for offline Browse filters. */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE tracks ADD COLUMN country TEXT")
+        db.execSQL("ALTER TABLE tracks ADD COLUMN language TEXT")
+    }
+}
+
 @Database(
     entities = [
         TrackEntity::class,
@@ -44,7 +52,7 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         AudiobookChapterEntity::class,
         PendingActionEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -70,7 +78,7 @@ abstract class MvbarDatabase : RoomDatabase() {
                     MvbarDatabase::class.java,
                     "mvbar_cache.db"
                 )
-                    .addMigrations(MIGRATION_2_3)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }

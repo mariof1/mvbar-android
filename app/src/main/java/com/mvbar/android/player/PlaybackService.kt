@@ -2038,14 +2038,10 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getLanguageTracks(langName: String): List<MediaItem> {
-        return try {
-            kotlinx.coroutines.withTimeout(5_000) {
-                ApiClient.api.getLanguageTracks(langName, limit = 100).tracks.map { trackToMediaItem(it) }
-            }
-        } catch (e: Exception) {
-            DebugLog.w("Auto", "Language tracks failed (${e.message})")
-            emptyList()
-        }
+        return apiOrCache("Language tracks:$langName",
+            apiCall = { ApiClient.api.getLanguageTracks(langName, limit = 100).tracks.map { trackToMediaItem(it) } },
+            cacheCall = { db.trackDao().getByLanguage(langName, 100, 0).map { trackToMediaItem(it.toModel()) } }
+        )
     }
 
     // Country browse
@@ -2080,14 +2076,10 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun getCountryTracks(countryName: String): List<MediaItem> {
-        return try {
-            kotlinx.coroutines.withTimeout(5_000) {
-                ApiClient.api.getCountryTracks(countryName, limit = 100).tracks.map { trackToMediaItem(it) }
-            }
-        } catch (e: Exception) {
-            DebugLog.w("Auto", "Country tracks failed (${e.message})")
-            emptyList()
-        }
+        return apiOrCache("Country tracks:$countryName",
+            apiCall = { ApiClient.api.getCountryTracks(countryName, limit = 100).tracks.map { trackToMediaItem(it) } },
+            cacheCall = { db.trackDao().getByCountry(countryName, 100, 0).map { trackToMediaItem(it.toModel()) } }
+        )
     }
 
     // Podcast browse

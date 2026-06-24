@@ -11,6 +11,160 @@ import kotlinx.coroutines.flow.map
 class MusicRepository(private val db: MvbarDatabase? = null) {
     private val api get() = ApiClient.api
 
+    private fun splitMetadataValues(value: String?): List<String> =
+        value
+            ?.split(';', ',')
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.distinctBy { it.lowercase() }
+            .orEmpty()
+
+    private fun browseLetterMatches(name: String, letter: String?): Boolean {
+        val trimmed = name.trim()
+        if (letter == null) return true
+        val first = trimmed.firstOrNull()?.uppercaseChar()
+        return if (letter == "#") first == null || first !in 'A'..'Z' else first?.toString() == letter
+    }
+
+    private fun <T> page(items: List<T>, limit: Int, offset: Int): List<T> =
+        items.drop(offset).take(limit)
+
+    private suspend fun cachedTrackModels(): List<Track> =
+        db?.trackDao()?.getAllForBrowse()?.map { it.toModel() }.orEmpty()
+
+    private fun derivedArtistsFromTracks(tracks: List<Track>): List<Artist> =
+        tracks
+            .flatMap { track ->
+                val names = listOf(track.displayArtistName, track.artist, track.albumArtist)
+                    .flatMap(::splitMetadataValues)
+                    .ifEmpty { listOf(track.displayArtist) }
+                names.map { name -> name to track }
+            }
+            .groupBy({ it.first }, { it.second })
+            .map { (name, artistTracks) ->
+                Artist(
+                    name = name,
+                    trackCount = artistTracks.map { it.id }.distinct().size,
+                    albumCount = artistTracks.mapNotNull { it.album?.trim()?.takeIf(String::isNotEmpty) }
+                        .distinctBy { it.lowercase() }
+                        .size,
+                    artPath = artistTracks.firstNotNullOfOrNull { it.artPath }
+                )
+            }
+
+    private fun mergeArtists(indexArtists: List<Artist>, tracks: List<Track>, letter: String?): List<Artist> {
+        val merged = linkedMapOf<String, Artist>()
+        (indexArtists + derivedArtistsFromTracks(tracks))
+            .filter { it.name.isNotBlank() && browseLetterMatches(it.name, letter) }
+            .forEach { artist ->
+                val key = artist.name.trim().lowercase()
+                val existing = merged[key]
+                merged[key] = if (existing == null) {
+                    artist
+                } else {
+                    existing.copy(
+                        id = existing.id ?: artist.id,
+                        trackCount = maxOf(existing.trackCount, artist.trackCount),
+                        albumCount = maxOf(existing.albumCount, artist.albumCount),
+                        artPath = existing.artPath ?: artist.artPath
+                    )
+                }
+            }
+        return merged.values.sortedBy { it.name.lowercase() }
+    }
+
+    private fun derivedAlbumsFromTracks(tracks: List<Track>): List<Album> =
+        tracks
+            .filter { !it.album.isNullOrBlank() }
+            .groupBy { it.album!!.trim().lowercase() }
+            .map { (_, albumTracks) ->
+                val first = albumTracks.first()
+                Album(
+                    album = first.album?.trim(),
+                    artist = first.artist,
+                    displayArtist = first.displayArtistName ?: first.albumArtist ?: first.artist,
+                    albumArtist = first.albumArtist,
+                    trackCount = albumTracks.map { it.id }.distinct().size,
+                    year = albumTracks.mapNotNull { it.year }.minOrNull(),
+                    artPath = albumTracks.firstNotNullOfOrNull { it.artPath },
+                    artHash = albumTracks.firstNotNullOfOrNull { it.artHash },
+                    totalDiscs = albumTracks.mapNotNull { it.discNumber }.maxOrNull()
+                )
+            }
+
+    private fun mergeAlbums(indexAlbums: List<Album>, tracks: List<Track>, letter: String?): List<Album> {
+        val merged = linkedMapOf<String, Album>()
+        (indexAlbums + derivedAlbumsFromTracks(tracks))
+            .filter { it.displayName.isNotBlank() && browseLetterMatches(it.displayName, letter) }
+            .forEach { album ->
+                val key = album.displayName.trim().lowercase()
+                val existing = merged[key]
+                merged[key] = if (existing == null) {
+                    album
+                } else {
+                    existing.copy(
+                        trackCount = maxOf(existing.trackCount, album.trackCount),
+                        year = existing.year ?: album.year,
+                        artPath = existing.artPath ?: album.artPath,
+                        artHash = existing.artHash ?: album.artHash,
+                        totalDiscs = existing.totalDiscs ?: album.totalDiscs
+                    )
+                }
+            }
+        return merged.values.sortedBy { it.displayName.lowercase() }
+    }
+
+    private fun derivedTagCounts(tracks: List<Track>, selector: (Track) -> String?): Map<String, Int> =
+        tracks
+            .flatMap { track -> splitMetadataValues(selector(track)).map { tag -> tag to track.id } }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, ids) -> ids.distinct().size }
+
+    private fun mergeGenres(indexGenres: List<Genre>, tracks: List<Track>): List<Genre> {
+        val counts = derivedTagCounts(tracks) { it.genre }
+        val merged = linkedMapOf<String, Genre>()
+        indexGenres.forEach { genre ->
+            if (genre.name.isNotBlank()) merged[genre.name.trim().lowercase()] = genre
+        }
+        counts.forEach { (name, count) ->
+            val key = name.lowercase()
+            val existing = merged[key]
+            merged[key] = existing?.copy(trackCount = maxOf(existing.trackCount, count))
+                ?: Genre(name = name, trackCount = count)
+        }
+        return merged.values.sortedBy { it.name.lowercase() }
+    }
+
+    private fun mergeCountries(indexCountries: List<Country>, tracks: List<Track>): List<Country> {
+        val counts = derivedTagCounts(tracks) { it.country }
+        val merged = linkedMapOf<String, Country>()
+        indexCountries.forEach { country ->
+            if (country.name.isNotBlank()) merged[country.name.trim().lowercase()] = country
+        }
+        counts.forEach { (name, count) ->
+            val key = name.lowercase()
+            val existing = merged[key]
+            merged[key] = existing?.copy(trackCount = maxOf(existing.trackCount, count))
+                ?: Country(name = name, trackCount = count)
+        }
+        return merged.values.sortedBy { it.name.lowercase() }
+    }
+
+    private fun mergeLanguages(indexLanguages: List<Language>, tracks: List<Track>): List<Language> {
+        val counts = derivedTagCounts(tracks) { it.language }
+        val merged = linkedMapOf<String, Language>()
+        indexLanguages.forEach { language ->
+            if (language.name.isNotBlank()) merged[language.name.trim().lowercase()] = language
+        }
+        counts.forEach { (name, count) ->
+            val key = name.lowercase()
+            val existing = merged[key]
+            merged[key] = existing?.copy(trackCount = maxOf(existing.trackCount, count))
+                ?: Language(name = name, trackCount = count)
+        }
+        return merged.values.sortedBy { it.name.lowercase() }
+    }
+
     // ── Cache-first reads (return from DB, fallback to API) ──
 
     fun tracksFlow(): Flow<List<Track>>? =
@@ -52,44 +206,66 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
 
     suspend fun getCachedArtists(limit: Int, offset: Int, letter: String? = null): List<Artist>? {
         val dao = db?.browseDao() ?: return null
-        val entities = if (letter == null) {
-            dao.getArtists(limit, offset)
+        val indexArtists = if (letter == null) {
+            dao.getArtists(Int.MAX_VALUE, 0)
         } else {
-            dao.getArtistsByLetter(letter, limit, offset)
-        }
-        return entities.map { it.toModel() }
+            dao.getArtistsByLetter(letter, Int.MAX_VALUE, 0)
+        }.map { it.toModel() }
+        return page(mergeArtists(indexArtists, cachedTrackModels(), letter), limit, offset)
     }
 
     suspend fun getCachedAlbums(limit: Int, offset: Int, letter: String? = null): List<Album>? {
         val dao = db?.browseDao() ?: return null
-        val entities = if (letter == null) {
-            dao.getAlbums(limit, offset)
+        val indexAlbums = if (letter == null) {
+            dao.getAlbums(Int.MAX_VALUE, 0)
         } else {
-            dao.getAlbumsByLetter(letter, limit, offset)
-        }
-        return entities.map { it.toModel() }
+            dao.getAlbumsByLetter(letter, Int.MAX_VALUE, 0)
+        }.map { it.toModel() }
+        return page(mergeAlbums(indexAlbums, cachedTrackModels(), letter), limit, offset)
     }
 
     suspend fun getCachedGenres(limit: Int, offset: Int): List<Genre>? =
-        db?.browseDao()?.getGenres(limit, offset)?.map { it.toModel() }
+        db?.browseDao()?.getGenres(Int.MAX_VALUE, 0)?.map { it.toModel() }
+            ?.let { page(mergeGenres(it, cachedTrackModels()), limit, offset) }
 
     suspend fun getCachedCountries(limit: Int, offset: Int): List<Country>? =
-        db?.browseDao()?.getCountries(limit, offset)?.map { it.toModel() }
+        db?.browseDao()?.getCountries(Int.MAX_VALUE, 0)?.map { it.toModel() }
+            ?.let { page(mergeCountries(it, cachedTrackModels()), limit, offset) }
 
     suspend fun getCachedLanguages(limit: Int, offset: Int): List<Language>? =
-        db?.browseDao()?.getLanguages(limit, offset)?.map { it.toModel() }
+        db?.browseDao()?.getLanguages(Int.MAX_VALUE, 0)?.map { it.toModel() }
+            ?.let { page(mergeLanguages(it, cachedTrackModels()), limit, offset) }
 
     suspend fun getCachedArtistCount(letter: String? = null): Int {
         val dao = db?.browseDao() ?: return 0
-        return if (letter == null) dao.artistCount() else dao.artistCountByLetter(letter)
+        val indexArtists = if (letter == null) {
+            dao.getArtists(Int.MAX_VALUE, 0)
+        } else {
+            dao.getArtistsByLetter(letter, Int.MAX_VALUE, 0)
+        }.map { it.toModel() }
+        return mergeArtists(indexArtists, cachedTrackModels(), letter).size
     }
     suspend fun getCachedAlbumCount(letter: String? = null): Int {
         val dao = db?.browseDao() ?: return 0
-        return if (letter == null) dao.albumCount() else dao.albumCountByLetter(letter)
+        val indexAlbums = if (letter == null) {
+            dao.getAlbums(Int.MAX_VALUE, 0)
+        } else {
+            dao.getAlbumsByLetter(letter, Int.MAX_VALUE, 0)
+        }.map { it.toModel() }
+        return mergeAlbums(indexAlbums, cachedTrackModels(), letter).size
     }
-    suspend fun getCachedGenreCount(): Int = db?.browseDao()?.genreCount() ?: 0
-    suspend fun getCachedCountryCount(): Int = db?.browseDao()?.countryCount() ?: 0
-    suspend fun getCachedLanguageCount(): Int = db?.browseDao()?.languageCount() ?: 0
+    suspend fun getCachedGenreCount(): Int {
+        val dao = db?.browseDao() ?: return 0
+        return mergeGenres(dao.getGenres(Int.MAX_VALUE, 0).map { it.toModel() }, cachedTrackModels()).size
+    }
+    suspend fun getCachedCountryCount(): Int {
+        val dao = db?.browseDao() ?: return 0
+        return mergeCountries(dao.getCountries(Int.MAX_VALUE, 0).map { it.toModel() }, cachedTrackModels()).size
+    }
+    suspend fun getCachedLanguageCount(): Int {
+        val dao = db?.browseDao() ?: return 0
+        return mergeLanguages(dao.getLanguages(Int.MAX_VALUE, 0).map { it.toModel() }, cachedTrackModels()).size
+    }
 
     suspend fun getCachedTracksPage(limit: Int, offset: Int): List<Track>? =
         db?.trackDao()?.getPage(limit, offset)?.map { it.toModel() }
@@ -107,6 +283,18 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
 
     suspend fun getCachedGenreTrackCount(genre: String): Int =
         db?.trackDao()?.countByGenre(genre) ?: 0
+
+    suspend fun getCachedCountryTracks(country: String, limit: Int, offset: Int): List<Track>? =
+        db?.trackDao()?.getByCountry(country, limit, offset)?.map { it.toModel() }
+
+    suspend fun getCachedCountryTrackCount(country: String): Int =
+        db?.trackDao()?.countByCountry(country) ?: 0
+
+    suspend fun getCachedLanguageTracks(language: String, limit: Int, offset: Int): List<Track>? =
+        db?.trackDao()?.getByLanguage(language, limit, offset)?.map { it.toModel() }
+
+    suspend fun getCachedLanguageTrackCount(language: String): Int =
+        db?.trackDao()?.countByLanguage(language) ?: 0
 
     suspend fun getTracksByIds(ids: List<Int>): List<Track>? =
         db?.trackDao()?.getByIds(ids)?.map { it.toModel() }
