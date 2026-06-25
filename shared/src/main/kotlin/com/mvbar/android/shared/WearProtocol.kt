@@ -18,6 +18,8 @@ object WearProtocol {
     const val PATH_CMD_SEEK_FORWARD = "/mvbar/cmd/seek_forward"
     const val PATH_CMD_SEEK_BACK = "/mvbar/cmd/seek_back"
     const val PATH_CMD_FAVORITE = "/mvbar/cmd/favorite"
+    const val PATH_CMD_VOLUME_UP = "/mvbar/cmd/volume_up"
+    const val PATH_CMD_VOLUME_DOWN = "/mvbar/cmd/volume_down"
 
     // DataClient paths (phone -> watch)
     const val PATH_NOW_PLAYING = "/mvbar/state/now_playing"

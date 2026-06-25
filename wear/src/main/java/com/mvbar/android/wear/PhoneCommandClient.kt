@@ -29,6 +29,8 @@ class PhoneCommandClient(context: Context) {
     fun seekForward() = send(WearProtocol.PATH_CMD_SEEK_FORWARD)
     fun seekBack() = send(WearProtocol.PATH_CMD_SEEK_BACK)
     fun toggleFavorite() = send(WearProtocol.PATH_CMD_FAVORITE)
+    fun volumeUp() = send(WearProtocol.PATH_CMD_VOLUME_UP)
+    fun volumeDown() = send(WearProtocol.PATH_CMD_VOLUME_DOWN)
 
     private fun send(path: String) {
         scope.launch {

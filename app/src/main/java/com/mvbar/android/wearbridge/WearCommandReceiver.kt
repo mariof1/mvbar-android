@@ -1,5 +1,7 @@
 package com.mvbar.android.wearbridge
 
+import android.content.Context
+import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import com.google.android.gms.wearable.MessageEvent
@@ -37,11 +39,24 @@ class WearCommandReceiver : WearableListenerService() {
                         val cur = pm.state.value.isFavorite
                         pm.setFavorite(!cur)
                     }
+                    WearProtocol.PATH_CMD_VOLUME_UP -> adjustPhoneVolume(pm, 1)
+                    WearProtocol.PATH_CMD_VOLUME_DOWN -> adjustPhoneVolume(pm, -1)
                     else -> Unit
                 }
             }.onFailure { throwable ->
                 DebugLog.e("Wear", "Failed to handle Wear command: $path", throwable)
             }
         }
+    }
+
+    private fun adjustPhoneVolume(pm: PlayerManager, direction: Int) {
+        if (pm.isCasting() && pm.adjustCastVolume(direction)) return
+
+        val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audio.adjustStreamVolume(
+            AudioManager.STREAM_MUSIC,
+            if (direction > 0) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER,
+            0
+        )
     }
 }

@@ -5,6 +5,7 @@ import android.media.AudioManager
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,7 +27,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -45,10 +49,13 @@ import com.mvbar.android.wear.PhoneCommandClient
 import com.mvbar.android.wear.player.PlayableItem
 import com.mvbar.android.wear.player.WearPlayerHolder
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 private enum class PlaybackTarget { PHONE, WATCH }
 
 private var preferredPlaybackTarget = PlaybackTarget.WATCH
+private const val ROTARY_VOLUME_STEP_PX = 28f
+private const val MAX_ROTARY_STEPS_PER_EVENT = 3
 
 /**
  * Now Playing — visual-first. Big blurred art fills the screen; centered
@@ -63,6 +70,7 @@ fun WearNowPlayingScreen(onOpenQueue: () -> Unit) {
     val local by WearPlayerHolder.state.collectAsState()
     val remote by NowPlayingRepository.state.collectAsState()
     val phone = remember { PhoneCommandClient(ctx.applicationContext) }
+    val audio = remember { ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val hasLocal = local.isActive
     val hasRemote = !remote.isEmpty
     var preferredTargetName by rememberSaveable { mutableStateOf(preferredPlaybackTarget.name) }
@@ -79,23 +87,63 @@ fun WearNowPlayingScreen(onOpenQueue: () -> Unit) {
         preferredPlaybackTarget = target
         preferredTargetName = target.name
     }
+    val focusRequester = remember { FocusRequester() }
+    var rotaryRemainder by remember(selectedTarget) { mutableStateOf(0f) }
+    LaunchedEffect(selectedTarget) {
+        if (selectedTarget != null) {
+            runCatching { focusRequester.requestFocus() }
+        }
+    }
+    val adjustSelectedVolume: (Int) -> Unit = { direction ->
+        when (selectedTarget) {
+            PlaybackTarget.PHONE -> if (direction > 0) phone.volumeUp() else phone.volumeDown()
+            PlaybackTarget.WATCH -> audio.adjustStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                if (direction > 0) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER,
+                0
+            )
+            null -> Unit
+        }
+    }
 
-    when (selectedTarget) {
-        PlaybackTarget.WATCH -> LocalNowPlaying(
-            local,
-            onOpenQueue,
-            showTargetSwitcher,
-            selectedTarget,
-            onSelectTarget
-        )
-        PlaybackTarget.PHONE -> RemoteNowPlaying(
-            remote,
-            phone,
-            showTargetSwitcher,
-            selectedTarget,
-            onSelectTarget
-        )
-        else -> EmptyNowPlaying()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onRotaryScrollEvent { event ->
+                if (selectedTarget == null || event.verticalScrollPixels == 0f) {
+                    return@onRotaryScrollEvent false
+                }
+                rotaryRemainder += event.verticalScrollPixels
+                val steps = (rotaryRemainder / ROTARY_VOLUME_STEP_PX).toInt()
+                if (steps != 0) {
+                    val direction = if (steps < 0) 1 else -1
+                    repeat(abs(steps).coerceAtMost(MAX_ROTARY_STEPS_PER_EVENT)) {
+                        adjustSelectedVolume(direction)
+                    }
+                    rotaryRemainder -= steps * ROTARY_VOLUME_STEP_PX
+                }
+                true
+            }
+            .focusRequester(focusRequester)
+            .focusable()
+    ) {
+        when (selectedTarget) {
+            PlaybackTarget.WATCH -> LocalNowPlaying(
+                local,
+                onOpenQueue,
+                showTargetSwitcher,
+                selectedTarget,
+                onSelectTarget
+            )
+            PlaybackTarget.PHONE -> RemoteNowPlaying(
+                remote,
+                phone,
+                showTargetSwitcher,
+                selectedTarget,
+                onSelectTarget
+            )
+            else -> EmptyNowPlaying()
+        }
     }
 }
 
