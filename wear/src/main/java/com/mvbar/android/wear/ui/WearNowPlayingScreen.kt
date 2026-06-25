@@ -10,12 +10,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
-import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.VolumeUp
@@ -277,9 +275,9 @@ private fun SmallCircleAction(
     Button(
         onClick = onClick,
         colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
-        modifier = Modifier.size(28.dp).clip(CircleShape)
+        modifier = Modifier.size(34.dp).clip(CircleShape)
     ) {
-        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(14.dp))
+        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -313,17 +311,17 @@ private fun RemoteNowPlaying(state: NowPlayingState, phone: PhoneCommandClient) 
         }
         Box(modifier = Modifier.fillMaxSize().background(Color(0xD0000000)))
         Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 18.dp),
+            modifier = Modifier.fillMaxSize().padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Text("Phone", color = accent, style = MaterialTheme.typography.caption2, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(5.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 state.title,
                 color = WearTheme.OnSurface,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
+                maxLines = 1,
                 textAlign = TextAlign.Center,
                 overflow = TextOverflow.Ellipsis
             )
@@ -334,7 +332,7 @@ private fun RemoteNowPlaying(state: NowPlayingState, phone: PhoneCommandClient) 
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             GlowingProgressBar(progress, accent)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
@@ -343,44 +341,19 @@ private fun RemoteNowPlaying(state: NowPlayingState, phone: PhoneCommandClient) 
                 Text(formatMs(displayPosition), color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption3)
                 Text(formatMs(state.durationMs), color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption3)
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = { phone.previous() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)), modifier = Modifier.size(38.dp).clip(CircleShape)) {
+                Button(onClick = { phone.previous() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)), modifier = Modifier.size(34.dp).clip(CircleShape)) {
                     Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = WearTheme.OnSurface)
                 }
-                Spacer(Modifier.width(10.dp))
-                Button(onClick = { phone.playPause() }, colors = ButtonDefaults.primaryButtonColors(backgroundColor = accent), modifier = Modifier.size(54.dp).clip(CircleShape)) {
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = { phone.playPause() }, colors = ButtonDefaults.primaryButtonColors(backgroundColor = accent), modifier = Modifier.size(50.dp).clip(CircleShape)) {
                     Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (state.isPlaying) "Pause" else "Play", tint = WearTheme.OnSurface)
                 }
-                Spacer(Modifier.width(10.dp))
-                Button(onClick = { phone.next() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)), modifier = Modifier.size(38.dp).clip(CircleShape)) {
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = { phone.next() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)), modifier = Modifier.size(34.dp).clip(CircleShape)) {
                     Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = WearTheme.OnSurface)
                 }
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SmallCircleAction(
-                    icon = if (state.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    tint = if (state.favorite) WearTheme.Pink else WearTheme.OnSurface,
-                    description = "Favorite",
-                    onClick = { phone.toggleFavorite() }
-                )
-                SmallCircleAction(
-                    icon = Icons.Default.Replay10,
-                    tint = WearTheme.OnSurface,
-                    description = "Back 10 seconds",
-                    onClick = { phone.seekBack() }
-                )
-                SmallCircleAction(
-                    icon = Icons.Default.Forward10,
-                    tint = WearTheme.OnSurface,
-                    description = "Forward 10 seconds",
-                    onClick = { phone.seekForward() }
-                )
             }
         }
     }
