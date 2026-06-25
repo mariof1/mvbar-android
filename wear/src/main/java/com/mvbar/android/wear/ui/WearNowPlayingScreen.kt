@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioManager
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -44,6 +46,10 @@ import com.mvbar.android.wear.player.PlayableItem
 import com.mvbar.android.wear.player.WearPlayerHolder
 import kotlinx.coroutines.launch
 
+private enum class PlaybackTarget { PHONE, WATCH }
+
+private var preferredPlaybackTarget = PlaybackTarget.WATCH
+
 /**
  * Now Playing — visual-first. Big blurred art fills the screen; centered
  * artwork + title + artist on top of a scrim. Single primary play/pause,
@@ -57,9 +63,38 @@ fun WearNowPlayingScreen(onOpenQueue: () -> Unit) {
     val local by WearPlayerHolder.state.collectAsState()
     val remote by NowPlayingRepository.state.collectAsState()
     val phone = remember { PhoneCommandClient(ctx.applicationContext) }
-    when {
-        local.isActive -> LocalNowPlaying(local, onOpenQueue)
-        !remote.isEmpty -> RemoteNowPlaying(remote, phone)
+    val hasLocal = local.isActive
+    val hasRemote = !remote.isEmpty
+    var preferredTargetName by rememberSaveable { mutableStateOf(preferredPlaybackTarget.name) }
+    val preferredTarget = runCatching { PlaybackTarget.valueOf(preferredTargetName) }
+        .getOrDefault(PlaybackTarget.WATCH)
+    val selectedTarget = when {
+        hasLocal && hasRemote -> preferredTarget
+        hasLocal -> PlaybackTarget.WATCH
+        hasRemote -> PlaybackTarget.PHONE
+        else -> null
+    }
+    val showTargetSwitcher = hasLocal && hasRemote
+    val onSelectTarget: (PlaybackTarget) -> Unit = { target ->
+        preferredPlaybackTarget = target
+        preferredTargetName = target.name
+    }
+
+    when (selectedTarget) {
+        PlaybackTarget.WATCH -> LocalNowPlaying(
+            local,
+            onOpenQueue,
+            showTargetSwitcher,
+            selectedTarget,
+            onSelectTarget
+        )
+        PlaybackTarget.PHONE -> RemoteNowPlaying(
+            remote,
+            phone,
+            showTargetSwitcher,
+            selectedTarget,
+            onSelectTarget
+        )
         else -> EmptyNowPlaying()
     }
 }
@@ -81,7 +116,13 @@ private fun EmptyNowPlaying() {
 }
 
 @Composable
-private fun LocalNowPlaying(state: WearPlayerHolder.State, onOpenQueue: () -> Unit) {
+private fun LocalNowPlaying(
+    state: WearPlayerHolder.State,
+    onOpenQueue: () -> Unit,
+    showTargetSwitcher: Boolean,
+    selectedTarget: PlaybackTarget,
+    onSelectTarget: (PlaybackTarget) -> Unit
+) {
     val item = state.item ?: return
     val ctx = LocalContext.current
     val backend = remember { Backend.get(ctx.applicationContext) }
@@ -96,6 +137,10 @@ private fun LocalNowPlaying(state: WearPlayerHolder.State, onOpenQueue: () -> Un
                     ?: item.episode.imageUrl
             )
         }
+    }
+    if (showTargetSwitcher) {
+        CompactLocalNowPlaying(state, item, accent, selectedTarget, onSelectTarget)
+        return
     }
 
     Box(modifier = Modifier.fillMaxSize().background(WearTheme.Background)) {
@@ -266,6 +311,81 @@ private fun LocalNowPlaying(state: WearPlayerHolder.State, onOpenQueue: () -> Un
 }
 
 @Composable
+private fun CompactLocalNowPlaying(
+    state: WearPlayerHolder.State,
+    item: PlayableItem,
+    accent: Color,
+    selectedTarget: PlaybackTarget,
+    onSelectTarget: (PlaybackTarget) -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize().background(WearTheme.Background)) {
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xD0000000)))
+        Column(
+            modifier = Modifier.fillMaxSize().padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 48.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            TargetSwitcher(selectedTarget, onSelectTarget)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                item.title,
+                color = WearTheme.OnSurface,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                item.subtitle,
+                color = WearTheme.OnSurfaceDim,
+                style = MaterialTheme.typography.caption2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(8.dp))
+            val dur = state.durationMs.coerceAtLeast(1)
+            val progress = (state.positionMs.toFloat() / dur).coerceIn(0f, 1f)
+            GlowingProgressBar(progress, accent)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(formatMs(state.positionMs), color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption3)
+                Text(formatMs(state.durationMs), color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption3)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = { WearPlayerHolder.previous() },
+                    enabled = state.hasPrevious,
+                    colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
+                    modifier = Modifier.size(34.dp).clip(CircleShape)
+                ) { Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = WearTheme.OnSurface) }
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = { WearPlayerHolder.togglePlayPause() },
+                    colors = ButtonDefaults.primaryButtonColors(backgroundColor = accent),
+                    modifier = Modifier.size(50.dp).clip(CircleShape)
+                ) {
+                    Icon(
+                        if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (state.isPlaying) "Pause" else "Play",
+                        tint = WearTheme.OnSurface
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = { WearPlayerHolder.next() },
+                    enabled = state.hasNext,
+                    colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
+                    modifier = Modifier.size(34.dp).clip(CircleShape)
+                ) { Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = WearTheme.OnSurface) }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SmallCircleAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     tint: Color,
@@ -282,7 +402,13 @@ private fun SmallCircleAction(
 }
 
 @Composable
-private fun RemoteNowPlaying(state: NowPlayingState, phone: PhoneCommandClient) {
+private fun RemoteNowPlaying(
+    state: NowPlayingState,
+    phone: PhoneCommandClient,
+    showTargetSwitcher: Boolean,
+    selectedTarget: PlaybackTarget,
+    onSelectTarget: (PlaybackTarget) -> Unit
+) {
     val accent = if (state.isPodcast || state.isAudiobook) WearTheme.Orange else WearTheme.Cyan
     var tick by remember(state.timestamp, state.isPlaying) { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(state.timestamp, state.isPlaying) {
@@ -315,7 +441,11 @@ private fun RemoteNowPlaying(state: NowPlayingState, phone: PhoneCommandClient) 
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text("Phone", color = accent, style = MaterialTheme.typography.caption2, fontWeight = FontWeight.SemiBold)
+            if (showTargetSwitcher) {
+                TargetSwitcher(selectedTarget, onSelectTarget)
+            } else {
+                Text("Phone", color = accent, style = MaterialTheme.typography.caption2, fontWeight = FontWeight.SemiBold)
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 state.title,
@@ -356,6 +486,64 @@ private fun RemoteNowPlaying(state: NowPlayingState, phone: PhoneCommandClient) 
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TargetSwitcher(
+    selectedTarget: PlaybackTarget,
+    onSelectTarget: (PlaybackTarget) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth(0.74f)
+            .height(32.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0x3DFFFFFF))
+            .padding(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TargetSegment(
+            label = "Phone",
+            selected = selectedTarget == PlaybackTarget.PHONE,
+            accent = WearTheme.Cyan,
+            onClick = { onSelectTarget(PlaybackTarget.PHONE) },
+            modifier = Modifier.weight(1f)
+        )
+        TargetSegment(
+            label = "Watch",
+            selected = selectedTarget == PlaybackTarget.WATCH,
+            accent = WearTheme.Orange,
+            onClick = { onSelectTarget(PlaybackTarget.WATCH) },
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun TargetSegment(
+    label: String,
+    selected: Boolean,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) accent else Color.Transparent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            color = if (selected) WearTheme.Background else WearTheme.OnSurface,
+            style = MaterialTheme.typography.caption3,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

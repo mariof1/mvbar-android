@@ -227,7 +227,11 @@ private fun NowPlayingHero(onOpen: () -> Unit) {
         local.isActive -> {
             val item = local.item
             title = item?.title ?: "Watch playback"
-            subtitle = item?.subtitle.orEmpty()
+            subtitle = if (!remote.isEmpty) {
+                "Watch active / phone available"
+            } else {
+                item?.subtitle.orEmpty()
+            }
             artUrl = when (item) {
                 is PlayableItem.Music -> backend.artworkUrl(item.track.artPath)
                 is PlayableItem.PodcastEp -> backend.artworkUrl(item.episode.imagePath ?: item.episode.podcastImagePath)
