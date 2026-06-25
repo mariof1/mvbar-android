@@ -89,8 +89,11 @@ fun WearNowPlayingScreen(onOpenQueue: () -> Unit) {
     }
     val focusRequester = remember { FocusRequester() }
     var rotaryRemainder by remember(selectedTarget) { mutableStateOf(0f) }
-    LaunchedEffect(selectedTarget) {
+    LaunchedEffect(selectedTarget, hasLocal, hasRemote) {
         if (selectedTarget != null) {
+            withFrameNanos { }
+            runCatching { focusRequester.requestFocus() }
+            kotlinx.coroutines.delay(250)
             runCatching { focusRequester.requestFocus() }
         }
     }
@@ -116,7 +119,7 @@ fun WearNowPlayingScreen(onOpenQueue: () -> Unit) {
                 rotaryRemainder += event.verticalScrollPixels
                 val steps = (rotaryRemainder / ROTARY_VOLUME_STEP_PX).toInt()
                 if (steps != 0) {
-                    val direction = if (steps < 0) 1 else -1
+                    val direction = if (steps > 0) 1 else -1
                     repeat(abs(steps).coerceAtMost(MAX_ROTARY_STEPS_PER_EVENT)) {
                         adjustSelectedVolume(direction)
                     }

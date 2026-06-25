@@ -1,7 +1,6 @@
 package com.mvbar.android.wear
 
 import android.content.Context
-import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.Wearable
@@ -22,6 +21,7 @@ class PhoneCommandClient(context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val capabilityClient: CapabilityClient = Wearable.getCapabilityClient(context)
     private val messageClient: MessageClient = Wearable.getMessageClient(context)
+    private val nodeClient = Wearable.getNodeClient(context)
 
     fun playPause() = send(WearProtocol.PATH_CMD_PLAY_PAUSE)
     fun next() = send(WearProtocol.PATH_CMD_NEXT)
@@ -41,8 +41,10 @@ class PhoneCommandClient(context: Context) {
                         CapabilityClient.FILTER_REACHABLE
                     )
                     .await()
-                val node = info.nodes.firstOrNull { it.isNearby } ?: info.nodes.firstOrNull()
-                if (node != null) {
+                val nodes = (info.nodes.ifEmpty { nodeClient.connectedNodes.await() })
+                    .distinctBy { it.id }
+                    .sortedByDescending { it.isNearby }
+                nodes.forEach { node ->
                     messageClient.sendMessage(node.id, path, ByteArray(0)).await()
                 }
             }
