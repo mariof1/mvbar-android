@@ -1,11 +1,14 @@
 package com.mvbar.android.wear.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,7 +20,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
@@ -26,6 +28,7 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import coil.compose.AsyncImage
 import com.mvbar.android.wear.net.Album
+import com.mvbar.android.wear.net.Track
 import com.mvbar.android.wear.player.PlayableItem
 import com.mvbar.android.wear.player.WearPlayerHolder
 
@@ -42,24 +45,16 @@ fun AlbumsScreen(
         loading = false
     }
 
-    ScalingLazyColumn(modifier = Modifier.fillMaxSize().background(WearTheme.Background)) {
-        item {
-            Chip(
-                onClick = onBack,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ChipDefaults.secondaryChipColors(backgroundColor = WearTheme.Surface),
-                icon = { Icon(Icons.Default.ArrowBack, contentDescription = null, tint = WearTheme.Cyan) },
-                label = { Text("Albums", color = WearTheme.OnSurface) },
-                secondaryLabel = { Text("${albums.size}", color = WearTheme.OnSurfaceDim) }
-            )
-        }
-        if (loading) {
-            item { Text("Loading…", color = WearTheme.OnSurfaceDim) }
-        } else {
-            items(albums) { album ->
-                AlbumChip(backend, album, onClick = { onOpenAlbum(album.displayName) })
+    WearList {
+        item { WearHeaderChip("Albums", if (loading) null else "${albums.size}", onBack) }
+        when {
+            loading -> item { LoadingChip("Loading albums") }
+            albums.isEmpty() -> item { EmptyChip("No albums", "Sync your library from the phone") }
+            else -> items(albums) { album ->
+                AlbumChip(backend, album) { onOpenAlbum(album.displayName) }
             }
         }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
@@ -76,7 +71,7 @@ private fun AlbumChip(backend: Backend, album: Album, onClick: () -> Unit) {
                     model = art,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(28.dp).clip(RoundedCornerShape(4.dp))
+                    modifier = Modifier.size(30.dp).clip(RoundedCornerShape(6.dp))
                 )
             } else {
                 Icon(Icons.Default.Album, contentDescription = null, tint = WearTheme.Cyan)
@@ -93,7 +88,7 @@ private fun AlbumChip(backend: Backend, album: Album, onClick: () -> Unit) {
         },
         secondaryLabel = {
             Text(
-                album.displayArtistName.ifEmpty { "" },
+                album.displayArtistName,
                 color = WearTheme.OnSurfaceDim,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -110,40 +105,43 @@ fun AlbumDetailScreen(
     onBack: () -> Unit,
     onOpenNowPlaying: () -> Unit
 ) {
-    var tracks by remember { mutableStateOf<List<com.mvbar.android.wear.net.Track>>(emptyList()) }
-    LaunchedEffect(albumName) { tracks = backend.albumTracks(albumName) }
+    var tracks by remember(albumName) { mutableStateOf<List<Track>>(emptyList()) }
+    var loading by remember(albumName) { mutableStateOf(true) }
+    LaunchedEffect(albumName) {
+        loading = true
+        tracks = backend.albumTracks(albumName)
+        loading = false
+    }
 
-    ScalingLazyColumn(modifier = Modifier.fillMaxSize().background(WearTheme.Background)) {
-        item {
-            Chip(
-                onClick = onBack,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ChipDefaults.secondaryChipColors(backgroundColor = WearTheme.Surface),
-                icon = { Icon(Icons.Default.ArrowBack, contentDescription = null, tint = WearTheme.Cyan) },
-                label = { Text(albumName, color = WearTheme.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            )
-        }
-        if (tracks.isNotEmpty()) {
-            item {
-                Chip(
-                    onClick = {
-                        val items = tracks.map { PlayableItem.Music(it) }
-                        WearPlayerHolder.playQueue(backend.context, items, 0)
+    WearList {
+        item { WearHeaderChip(albumName, if (loading) null else "${tracks.size} tracks", onBack) }
+        when {
+            loading -> item { LoadingChip("Loading album") }
+            tracks.isEmpty() -> item { EmptyChip("No tracks", "This album has nothing playable") }
+            else -> {
+                item {
+                    Chip(
+                        onClick = {
+                            val queue = tracks.map { PlayableItem.Music(it) }
+                            WearPlayerHolder.playQueue(backend.context, queue, 0)
+                            onOpenNowPlaying()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ChipDefaults.primaryChipColors(backgroundColor = WearTheme.Cyan),
+                        icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
+                        label = { Text("Play album", color = WearTheme.OnSurface) },
+                        secondaryLabel = { Text("${tracks.size} tracks", color = WearTheme.OnSurface) }
+                    )
+                }
+                items(tracks) { track ->
+                    TrackChip(backend, track) {
+                        val queue = tracks.map { PlayableItem.Music(it) }
+                        WearPlayerHolder.playQueue(backend.context, queue, tracks.indexOf(track).coerceAtLeast(0))
                         onOpenNowPlaying()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ChipDefaults.primaryChipColors(backgroundColor = WearTheme.Cyan),
-                    label = { Text("Play all (${tracks.size})", color = WearTheme.OnSurface) }
-                )
+                    }
+                }
             }
         }
-        items(tracks) { t ->
-            TrackChip(backend, t, onClick = {
-                val list = tracks.map { PlayableItem.Music(it) }
-                val idx = tracks.indexOf(t).coerceAtLeast(0)
-                WearPlayerHolder.playQueue(backend.context, list, idx)
-                onOpenNowPlaying()
-            })
-        }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }

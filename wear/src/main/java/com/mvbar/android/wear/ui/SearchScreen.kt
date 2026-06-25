@@ -2,12 +2,12 @@ package com.mvbar.android.wear.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,12 +15,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.Text
+import com.mvbar.android.wear.net.SearchResults
 import com.mvbar.android.wear.net.Track
 import com.mvbar.android.wear.player.PlayableItem
 import com.mvbar.android.wear.player.WearPlayerHolder
@@ -32,31 +34,33 @@ fun SearchScreen(
     onOpenNowPlaying: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    var tracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var results by remember { mutableStateOf(SearchResults()) }
 
     val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val text = result.data
             ?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
-            ?.firstOrNull().orEmpty()
+            ?.firstOrNull()
+            .orEmpty()
+            .trim()
         if (text.isNotBlank()) query = text
     }
 
     LaunchedEffect(query) {
-        tracks = if (query.isNotBlank()) backend.search(query).tracks else emptyList()
+        if (query.isBlank()) {
+            results = SearchResults()
+            loading = false
+            return@LaunchedEffect
+        }
+        loading = true
+        results = backend.search(query)
+        loading = false
     }
 
-    ScalingLazyColumn(modifier = Modifier.fillMaxSize().background(WearTheme.Background)) {
-        item {
-            Chip(
-                onClick = onBack,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ChipDefaults.secondaryChipColors(backgroundColor = WearTheme.Surface),
-                icon = { Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = WearTheme.Cyan) },
-                label = { Text("Back", color = WearTheme.OnSurface) }
-            )
-        }
+    WearList {
+        item { WearHeaderChip("Search", if (query.isBlank()) "Voice search" else query, onBack) }
         item {
             Chip(
                 onClick = {
@@ -65,24 +69,54 @@ fun SearchScreen(
                             android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                             android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
                         )
-                        putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Search")
+                        putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Search mvbar")
                     }
                     voiceLauncher.launch(intent)
                 },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ChipDefaults.primaryChipColors(backgroundColor = WearTheme.Cyan),
                 icon = { Icon(Icons.Default.Mic, contentDescription = null) },
-                label = { Text(if (query.isBlank()) "Speak…" else query, color = WearTheme.OnSurface) }
+                label = {
+                    Text(
+                        if (query.isBlank()) "Speak search" else "Search again",
+                        color = WearTheme.OnSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                secondaryLabel = if (query.isNotBlank()) {
+                    { Text(query, color = WearTheme.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                } else null
             )
         }
-        items(tracks) { t ->
-            TrackChip(backend, t, onClick = {
-                val list = tracks.map { PlayableItem.Music(it) }
-                val idx = tracks.indexOf(t).coerceAtLeast(0)
-                WearPlayerHolder.playQueue(backend.context, list, idx)
-                onOpenNowPlaying()
-            })
+
+        when {
+            query.isBlank() -> item { EmptyChip("Say a title, artist, or album", "Tap the microphone") }
+            loading -> item { LoadingChip("Searching") }
+            results.tracks.isEmpty() -> item { EmptyChip("No track matches", "Try another phrase") }
+            else -> {
+                item {
+                    Chip(
+                        onClick = {
+                            playTracks(backend, results.tracks, 0)
+                            onOpenNowPlaying()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ChipDefaults.secondaryChipColors(backgroundColor = WearTheme.Surface),
+                        icon = { Icon(Icons.Default.PlaylistPlay, contentDescription = null, tint = WearTheme.Cyan) },
+                        label = { Text("Play results", color = WearTheme.OnSurface) },
+                        secondaryLabel = { Text("${results.tracks.size} tracks", color = WearTheme.OnSurfaceDim) }
+                    )
+                }
+                items(results.tracks) { track ->
+                    TrackChip(backend, track) {
+                        playTracks(backend, results.tracks, results.tracks.indexOf(track).coerceAtLeast(0))
+                        onOpenNowPlaying()
+                    }
+                }
+            }
         }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
@@ -101,4 +135,9 @@ fun PlaylistTracksScreen(
         onBack = onBack,
         onOpenNowPlaying = onOpenNowPlaying
     )
+}
+
+private fun playTracks(backend: Backend, tracks: List<Track>, index: Int) {
+    val queue = tracks.map { PlayableItem.Music(it) }
+    WearPlayerHolder.playQueue(backend.context, queue, index.coerceIn(0, (tracks.size - 1).coerceAtLeast(0)))
 }

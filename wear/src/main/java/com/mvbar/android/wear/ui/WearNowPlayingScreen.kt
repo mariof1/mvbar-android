@@ -10,10 +10,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.VolumeUp
@@ -85,6 +87,7 @@ private fun LocalNowPlaying(state: WearPlayerHolder.State, onOpenQueue: () -> Un
     val item = state.item ?: return
     val ctx = LocalContext.current
     val backend = remember { Backend.get(ctx.applicationContext) }
+    val scope = rememberCoroutineScope()
     val accent = if (item.isPodcast) WearTheme.Orange else WearTheme.Cyan
     val artUrl = remember(item) {
         when (item) {
@@ -232,7 +235,7 @@ private fun LocalNowPlaying(state: WearPlayerHolder.State, onOpenQueue: () -> Un
                             val music = item
                             val newFav = !state.isFavorite
                             WearPlayerHolder.setFavoriteLocal(newFav)
-                            kotlinx.coroutines.MainScope().launch {
+                            scope.launch {
                                 backend.setFavorite(music.track.id, newFav)
                             }
                         }
@@ -283,28 +286,101 @@ private fun SmallCircleAction(
 @Composable
 private fun RemoteNowPlaying(state: NowPlayingState, phone: PhoneCommandClient) {
     val accent = if (state.isPodcast || state.isAudiobook) WearTheme.Orange else WearTheme.Cyan
-    Column(
-        modifier = Modifier.fillMaxSize().background(WearTheme.Background)
-            .padding(horizontal = 12.dp, vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text("Playing on phone", color = accent, style = MaterialTheme.typography.caption2, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(6.dp))
-        Text(state.title, color = WearTheme.OnSurface, fontWeight = FontWeight.SemiBold, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
-        Text(state.artist, color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption2, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(14.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { phone.previous() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = WearTheme.Surface), modifier = Modifier.size(40.dp).clip(CircleShape)) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = null, tint = WearTheme.OnSurface)
+    var tick by remember(state.timestamp, state.isPlaying) { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(state.timestamp, state.isPlaying) {
+        tick = System.currentTimeMillis()
+        while (state.isPlaying) {
+            kotlinx.coroutines.delay(1000)
+            tick = System.currentTimeMillis()
+        }
+    }
+    val displayPosition = remember(state, tick) {
+        val elapsed = if (state.isPlaying && state.timestamp > 0L) tick - state.timestamp else 0L
+        (state.positionMs + elapsed).coerceIn(0L, state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE)
+    }
+    val progress = if (state.durationMs > 0) {
+        (displayPosition.toFloat() / state.durationMs).coerceIn(0f, 1f)
+    } else 0f
+
+    Box(modifier = Modifier.fillMaxSize().background(WearTheme.Background)) {
+        if (!state.artworkUrl.isNullOrBlank() && Build.VERSION.SDK_INT >= 31) {
+            AsyncImage(
+                model = state.artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().blur(36.dp).alpha(0.45f)
+            )
+        }
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xD0000000)))
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text("Phone", color = accent, style = MaterialTheme.typography.caption2, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(5.dp))
+            Text(
+                state.title,
+                color = WearTheme.OnSurface,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                textAlign = TextAlign.Center,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                state.artist,
+                color = WearTheme.OnSurfaceDim,
+                style = MaterialTheme.typography.caption2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(10.dp))
+            GlowingProgressBar(progress, accent)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(formatMs(displayPosition), color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption3)
+                Text(formatMs(state.durationMs), color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption3)
             }
-            Spacer(Modifier.width(10.dp))
-            Button(onClick = { phone.playPause() }, colors = ButtonDefaults.primaryButtonColors(backgroundColor = accent), modifier = Modifier.size(56.dp).clip(CircleShape)) {
-                Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null, tint = WearTheme.OnSurface)
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { phone.previous() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)), modifier = Modifier.size(38.dp).clip(CircleShape)) {
+                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = WearTheme.OnSurface)
+                }
+                Spacer(Modifier.width(10.dp))
+                Button(onClick = { phone.playPause() }, colors = ButtonDefaults.primaryButtonColors(backgroundColor = accent), modifier = Modifier.size(54.dp).clip(CircleShape)) {
+                    Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (state.isPlaying) "Pause" else "Play", tint = WearTheme.OnSurface)
+                }
+                Spacer(Modifier.width(10.dp))
+                Button(onClick = { phone.next() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)), modifier = Modifier.size(38.dp).clip(CircleShape)) {
+                    Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = WearTheme.OnSurface)
+                }
             }
-            Spacer(Modifier.width(10.dp))
-            Button(onClick = { phone.next() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = WearTheme.Surface), modifier = Modifier.size(40.dp).clip(CircleShape)) {
-                Icon(Icons.Default.SkipNext, contentDescription = null, tint = WearTheme.OnSurface)
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SmallCircleAction(
+                    icon = if (state.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    tint = if (state.favorite) WearTheme.Pink else WearTheme.OnSurface,
+                    description = "Favorite",
+                    onClick = { phone.toggleFavorite() }
+                )
+                SmallCircleAction(
+                    icon = Icons.Default.Replay10,
+                    tint = WearTheme.OnSurface,
+                    description = "Back 10 seconds",
+                    onClick = { phone.seekBack() }
+                )
+                SmallCircleAction(
+                    icon = Icons.Default.Forward10,
+                    tint = WearTheme.OnSurface,
+                    description = "Forward 10 seconds",
+                    onClick = { phone.seekForward() }
+                )
             }
         }
     }

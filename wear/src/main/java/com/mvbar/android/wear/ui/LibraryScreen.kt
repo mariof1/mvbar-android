@@ -1,10 +1,12 @@
 package com.mvbar.android.wear.ui
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
@@ -20,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,10 +35,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
-import androidx.wear.compose.material.Button
-import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
@@ -49,13 +49,9 @@ import com.mvbar.android.wear.net.Podcast
 import com.mvbar.android.wear.net.Track
 import com.mvbar.android.wear.player.PlayableItem
 import com.mvbar.android.wear.player.WearPlayerHolder
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
-/**
- * Unified library — no Pods/Music tab split. Single ScalingLazyColumn:
- * [Now Playing hero] [Search · Settings buttons] [Recents] [Library categories]
- * [Latest episodes] [Subscribed podcasts] [Playlists]. Browse anything from
- * a single screen.
- */
 @Composable
 fun LibraryScreen(
     backend: Backend,
@@ -73,90 +69,148 @@ fun LibraryScreen(
         return
     }
 
-    var playlists by remember { mutableStateOf<List<Playlist>>(emptyList()) }
-    var podcasts by remember { mutableStateOf<List<Podcast>>(emptyList()) }
-    var newEpisodes by remember { mutableStateOf<List<Episode>>(emptyList()) }
-    var recents by remember { mutableStateOf<List<Track>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        playlists = backend.playlists()
-        podcasts = backend.podcasts()
-        newEpisodes = backend.newEpisodes()
-        recents = backend.recentTracks()
+    var refreshKey by remember { mutableIntStateOf(0) }
+    var loading by remember { mutableStateOf(true) }
+    var reachable by remember { mutableStateOf(true) }
+    var data by remember { mutableStateOf(LibraryData()) }
+
+    LaunchedEffect(refreshKey) {
+        loading = true
+        val result = runCatching {
+            coroutineScope {
+                val reach = async { backend.connectionOk() }
+                val playlists = async { backend.playlists() }
+                val podcasts = async { backend.podcasts() }
+                val episodes = async { backend.newEpisodes() }
+                val added = async { backend.recentTracks() }
+                val history = async { backend.history() }
+                val favorites = async { backend.favorites() }
+                LibraryLoad(
+                    reachable = reach.await(),
+                    data = LibraryData(
+                        playlists = playlists.await(),
+                        podcasts = podcasts.await(),
+                        newEpisodes = episodes.await(),
+                        recentlyAdded = added.await(),
+                        history = history.await(),
+                        favorites = favorites.await()
+                    )
+                )
+            }
+        }
+        result.onSuccess {
+            reachable = it.reachable
+            data = it.data
+        }.onFailure {
+            reachable = false
+            data = LibraryData()
+        }
+        loading = false
     }
 
-    ScalingLazyColumn(
-        modifier = Modifier.fillMaxSize().background(WearTheme.Background)
-    ) {
+    WearList {
         item { NowPlayingHero(onOpen = onOpenNowPlaying) }
         item {
-            QuickActions(
-                onSearch = { showSearch = true },
-                onSettings = onOpenSettings
-            )
+            CenteredActions {
+                RoundIconAction("Now playing", Icons.Default.MusicNote, WearTheme.Cyan, onOpenNowPlaying)
+                Spacer(Modifier.size(14.dp))
+                RoundIconAction("Search", Icons.Default.Mic, WearTheme.Surface, { showSearch = true })
+                Spacer(Modifier.size(14.dp))
+                RoundIconAction("Settings", Icons.Default.Settings, WearTheme.Surface, onOpenSettings)
+            }
+        }
+
+        if (loading) {
+            item { LoadingChip("Syncing watch") }
+        } else if (!reachable && data.isEmpty) {
+            item { OfflineChip(onRetry = { refreshKey++ }) }
         }
 
         item { SectionLabel("Browse") }
+        item { CategoryChip("Albums", "Browse your library", Icons.Default.Album, WearTheme.Cyan, onOpenAlbums) }
+        item { CategoryChip("Smart playlists", "Server rules", Icons.Default.AutoAwesome, WearTheme.Pink, onOpenSmartPlaylists) }
         item {
-            CategoryChip("Albums", Icons.Default.Album, WearTheme.Cyan, onOpenAlbums)
-        }
-        item {
-            CategoryChip("Smart playlists", Icons.Default.AutoAwesome, WearTheme.Pink, onOpenSmartPlaylists)
-        }
-        item {
-            CategoryChip("Favorites", Icons.Default.Favorite, WearTheme.Pink) {
+            CategoryChip("Favorites", "${data.favorites.size} tracks", Icons.Default.Favorite, WearTheme.Pink) {
                 onOpenTrackList("Favorites") { backend.favorites() }
             }
         }
         item {
-            CategoryChip("History", Icons.Default.History, WearTheme.Cyan) {
+            CategoryChip("History", "Recently played", Icons.Default.History, WearTheme.Cyan) {
                 onOpenTrackList("History") { backend.history() }
             }
         }
 
-        if (recents.isNotEmpty()) {
-            item { SectionLabel("Recently played") }
-            items(recents.take(8)) { t ->
-                TrackChip(backend, t, onClick = {
-                    val list = recents.map { PlayableItem.Music(it) }
-                    val idx = recents.indexOf(t).coerceAtLeast(0)
-                    WearPlayerHolder.playQueue(backend.context, list, idx)
+        if (data.history.isNotEmpty()) {
+            item { SectionLabel("Continue") }
+            items(data.history.take(6)) { track ->
+                TrackChip(backend, track) {
+                    val queue = data.history.map { PlayableItem.Music(it) }
+                    WearPlayerHolder.playQueue(backend.context, queue, data.history.indexOf(track).coerceAtLeast(0))
                     onOpenNowPlaying()
-                })
+                }
             }
         }
 
-        if (newEpisodes.isNotEmpty()) {
+        if (data.newEpisodes.isNotEmpty()) {
             item { SectionLabel("New episodes") }
-            items(newEpisodes.take(8)) { ep ->
-                EpisodeChip(backend, ep, onClick = {
-                    WearPlayerHolder.play(backend.context, PlayableItem.PodcastEp(ep))
+            items(data.newEpisodes.take(6)) { episode ->
+                EpisodeChip(backend, episode) {
+                    WearPlayerHolder.play(backend.context, PlayableItem.PodcastEp(episode))
                     onOpenNowPlaying()
-                })
+                }
             }
         }
 
-        if (podcasts.isNotEmpty()) {
+        if (data.recentlyAdded.isNotEmpty()) {
+            item { SectionLabel("Recently added") }
+            items(data.recentlyAdded.take(6)) { track ->
+                TrackChip(backend, track) {
+                    val queue = data.recentlyAdded.map { PlayableItem.Music(it) }
+                    WearPlayerHolder.playQueue(backend.context, queue, data.recentlyAdded.indexOf(track).coerceAtLeast(0))
+                    onOpenNowPlaying()
+                }
+            }
+        }
+
+        if (data.podcasts.isNotEmpty()) {
             item { SectionLabel("Podcasts") }
-            items(podcasts) { p ->
-                CompactPodcastChip(backend, p, onClick = { onOpenPodcast(p.id) })
+            items(data.podcasts.take(12)) { podcast ->
+                CompactPodcastChip(backend, podcast) { onOpenPodcast(podcast.id) }
             }
         }
 
-        if (playlists.isNotEmpty()) {
+        if (data.playlists.isNotEmpty()) {
             item { SectionLabel("Playlists") }
-            items(playlists) { pl ->
-                Chip(
-                    onClick = { onOpenPlaylist(pl.id, pl.name) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ChipDefaults.secondaryChipColors(backgroundColor = WearTheme.Surface),
-                    icon = { Icon(Icons.Default.QueueMusic, contentDescription = null, tint = WearTheme.Cyan) },
-                    label = { Text(pl.name, color = WearTheme.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    secondaryLabel = { Text("${pl.trackCount} tracks", color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption2) }
-                )
+            items(data.playlists.take(20)) { playlist ->
+                PlaylistChip(playlist) { onOpenPlaylist(playlist.id, playlist.name) }
             }
         }
+
+        if (!loading && reachable && data.isEmpty) {
+            item { EmptyChip("Nothing here yet", "Sync your library from the phone") }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
+
+private data class LibraryData(
+    val playlists: List<Playlist> = emptyList(),
+    val podcasts: List<Podcast> = emptyList(),
+    val newEpisodes: List<Episode> = emptyList(),
+    val recentlyAdded: List<Track> = emptyList(),
+    val history: List<Track> = emptyList(),
+    val favorites: List<Track> = emptyList()
+) {
+    val isEmpty: Boolean
+        get() = playlists.isEmpty() &&
+            podcasts.isEmpty() &&
+            newEpisodes.isEmpty() &&
+            recentlyAdded.isEmpty() &&
+            history.isEmpty() &&
+            favorites.isEmpty()
+}
+
+private data class LibraryLoad(val reachable: Boolean, val data: LibraryData)
 
 @Composable
 private fun NowPlayingHero(onOpen: () -> Unit) {
@@ -165,35 +219,45 @@ private fun NowPlayingHero(onOpen: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val backend = remember { Backend.get(ctx.applicationContext) }
 
-    val title: String?
+    val title: String
     val subtitle: String
     val artUrl: String?
     val accent: Color
     when {
         local.isActive -> {
             val item = local.item
-            title = item?.title
+            title = item?.title ?: "Watch playback"
             subtitle = item?.subtitle.orEmpty()
-            artUrl = (item as? PlayableItem.Music)?.track?.artPath?.let { backend.artworkUrl(it) }
+            artUrl = when (item) {
+                is PlayableItem.Music -> backend.artworkUrl(item.track.artPath)
+                is PlayableItem.PodcastEp -> backend.artworkUrl(item.episode.imagePath ?: item.episode.podcastImagePath)
+                null -> null
+            }
             accent = if (item?.isPodcast == true) WearTheme.Orange else WearTheme.Cyan
         }
         !remote.isEmpty -> {
             title = remote.title
-            subtitle = remote.artist
-            artUrl = null
+            subtitle = "Playing on phone"
+            artUrl = remote.artworkUrl
             accent = if (remote.isPodcast || remote.isAudiobook) WearTheme.Orange else WearTheme.Cyan
         }
-        else -> { title = null; subtitle = ""; artUrl = null; accent = WearTheme.Cyan }
+        else -> {
+            title = "mvbar"
+            subtitle = "Ready on watch"
+            artUrl = null
+            accent = WearTheme.Cyan
+        }
     }
-    if (title == null) return
 
     Chip(
         onClick = onOpen,
         modifier = Modifier.fillMaxWidth(),
-        colors = ChipDefaults.primaryChipColors(backgroundColor = accent.copy(alpha = 0.55f)),
+        colors = ChipDefaults.primaryChipColors(backgroundColor = accent.copy(alpha = 0.48f)),
         icon = {
             Box(
-                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(6.dp))
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(7.dp))
                     .background(WearTheme.Surface),
                 contentAlignment = Alignment.Center
             ) {
@@ -210,59 +274,58 @@ private fun NowPlayingHero(onOpen: () -> Unit) {
             }
         },
         label = {
-            Text(title, color = WearTheme.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.caption1, fontWeight = FontWeight.SemiBold)
+            Text(
+                title,
+                color = WearTheme.OnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.caption1,
+                fontWeight = FontWeight.SemiBold
+            )
         },
-        secondaryLabel = if (subtitle.isNotBlank()) {
-            { Text(subtitle, color = WearTheme.OnSurface.copy(alpha = 0.85f), maxLines = 1,
-                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.caption2) }
-        } else null
+        secondaryLabel = {
+            Text(
+                subtitle,
+                color = WearTheme.OnSurface.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.caption2
+            )
+        }
     )
 }
 
 @Composable
-private fun QuickActions(onSearch: () -> Unit, onSettings: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconAction("Search", Icons.Default.Mic, WearTheme.Cyan, onSearch)
-        Spacer(Modifier.width(20.dp))
-        IconAction("Settings", Icons.Default.Settings, WearTheme.Surface, onSettings, iconTint = WearTheme.OnSurface)
-    }
-}
-
-@Composable
-private fun IconAction(label: String, icon: ImageVector, bg: Color, onClick: () -> Unit, iconTint: Color = WearTheme.OnSurface) {
-    Button(
-        onClick = onClick,
-        colors = ButtonDefaults.primaryButtonColors(backgroundColor = bg),
-        modifier = Modifier.size(44.dp).clip(CircleShape)
-    ) {
-        Icon(icon, contentDescription = label, tint = iconTint, modifier = Modifier.size(20.dp))
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text,
-        color = WearTheme.OnSurfaceDim,
-        style = MaterialTheme.typography.caption2,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 12.dp, top = 6.dp, bottom = 2.dp)
-    )
-}
-
-@Composable
-private fun CategoryChip(label: String, icon: ImageVector, accent: Color, onClick: () -> Unit) {
+private fun CategoryChip(
+    label: String,
+    subtitle: String,
+    icon: ImageVector,
+    accent: Color,
+    onClick: () -> Unit
+) {
     Chip(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         colors = ChipDefaults.secondaryChipColors(backgroundColor = WearTheme.Surface),
         icon = { Icon(icon, contentDescription = null, tint = accent) },
-        label = { Text(label, color = WearTheme.OnSurface) }
+        label = { Text(label, color = WearTheme.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        secondaryLabel = {
+            Text(subtitle, color = WearTheme.OnSurfaceDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    )
+}
+
+@Composable
+private fun PlaylistChip(playlist: Playlist, onClick: () -> Unit) {
+    Chip(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = ChipDefaults.secondaryChipColors(backgroundColor = WearTheme.Surface),
+        icon = { Icon(Icons.Default.QueueMusic, contentDescription = null, tint = WearTheme.Cyan) },
+        label = { Text(playlist.name, color = WearTheme.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        secondaryLabel = {
+            Text("${playlist.trackCount} tracks", color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption2)
+        }
     )
 }
 
@@ -279,12 +342,16 @@ private fun CompactPodcastChip(backend: Backend, podcast: Podcast, onClick: () -
                     model = art,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(28.dp).clip(RoundedCornerShape(4.dp))
+                    modifier = Modifier.size(30.dp).clip(RoundedCornerShape(6.dp))
                 )
             } else {
                 Icon(Icons.Default.Podcasts, contentDescription = null, tint = WearTheme.Orange)
             }
         },
-        label = { Text(podcast.title.orEmpty(), color = WearTheme.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        label = { Text(podcast.title, color = WearTheme.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        secondaryLabel = {
+            val subtitle = if (podcast.unplayedCount > 0) "${podcast.unplayedCount} unplayed" else podcast.author.orEmpty()
+            Text(subtitle, color = WearTheme.OnSurfaceDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     )
 }

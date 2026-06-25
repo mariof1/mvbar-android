@@ -14,6 +14,9 @@ import com.mvbar.android.wear.net.WearApiClient
  */
 class Backend private constructor(val context: Context, val api: MvbarWearApi) {
 
+    suspend fun connectionOk(): Boolean =
+        runCatching { api.recentTracks(limit = 1).ok }.getOrDefault(false)
+
     suspend fun recentTracks(): List<Track> =
         runCatching { api.recentTracks(limit = 50).tracks }.getOrDefault(emptyList())
 

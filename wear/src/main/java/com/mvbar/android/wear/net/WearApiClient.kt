@@ -93,6 +93,7 @@ object WearApiClient {
      */
     fun artworkUrl(context: Context, artPath: String?): String? {
         if (artPath.isNullOrBlank()) return null
+        if (artPath.startsWith("http://") || artPath.startsWith("https://")) return artPath
         val store = AuthTokenStore.get(context.applicationContext)
         val base = store.serverUrl ?: return null
         val token = store.token ?: return null
