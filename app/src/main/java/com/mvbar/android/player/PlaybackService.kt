@@ -33,6 +33,7 @@ import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.mvbar.android.MainActivity
+import com.mvbar.android.R
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.ActivityQueue
 import com.mvbar.android.data.AaPreferences
@@ -946,6 +947,10 @@ class PlaybackService : MediaLibraryService() {
 
     private inner class TransportNotificationProvider :
         DefaultMediaNotificationProvider(this@PlaybackService) {
+
+        init {
+            setSmallIcon(R.drawable.ic_android_auto_media_badge)
+        }
 
         override fun getMediaButtons(
             session: MediaSession,
