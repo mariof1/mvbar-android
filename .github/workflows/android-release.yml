@@ -174,17 +174,39 @@ jobs:
             ./gradlew :app:assembleRelease --console=plain
           fi
 
+      - name: Verify phone APK compatibility
+        run: |
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          if [[ -z "$AAPT" ]]; then
+            echo "::error::Could not find aapt in Android SDK build-tools"
+            exit 1
+          fi
+
+          PHONE_APK="app/build/outputs/apk/release/app-release.apk"
+          BADGING="$("$AAPT" dump badging "$PHONE_APK")"
+          echo "$BADGING" | sed -n "/^package:/p;/^sdkVersion:/p;/^targetSdkVersion:/p;/^native-code:/p;/android.hardware.type.watch/p"
+
+          if ! grep -q "^native-code:.*'arm64-v8a'" <<< "$BADGING"; then
+            echo "::error::Phone APK does not advertise arm64-v8a native-code support"
+            exit 1
+          fi
+
+          if grep -q "android.hardware.type.watch" <<< "$BADGING"; then
+            echo "::error::Phone APK unexpectedly requires Wear OS watch hardware"
+            exit 1
+          fi
+
       - name: Collect APKs
         id: collect
         run: |
           VERSION="$(grep '^VERSION_NAME=' version.properties | cut -d= -f2)"
           SHORT_SHA="${GITHUB_SHA::7}"
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/mvbar-android-dev-${VERSION}-${SHORT_SHA}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "dist/mvbar-android-arm64-dev-${VERSION}-${SHORT_SHA}.apk"
           if [[ "${{ inputs.modules }}" == "all" ]]; then
             cp wear/build/outputs/apk/release/wear-release.apk "dist/mvbar-wear-dev-${VERSION}-${SHORT_SHA}.apk"
           fi
-          echo "artifact_name=mvbar-android-dev-${VERSION}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=mvbar-android-arm64-dev-${VERSION}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v6
@@ -241,10 +263,32 @@ jobs:
             ./gradlew :app:assembleRelease --console=plain
           fi
 
+      - name: Verify phone APK compatibility
+        run: |
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          if [[ -z "$AAPT" ]]; then
+            echo "::error::Could not find aapt in Android SDK build-tools"
+            exit 1
+          fi
+
+          PHONE_APK="app/build/outputs/apk/release/app-release.apk"
+          BADGING="$("$AAPT" dump badging "$PHONE_APK")"
+          echo "$BADGING" | sed -n "/^package:/p;/^sdkVersion:/p;/^targetSdkVersion:/p;/^native-code:/p;/android.hardware.type.watch/p"
+
+          if ! grep -q "^native-code:.*'arm64-v8a'" <<< "$BADGING"; then
+            echo "::error::Phone APK does not advertise arm64-v8a native-code support"
+            exit 1
+          fi
+
+          if grep -q "android.hardware.type.watch" <<< "$BADGING"; then
+            echo "::error::Phone APK unexpectedly requires Wear OS watch hardware"
+            exit 1
+          fi
+
       - name: Collect APKs
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/mvbar-android-${{ needs.version.outputs.version }}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "dist/mvbar-android-arm64-${{ needs.version.outputs.version }}.apk"
           if [[ "${{ inputs.modules }}" == "all" ]]; then
             cp wear/build/outputs/apk/release/wear-release.apk "dist/mvbar-wear-${{ needs.version.outputs.version }}.apk"
           fi
@@ -252,7 +296,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v6
         with:
-          name: mvbar-android-${{ needs.version.outputs.version }}
+          name: mvbar-android-arm64-${{ needs.version.outputs.version }}
           path: dist/*.apk
           if-no-files-found: error
           retention-days: 90
@@ -263,5 +307,5 @@ jobs:
         run: |
           gh release create "${{ needs.version.outputs.tag }}" dist/*.apk \
             --title "MVBar Android ${{ needs.version.outputs.version }}" \
-            --notes "Signed Android APK release ${{ needs.version.outputs.version }} (${{ needs.version.outputs.version_code }})." \
+            --notes "Signed Android ARM64-compatible APK release ${{ needs.version.outputs.version }} (${{ needs.version.outputs.version_code }})." \
             --generate-notes

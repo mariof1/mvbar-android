@@ -45,6 +45,10 @@ android {
         targetSdk = 34
         versionCode = rootProject.extra["mvbarVersionCode"] as Int
         versionName = rootProject.extra["mvbarVersionName"] as String
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     signingConfigs {
