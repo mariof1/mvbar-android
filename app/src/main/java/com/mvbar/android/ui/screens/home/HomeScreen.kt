@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,6 +73,7 @@ fun HomeScreen(
                 favoriteIds = favoriteIds,
                 onPlayTrack = onPlayTrack,
                 onToggleFavorite = onToggleFavorite,
+                onTrackLongPress = onTrackLongPress,
                 onBack = { selectedBucket = null }
             )
         } else {
@@ -85,8 +85,7 @@ fun HomeScreen(
                 onBucketClick = { selectedBucket = it },
                 onAlbumClick = onAlbumClick,
                 onRefresh = onRefresh,
-                onToggleFavorite = onToggleFavorite,
-                onTrackLongPress = onTrackLongPress
+                onToggleFavorite = onToggleFavorite
             )
         }
     }
@@ -102,8 +101,7 @@ private fun HomeContent(
     onBucketClick: (RecBucket) -> Unit,
     onAlbumClick: (String) -> Unit,
     onRefresh: () -> Unit,
-    onToggleFavorite: ((Int) -> Unit)? = null,
-    onTrackLongPress: ((Track) -> Unit)? = null
+    onToggleFavorite: ((Int) -> Unit)? = null
 ) {
     val pullRefreshState = rememberPullToRefreshState()
     val isOnline = LocalIsOnline.current
@@ -191,34 +189,6 @@ private fun HomeContent(
                 }
             }
 
-            // Recently Added
-            if (state.recentlyAdded.isNotEmpty()) {
-                item(key = "recent_header") {
-                    Spacer(Modifier.height(if (isPhoneLandscape) 12.dp else 24.dp))
-                    Text(
-                        "Recently Added",
-                        style = if (isPhoneLandscape) MaterialTheme.typography.titleMedium
-                               else MaterialTheme.typography.titleLarge,
-                        color = OnSurface,
-                        modifier = Modifier.padding(
-                            horizontal = if (isPhoneLandscape) 16.dp else 20.dp,
-                            vertical = if (isPhoneLandscape) 4.dp else 8.dp
-                        )
-                    )
-                }
-                items(state.recentlyAdded.take(15), key = { "recent_${it.id}" }) { track ->
-                    val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
-                    TrackListItem(
-                        track = trackWithFav,
-                        isPlaying = track.id == currentTrackId,
-                        onPlay = { onPlayTrack(track, state.recentlyAdded) },
-                        onFavorite = onToggleFavorite?.let { { it(track.id) } },
-                        onMore = onTrackLongPress?.let { { it(track) } },
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    )
-                }
-            }
-
             if (state.isLoading) {
                 item(key = "loading") {
                     Box(
@@ -240,6 +210,7 @@ private fun BucketDetailView(
     favoriteIds: Set<Int> = emptySet(),
     onPlayTrack: (Track, List<Track>) -> Unit,
     onToggleFavorite: ((Int) -> Unit)? = null,
+    onTrackLongPress: ((Track) -> Unit)? = null,
     onBack: () -> Unit
 ) {
     val configuration = LocalConfiguration.current
@@ -335,6 +306,7 @@ private fun BucketDetailView(
                 isPlaying = track.id == currentTrackId,
                 onPlay = { onPlayTrack(track, bucket.tracks) },
                 onFavorite = onToggleFavorite?.let { { it(track.id) } },
+                onMore = onTrackLongPress?.let { { it(track) } },
                 modifier = Modifier.padding(horizontal = 12.dp)
             )
         }

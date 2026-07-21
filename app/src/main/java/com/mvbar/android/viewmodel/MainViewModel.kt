@@ -24,7 +24,6 @@ import kotlinx.coroutines.launch
 
 data class HomeState(
     val buckets: List<RecBucket> = emptyList(),
-    val recentlyAdded: List<Track> = emptyList(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val error: String? = null
@@ -191,6 +190,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun List<RecBucket>.withCompleteRecommendationPayloads(): List<RecBucket> =
         filter { bucket -> bucket.count <= bucket.tracks.size }
 
+    private fun List<Track>.toRecentlyAddedBucket(): RecBucket? {
+        val tracks = take(PAGE_SIZE)
+        if (tracks.isEmpty()) return null
+        val artPairs = tracks
+            .mapNotNull { track -> track.artPath?.let { it to (track.artHash ?: "") } }
+            .distinctBy { it.first }
+            .take(4)
+        return RecBucket(
+            key = "recently_added",
+            name = "Recently Added",
+            subtitle = "Newest tracks in your library",
+            count = tracks.size,
+            tracks = tracks,
+            artPaths = artPairs.map { it.first },
+            artHashes = artPairs.map { it.second }
+        )
+    }
+
     fun loadHome(isRefresh: Boolean = false) {
         homeJob?.cancel()
         homeJob = viewModelScope.launch {
@@ -203,12 +220,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val cachedBuckets = try {
                     repo.getCachedRecommendations()?.withCompleteRecommendationPayloads()
                 } catch (_: Exception) { null }
-                val cachedRecent = try { repo.getCachedRecentlyAdded(PAGE_SIZE) } catch (_: Exception) { null }
-                if (!cachedBuckets.isNullOrEmpty() || !cachedRecent.isNullOrEmpty()) {
-                    _homeState.value = HomeState(
-                        buckets = cachedBuckets ?: emptyList(),
-                        recentlyAdded = cachedRecent ?: emptyList()
-                    )
+                val cachedRecentBucket = if (cachedBuckets?.any { it.key == "recently_added" } == true) {
+                    null
+                } else {
+                    try { repo.getCachedRecentlyAdded(PAGE_SIZE)?.toRecentlyAddedBucket() } catch (_: Exception) { null }
+                }
+                val displayBuckets = buildList {
+                    cachedBuckets?.let { addAll(it) }
+                    cachedRecentBucket?.let { add(it) }
+                }
+                if (displayBuckets.isNotEmpty()) {
+                    _homeState.value = HomeState(buckets = displayBuckets)
                 }
             }
             if (!NetworkMonitor.isOnline.value) {
@@ -216,40 +238,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 homeLoadedOnce = true
                 return@launch
             }
-            // Then fetch from API in parallel
+            // Then fetch recommendation buckets from API.
             try {
                 DebugLog.i("Home", "Loading recommendations...")
-                kotlinx.coroutines.coroutineScope {
-                    val bucketsDeferred = async {
-                        try {
-                            val resp = repo.getRecommendations()
-                            try {
-                                repo.cacheRecommendations(resp.buckets)
-                            } catch (e: Exception) {
-                                DebugLog.e("Home", "Failed to cache recommendations", e)
-                            }
-                            DebugLog.i("Home", "Got ${resp.buckets.size} buckets")
-                            resp.buckets
-                        } catch (e: Exception) {
-                            DebugLog.e("Home", "Failed to load recommendations", e)
-                            _homeState.value.buckets.ifEmpty { emptyList() }
-                        }
+                try {
+                    val resp = repo.getRecommendations()
+                    try {
+                        repo.cacheRecommendations(resp.buckets)
+                    } catch (e: Exception) {
+                        DebugLog.e("Home", "Failed to cache recommendations", e)
                     }
-                    val recentDeferred = async {
-                        try {
-                            val resp = repo.getRecentlyAdded(PAGE_SIZE)
-                            DebugLog.i("Home", "Got ${resp.tracks.size} recent tracks")
-                            resp.tracks
-                        } catch (e: Exception) {
-                            DebugLog.e("Home", "Failed to load recent tracks", e)
-                            _homeState.value.recentlyAdded.ifEmpty { emptyList() }
-                        }
-                    }
-                    val buckets = bucketsDeferred.await()
-                    val recent = recentDeferred.await()
-                    _homeState.value = HomeState(buckets = buckets, recentlyAdded = recent)
-                    homeLoadedOnce = true
+                    val buckets = resp.buckets.withCompleteRecommendationPayloads()
+                    DebugLog.i("Home", "Got ${buckets.size} buckets")
+                    _homeState.value = HomeState(buckets = buckets)
+                } catch (e: Exception) {
+                    DebugLog.e("Home", "Failed to load recommendations", e)
+                    _homeState.value = _homeState.value.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = if (_homeState.value.buckets.isEmpty()) "Failed to load: ${e.message}" else null
+                    )
                 }
+                homeLoadedOnce = true
             } catch (e: Exception) {
                 DebugLog.e("Home", "loadHome failed", e)
                 _homeState.value = _homeState.value.copy(
@@ -1000,7 +1010,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ?: _history.value.firstOrNull { it.id == trackId }
             ?: _favorites.value.firstOrNull { it.id == trackId }
             ?: _playlistTracks.value.firstOrNull { it.id == trackId }
-            ?: _homeState.value.recentlyAdded.firstOrNull { it.id == trackId }
             ?: _homeState.value.buckets.asSequence().flatMap { it.tracks.asSequence() }.firstOrNull { it.id == trackId }
     }
 
