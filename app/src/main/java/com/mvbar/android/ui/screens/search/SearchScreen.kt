@@ -15,6 +15,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +36,8 @@ import com.mvbar.android.data.model.SearchAlbum
 import com.mvbar.android.data.model.SearchArtist
 import com.mvbar.android.data.model.SearchPlaylist
 import com.mvbar.android.data.model.SearchResults
+import com.mvbar.android.data.model.Episode
+import com.mvbar.android.data.model.Podcast
 import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.ui.components.TrackListItem
@@ -50,6 +54,8 @@ fun SearchScreen(
     onAlbumsSectionClick: ((SearchArtist) -> Unit)? = null,
     onAlbumClick: (SearchAlbum) -> Unit,
     onPlaylistClick: (SearchPlaylist) -> Unit,
+    onPodcastClick: (Podcast) -> Unit,
+    onPodcastEpisodeClick: (Episode) -> Unit,
     onTrackLongPress: ((Track) -> Unit)? = null,
     onArtistLongPress: ((SearchArtist) -> Unit)? = null,
     onAlbumLongPress: ((SearchAlbum) -> Unit)? = null,
@@ -80,7 +86,7 @@ fun SearchScreen(
                 query = it
                 onSearch(it)
             },
-            placeholder = { Text("Search songs, artists, albums...") },
+            placeholder = { Text("Search songs, artists, albums, podcasts...") },
             leadingIcon = { Icon(Icons.Filled.Search, null, tint = Cyan500) },
             trailingIcon = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -120,7 +126,9 @@ fun SearchScreen(
             results.hits.isNotEmpty() ||
             results.artists.isNotEmpty() ||
             results.albums.isNotEmpty() ||
-            results.playlists.isNotEmpty()
+            results.playlists.isNotEmpty() ||
+            results.podcasts.isNotEmpty() ||
+            results.podcastEpisodes.isNotEmpty()
         )
 
         if (hasResults) {
@@ -128,11 +136,15 @@ fun SearchScreen(
             val totalItems = (results!!.artists.take(4).size +
                 results.albums.take(4).size +
                 results.playlists.take(4).size +
+                results.podcasts.take(4).size +
+                results.podcastEpisodes.take(6).size +
                 results.hits.size +
                 // section headers
                 (if (results.artists.isNotEmpty()) 1 else 0) +
                 (if (results.albums.isNotEmpty()) 1 else 0) +
                 (if (results.playlists.isNotEmpty()) 1 else 0) +
+                (if (results.podcasts.isNotEmpty()) 1 else 0) +
+                (if (results.podcastEpisodes.isNotEmpty()) 1 else 0) +
                 (if (results.hits.isNotEmpty()) 1 else 0))
             LaunchedEffect(listState, hasMore, isLoadingMore, totalItems) {
                 snapshotFlow {
@@ -186,6 +198,24 @@ fun SearchScreen(
                     item { SectionHeader("Playlists") }
                     items(playlists.take(4)) { playlist ->
                         PlaylistSearchRow(playlist = playlist, onClick = { onPlaylistClick(playlist) })
+                    }
+                }
+
+                // Podcasts section
+                val podcasts = results.podcasts
+                if (podcasts.isNotEmpty()) {
+                    item { SectionHeader("Podcasts") }
+                    items(podcasts.take(4)) { podcast ->
+                        PodcastSearchRow(podcast = podcast, onClick = { onPodcastClick(podcast) })
+                    }
+                }
+
+                // Podcast episodes section
+                val podcastEpisodes = results.podcastEpisodes
+                if (podcastEpisodes.isNotEmpty()) {
+                    item { SectionHeader("Podcast Episodes") }
+                    items(podcastEpisodes.take(6)) { episode ->
+                        PodcastEpisodeSearchRow(episode = episode, onClick = { onPodcastEpisodeClick(episode) })
                     }
                 }
 
@@ -247,7 +277,7 @@ fun SearchScreen(
                     Spacer(Modifier.height(16.dp))
                     Text("Search your library", style = MaterialTheme.typography.titleMedium, color = OnSurfaceDim)
                     Spacer(Modifier.height(4.dp))
-                    Text("Find songs, artists, and albums", style = MaterialTheme.typography.bodySmall, color = OnSurfaceSubtle)
+                    Text("Find songs, artists, albums, and podcasts", style = MaterialTheme.typography.bodySmall, color = OnSurfaceSubtle)
                 }
             }
         }
@@ -477,6 +507,120 @@ private fun PlaylistSearchRow(playlist: SearchPlaylist, onClick: () -> Unit) {
         )
     }
 }
+
+@Composable
+private fun PodcastSearchRow(podcast: Podcast, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))
+                .background(Cyan500.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Podcasts, null, tint = Cyan400, modifier = Modifier.size(22.dp))
+            AsyncImage(
+                model = podcastArtUrl(podcast),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                podcast.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = OnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                buildString {
+                    append(podcast.author?.takeIf { it.isNotBlank() } ?: "Podcast")
+                    if (podcast.unplayedCount > 0) append(" · ${podcast.unplayedCount} unplayed")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceDim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Icon(
+            Icons.AutoMirrored.Filled.ArrowForwardIos, null,
+            tint = OnSurfaceSubtle, modifier = Modifier.size(14.dp)
+        )
+    }
+}
+
+@Composable
+private fun PodcastEpisodeSearchRow(episode: Episode, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(46.dp).clip(RoundedCornerShape(10.dp))
+                .background(SurfaceVariantDark),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.PlayArrow, null, tint = Cyan400, modifier = Modifier.size(22.dp))
+            AsyncImage(
+                model = episodeArtUrl(episode),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                episode.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = OnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                listOfNotNull(
+                    episode.podcastTitle?.takeIf { it.isNotBlank() },
+                    episode.durationFormatted.takeIf { it.isNotBlank() },
+                    episode.publishedFormatted.takeIf { it.isNotBlank() }
+                ).joinToString(" · ").ifBlank { "Podcast episode" },
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceDim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+private fun podcastArtUrl(podcast: Podcast): String =
+    podcast.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+        ?: podcast.imageUrl
+        ?: ApiClient.podcastArtUrl(podcast.id)
+
+private fun episodeArtUrl(episode: Episode): String =
+    episode.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+        ?: episode.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
+        ?: episode.imageUrl
+        ?: episode.podcastImageUrl
+        ?: ApiClient.episodeArtUrl(episode.id)
 
 private fun getInitials(name: String): String {
     val parts = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }

@@ -1392,6 +1392,20 @@ fun MainScreen(
                         }
                     }
                 },
+                onPodcastClick = { podcast ->
+                    showSearch = false
+                    mainVm.clearSearch()
+                    podcastVm.loadPodcastDetail(podcast.id)
+                    navController.navigate("podcast/${podcast.id}") {
+                        launchSingleTop = true
+                    }
+                },
+                onPodcastEpisodeClick = { episode ->
+                    val episodeQueue = searchResults?.podcastEpisodes?.takeIf { it.isNotEmpty() } ?: listOf(episode)
+                    showSearch = false
+                    mainVm.clearSearch()
+                    podcastVm.playEpisode(episode, episodeQueue)
+                },
                 onTrackLongPress = { contextTrack = it },
                 onArtistLongPress = { sa ->
                     val artUrl = sa.artPath?.let { ApiClient.artPathUrl(it) + (sa.artHash?.let { h -> "?h=$h" } ?: "") }

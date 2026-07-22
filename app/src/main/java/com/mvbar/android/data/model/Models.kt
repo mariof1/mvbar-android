@@ -180,7 +180,9 @@ data class SearchResults(
     val hits: List<Track> = emptyList(),
     val artists: List<SearchArtist> = emptyList(),
     val albums: List<SearchAlbum> = emptyList(),
-    val playlists: List<SearchPlaylist> = emptyList()
+    val playlists: List<SearchPlaylist> = emptyList(),
+    val podcasts: List<Podcast> = emptyList(),
+    val podcastEpisodes: List<Episode> = emptyList()
 )
 
 @Serializable

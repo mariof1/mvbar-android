@@ -13,8 +13,28 @@ interface PodcastDao {
     @Query("SELECT * FROM podcasts ORDER BY title COLLATE NOCASE ASC")
     suspend fun getAllPodcasts(): List<PodcastEntity>
 
+    @Query("""
+        SELECT * FROM podcasts
+        WHERE title COLLATE NOCASE LIKE '%' || :query || '%'
+           OR COALESCE(author, '') COLLATE NOCASE LIKE '%' || :query || '%'
+           OR COALESCE(description, '') COLLATE NOCASE LIKE '%' || :query || '%'
+        ORDER BY title COLLATE NOCASE ASC
+        LIMIT :limit
+    """)
+    suspend fun searchPodcasts(query: String, limit: Int): List<PodcastEntity>
+
     @Query("SELECT * FROM episodes WHERE podcastId = :podcastId ORDER BY publishedAt DESC")
     suspend fun getEpisodes(podcastId: Int): List<EpisodeEntity>
+
+    @Query("""
+        SELECT * FROM episodes
+        WHERE title COLLATE NOCASE LIKE '%' || :query || '%'
+           OR COALESCE(description, '') COLLATE NOCASE LIKE '%' || :query || '%'
+           OR COALESCE(podcastTitle, '') COLLATE NOCASE LIKE '%' || :query || '%'
+        ORDER BY publishedAt DESC
+        LIMIT :limit
+    """)
+    suspend fun searchEpisodes(query: String, limit: Int): List<EpisodeEntity>
 
     @Query("SELECT * FROM episodes WHERE positionMs > 0 AND played = 0 ORDER BY publishedAt DESC LIMIT :limit")
     suspend fun getContinueListening(limit: Int): List<EpisodeEntity>
