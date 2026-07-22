@@ -233,6 +233,9 @@ interface MvbarApi {
     @GET("api/podcasts/search")
     suspend fun searchPodcasts(@Query("q") query: String, @Query("limit") limit: Int = 25): PodcastSearchResponse
 
+    @GET("api/podcasts/preview")
+    suspend fun previewPodcast(@Query("feedUrl") feedUrl: String): PodcastPreviewResponse
+
     @POST("api/podcasts/subscribe")
     suspend fun subscribePodcast(@Body body: PodcastSubscribeRequest): PodcastSubscribeResponse
 

@@ -45,6 +45,15 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
     private val _searchLoading = MutableStateFlow(false)
     val searchLoading: StateFlow<Boolean> = _searchLoading.asStateFlow()
 
+    private val _preview = MutableStateFlow<PodcastPreview?>(null)
+    val preview: StateFlow<PodcastPreview?> = _preview.asStateFlow()
+
+    private val _previewLoading = MutableStateFlow(false)
+    val previewLoading: StateFlow<Boolean> = _previewLoading.asStateFlow()
+
+    private val _previewError = MutableStateFlow<String?>(null)
+    val previewError: StateFlow<String?> = _previewError.asStateFlow()
+
     // Loading states
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -177,6 +186,40 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearSearch() {
         _searchResults.value = emptyList()
+    }
+
+    fun previewPodcast(feedUrl: String?) {
+        if (feedUrl.isNullOrBlank()) {
+            _preview.value = null
+            _previewError.value = "No RSS feed available"
+            _previewLoading.value = false
+            return
+        }
+        viewModelScope.launch {
+            _preview.value = null
+            _previewError.value = null
+            _previewLoading.value = true
+            try {
+                if (!NetworkMonitor.isOnline.value) {
+                    _previewError.value = "Podcast details need a network connection"
+                    return@launch
+                }
+                val r = api.previewPodcast(feedUrl)
+                _preview.value = r.preview
+                if (r.preview == null) _previewError.value = "No podcast details available"
+            } catch (e: Exception) {
+                DebugLog.e("Podcast", "Preview failed", e)
+                _previewError.value = e.message ?: "Preview failed"
+            } finally {
+                _previewLoading.value = false
+            }
+        }
+    }
+
+    fun clearPreview() {
+        _preview.value = null
+        _previewError.value = null
+        _previewLoading.value = false
     }
 
     fun subscribe(feedUrl: String, onSuccess: () -> Unit = {}) {

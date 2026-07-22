@@ -183,6 +183,9 @@ fun MainScreen(
     val podcastEpisodes by podcastVm.episodes.collectAsState()
     val podcastSearchResults by podcastVm.searchResults.collectAsState()
     val podcastSearchLoading by podcastVm.searchLoading.collectAsState()
+    val podcastPreview by podcastVm.preview.collectAsState()
+    val podcastPreviewLoading by podcastVm.previewLoading.collectAsState()
+    val podcastPreviewError by podcastVm.previewError.collectAsState()
 
     // Audiobook state
     val audiobooksList by audiobookVm.audiobooks.collectAsState()
@@ -309,14 +312,20 @@ fun MainScreen(
         SubscribePodcastDialog(
             searchResults = podcastSearchResults,
             searchLoading = podcastSearchLoading,
+            preview = podcastPreview,
+            previewLoading = podcastPreviewLoading,
+            previewError = podcastPreviewError,
             subscribedFeedUrls = podcastsList.map { it.feedUrl }.toSet(),
             onSearch = { podcastVm.searchPodcasts(it) },
+            onPreview = { podcastVm.previewPodcast(it.feedUrl) },
+            onClearPreview = { podcastVm.clearPreview() },
             onSubscribe = { feedUrl ->
                 podcastVm.subscribe(feedUrl)
             },
             onClose = {
                 showSubscribeDialog = false
                 podcastVm.clearSearch()
+                podcastVm.clearPreview()
             }
         )
     }

@@ -451,6 +451,21 @@ data class PodcastDetailResponse(val ok: Boolean = false, val podcast: Podcast? 
 data class PodcastSearchResponse(val ok: Boolean = false, val results: List<PodcastSearchResult> = emptyList())
 
 @Serializable
+data class PodcastPreview(
+    val title: String = "",
+    val author: String? = null,
+    val description: String? = null,
+    val imageUrl: String? = null,
+    val link: String? = null,
+    val language: String? = null,
+    val lastBuildDate: String? = null,
+    val episodeCount: Int? = null
+)
+
+@Serializable
+data class PodcastPreviewResponse(val ok: Boolean = false, val preview: PodcastPreview? = null)
+
+@Serializable
 data class PodcastSubscribeRequest(val feedUrl: String)
 
 @Serializable
