@@ -17,7 +17,6 @@ interface PodcastDao {
         SELECT * FROM podcasts
         WHERE title COLLATE NOCASE LIKE '%' || :query || '%'
            OR COALESCE(author, '') COLLATE NOCASE LIKE '%' || :query || '%'
-           OR COALESCE(description, '') COLLATE NOCASE LIKE '%' || :query || '%'
         ORDER BY title COLLATE NOCASE ASC
         LIMIT :limit
     """)
@@ -29,7 +28,6 @@ interface PodcastDao {
     @Query("""
         SELECT * FROM episodes
         WHERE title COLLATE NOCASE LIKE '%' || :query || '%'
-           OR COALESCE(description, '') COLLATE NOCASE LIKE '%' || :query || '%'
            OR COALESCE(podcastTitle, '') COLLATE NOCASE LIKE '%' || :query || '%'
         ORDER BY publishedAt DESC
         LIMIT :limit

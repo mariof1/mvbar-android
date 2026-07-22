@@ -136,8 +136,8 @@ fun SearchScreen(
             val totalItems = (results!!.artists.take(4).size +
                 results.albums.take(4).size +
                 results.playlists.take(4).size +
-                results.podcasts.take(4).size +
-                results.podcastEpisodes.take(6).size +
+                results.podcasts.size +
+                results.podcastEpisodes.size +
                 results.hits.size +
                 // section headers
                 (if (results.artists.isNotEmpty()) 1 else 0) +
@@ -205,7 +205,7 @@ fun SearchScreen(
                 val podcasts = results.podcasts
                 if (podcasts.isNotEmpty()) {
                     item { SectionHeader("Podcasts") }
-                    items(podcasts.take(4)) { podcast ->
+                    items(podcasts) { podcast ->
                         PodcastSearchRow(podcast = podcast, onClick = { onPodcastClick(podcast) })
                     }
                 }
@@ -214,7 +214,7 @@ fun SearchScreen(
                 val podcastEpisodes = results.podcastEpisodes
                 if (podcastEpisodes.isNotEmpty()) {
                     item { SectionHeader("Podcast Episodes") }
-                    items(podcastEpisodes.take(6)) { episode ->
+                    items(podcastEpisodes) { episode ->
                         PodcastEpisodeSearchRow(episode = episode, onClick = { onPodcastEpisodeClick(episode) })
                     }
                 }

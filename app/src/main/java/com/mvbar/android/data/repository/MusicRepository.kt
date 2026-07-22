@@ -352,8 +352,8 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
         val playlists = database.playlistDao().search(query, 8).map { entity ->
             SearchPlaylist(id = entity.id, name = entity.name, kind = "playlist")
         }
-        val podcasts = database.podcastDao().searchPodcasts(query, 8).map { it.toModel() }
-        val podcastEpisodes = database.podcastDao().searchEpisodes(query, 12).map { it.toModel() }
+        val podcasts = database.podcastDao().searchPodcasts(query, 24).map { it.toModel() }
+        val podcastEpisodes = database.podcastDao().searchEpisodes(query, 50).map { it.toModel() }
         return SearchResults(
             ok = true,
             hits = tracks,
