@@ -22,6 +22,19 @@ data class CastUrlResponse(
 )
 
 @Serializable
+data class UserPreferences(
+    @SerialName("auto_continue") val autoContinue: Boolean = false,
+    @SerialName("prefer_hls") val preferHls: Boolean = false
+)
+
+@Serializable
+data class PreferencesResponse(
+    val ok: Boolean = false,
+    val preferences: UserPreferences = UserPreferences(),
+    val lastfmEnabled: Boolean = false
+)
+
+@Serializable
 data class LoginResponse(
     val ok: Boolean = false,
     val token: String = "",

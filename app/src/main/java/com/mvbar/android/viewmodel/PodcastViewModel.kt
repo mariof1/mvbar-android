@@ -251,37 +251,101 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun playEpisode(episode: Episode) {
-        _playingEpisode.value = episode
+    fun playEpisode(episode: Episode, playbackContext: List<Episode>? = null) {
+        viewModelScope.launch {
+            _playingEpisode.value = episode
 
-        DebugLog.i("Podcast", "Playing episode ${episode.id}: ${episode.title}")
+            DebugLog.i("Podcast", "Playing episode ${episode.id}: ${episode.title}")
 
-        // Create a pseudo-track for the episode so the player can handle it
-        // Negative ID distinguishes podcast episodes from music tracks
-        val podcastName = episode.podcastTitle
-            ?: _selectedPodcast.value?.title
+            val autoContinue = isServerAutoContinueEnabled()
+            val queueEpisodes = if (autoContinue) {
+                buildEpisodeQueue(episode, playbackContext)
+            } else {
+                listOf(episode)
+            }
+            val startIndex = queueEpisodes.indexOfFirst { it.id == episode.id }.coerceAtLeast(0)
+            val tracks = queueEpisodes.map { it.toPseudoTrack() }
+            val resumePositions = queueEpisodes
+                .filter { !it.played && it.positionMs > 0L }
+                .associate { -it.id to it.positionMs }
+
+            if (resumePositions.containsKey(-episode.id)) {
+                DebugLog.i("Podcast", "Will resume episode ${episode.id} from ${episode.positionMs}ms")
+            }
+            if (queueEpisodes.size > 1) {
+                DebugLog.i("Podcast", "Queued ${queueEpisodes.size - 1} follow-up episodes")
+            }
+
+            playerManager.playTracks(
+                tracks = tracks,
+                startIndex = startIndex,
+                customResumePositions = resumePositions
+            )
+
+            startProgressSync(episode.id)
+        }
+    }
+
+    private suspend fun isServerAutoContinueEnabled(): Boolean {
+        if (!NetworkMonitor.isOnline.value) return false
+        return try {
+            api.getPreferences().preferences.autoContinue
+        } catch (e: Exception) {
+            DebugLog.e("Podcast", "Failed to load playback preferences", e)
+            false
+        }
+    }
+
+    private suspend fun buildEpisodeQueue(
+        episode: Episode,
+        playbackContext: List<Episode>?
+    ): List<Episode> {
+        val contextEpisodes = playbackContext
+            ?.takeIf { list -> list.isNotEmpty() && list.all { it.podcastId == episode.podcastId } }
+        val sourceEpisodes = contextEpisodes ?: loadEpisodesForQueue(episode)
+        val startIndex = sourceEpisodes.indexOfFirst { it.id == episode.id }
+        if (startIndex < 0) return listOf(episode)
+
+        return sourceEpisodes
+            .drop(startIndex)
+            .filter { it.id == episode.id || !it.played }
+            .distinctBy { it.id }
+            .ifEmpty { listOf(episode) }
+    }
+
+    private suspend fun loadEpisodesForQueue(episode: Episode): List<Episode> {
+        val podcastId = episode.podcastId
+        if (podcastId <= 0) return listOf(episode)
+
+        if (NetworkMonitor.isOnline.value) {
+            try {
+                val response = api.getPodcastDetail(podcastId)
+                response.podcast?.let { db.podcastDao().insertPodcasts(listOf(it.toEntity())) }
+                db.podcastDao().replaceEpisodes(podcastId, response.episodes.map { it.toEntity() })
+                if (response.episodes.isNotEmpty()) return response.episodes
+            } catch (e: Exception) {
+                DebugLog.e("Podcast", "Failed to load follow-up episodes from API", e)
+            }
+        }
+
+        return try {
+            db.podcastDao().getEpisodes(podcastId).map { it.toModel() }.ifEmpty { listOf(episode) }
+        } catch (_: Exception) {
+            listOf(episode)
+        }
+    }
+
+    private fun Episode.toPseudoTrack(): Track {
+        val podcastName = podcastTitle
+            ?: _selectedPodcast.value?.takeIf { it.id == podcastId }?.title
             ?: "Podcast"
-        val pseudoTrack = Track(
-            id = -episode.id,
-            title = episode.title,
+        return Track(
+            id = -id,
+            title = title,
             artist = podcastName,
             album = podcastName,
-            durationMs = episode.durationMs?.toDouble()
+            durationMs = durationMs?.toDouble()
         )
-        val resumePositions = if (episode.positionMs > 0) {
-            DebugLog.i("Podcast", "Will resume episode ${episode.id} from ${episode.positionMs}ms")
-            mapOf(pseudoTrack.id to episode.positionMs)
-        } else {
-            emptyMap()
-        }
-        playerManager.playTracks(
-            tracks = listOf(pseudoTrack),
-            startIndex = 0,
-            customResumePositions = resumePositions
-        )
-
-        // Start periodic progress saving
-        startProgressSync(episode.id)
     }
 
     private fun startProgressSync(episodeId: Int) {
@@ -290,7 +354,7 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
             while (true) {
                 kotlinx.coroutines.delay(15_000)
                 val state = playerManager.state.value
-                if (state.isPlaying && state.position > 0) {
+                if (state.isPlaying && state.currentTrack?.id == -episodeId && state.position > 0) {
                     ActivityQueue.enqueuePodcastProgress(episodeId, state.position)
                 }
             }

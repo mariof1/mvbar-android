@@ -1161,7 +1161,7 @@ fun MainScreen(
                             navController.navigate("podcast/${podcast.id}")
                         },
                         onEpisodePlay = { episode ->
-                            podcastVm.playEpisode(episode)
+                            podcastVm.playEpisode(episode, podcastContinueListening)
                         },
                         onMarkPlayed = { episodeId, played ->
                             podcastVm.markEpisodePlayed(episodeId, played)
@@ -1181,7 +1181,7 @@ fun MainScreen(
                         isLoading = podcastIsLoading,
                         onBack = { navigateBack() },
                         onPlayEpisode = { episode ->
-                            podcastVm.playEpisode(episode)
+                            podcastVm.playEpisode(episode, podcastEpisodes)
                         },
                         onMarkPlayed = { episodeId, played ->
                             podcastVm.markEpisodePlayed(episodeId, played)
@@ -1329,7 +1329,7 @@ fun MainScreen(
                 onLoadAllTracks = { mainVm.loadAllTracks() },
                 onLoadMoreAllTracks = { mainVm.loadMoreAllTracks() },
                 onShuffleAllTracks = { mainVm.playShuffledAllTracks(it) },
-                onPlayPodcastEpisode = { podcastVm.playEpisode(it) },
+                onPlayPodcastEpisode = { podcastVm.playEpisode(it, podcastContinueListening) },
                 initialQueueOpen = mainVm.queuePanelOpen,
                 onQueueOpenChanged = { mainVm.queuePanelOpen = it },
                 onSearch = { showNowPlaying = false; showSearch = true },

@@ -73,6 +73,9 @@ class PlaybackService : MediaLibraryService() {
     private var progressSaveJob: kotlinx.coroutines.Job? = null
     /** Flag: re-enable shuffle after the tapped track starts playing */
     private var pendingShuffleRestore = false
+    /** The special item that was active before the latest transition. */
+    private var activeSpecialPlaybackTarget: SpecialPlaybackTarget? = null
+    private var lastCompletedPodcastEpisodeId: Int? = null
 
     // ── Audio focus management ──
     private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
@@ -758,8 +761,12 @@ class PlaybackService : MediaLibraryService() {
 
                 // --- Save progress for the episode we're leaving ---
                 progressSaveJob?.cancel()
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                    markPodcastEpisodeCompleted(activeSpecialPlaybackTarget)
+                }
                 saveEpisodeProgress(p)
                 val target = specialPlaybackTarget(item)
+                activeSpecialPlaybackTarget = target
 
                 // --- Activity tracking via ActivityQueue ---
                 // Record skip for the previous track if user pressed next/prev
@@ -842,6 +849,10 @@ class PlaybackService : MediaLibraryService() {
                     mediaSession?.let { session ->
                         libraryCallback.updateCustomLayout(session)
                     }
+                }
+                if (state == Player.STATE_ENDED) {
+                    val p = mediaSession?.player ?: return
+                    markPodcastEpisodeCompleted(specialPlaybackTarget(p.currentMediaItem))
                 }
             }
 
@@ -2456,6 +2467,16 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
         }
+    }
+
+    private fun markPodcastEpisodeCompleted(target: SpecialPlaybackTarget?) {
+        if (target?.kind != SpecialPlaybackKind.PODCAST) return
+        val episodeId = target.episodeId ?: return
+        if (lastCompletedPodcastEpisodeId == episodeId) return
+
+        lastCompletedPodcastEpisodeId = episodeId
+        DebugLog.i("Podcast", "Marking episode $episodeId played after natural completion")
+        ActivityQueue.enqueuePodcastPlayed(episodeId, true)
     }
 
     /** Periodically save episode/audiobook progress every 30 seconds */

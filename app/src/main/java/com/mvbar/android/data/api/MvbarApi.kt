@@ -30,6 +30,9 @@ interface MvbarApi {
     @GET("api/library/tracks/{id}/cast-url")
     suspend fun getCastUrl(@Path("id") trackId: Int): CastUrlResponse
 
+    @GET("api/preferences")
+    suspend fun getPreferences(): PreferencesResponse
+
     // Browse
     @GET("api/browse/artists")
     suspend fun getArtists(

@@ -963,6 +963,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (tracks.size == 1 && activeTrack.id > 0 && NetworkMonitor.isOnline.value) {
             viewModelScope.launch {
                 try {
+                    val preferences = repo.getPreferences()
+                    if (!preferences.preferences.autoContinue) {
+                        DebugLog.i("Radio", "Auto-continue disabled; not appending similar tracks")
+                        return@launch
+                    }
                     val resp = repo.getSimilarTracks(activeTrack.id)
                     if (resp.tracks.isNotEmpty()) {
                         playerManager.appendTracks(resp.tracks)
