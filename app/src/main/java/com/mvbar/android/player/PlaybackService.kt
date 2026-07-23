@@ -39,6 +39,8 @@ import com.mvbar.android.data.ActivityQueue
 import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.local.entity.toModel
+import com.mvbar.android.data.model.Podcast
+import com.mvbar.android.data.model.SearchResults
 import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.debug.DebugLog
@@ -1525,9 +1527,9 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<Void>> {
             serviceScope.future {
                 try {
-                    val api = ApiClient.api
-                    val results = api.search(query, limit = 20)
-                    val items = results.hits.map { trackToMediaItem(it) }
+                    val results = getAutoSearchResults(query, limit = 20)
+                    val items = buildAutoSearchItems(results)
+                    DebugLog.i("Auto", "Search '$query': ${items.size} items (${results.podcasts.size} podcasts, ${results.podcastEpisodes.size} episodes, ${results.hits.size} songs)")
                     session.notifySearchResultChanged(browser, query, items.size, params)
                 } catch (e: Exception) {
                     DebugLog.e("Auto", "Search error", e)
@@ -1546,9 +1548,9 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             return serviceScope.future {
                 try {
-                    val api = ApiClient.api
-                    val results = api.search(query, limit = pageSize.coerceAtMost(100))
-                    val items = results.hits.map { trackToMediaItem(it) }
+                    val results = getAutoSearchResults(query, limit = pageSize.coerceAtMost(100))
+                    val items = buildAutoSearchItems(results)
+                    DebugLog.i("Auto", "Search results '$query': ${items.size} items (${results.podcasts.size} podcasts, ${results.podcastEpisodes.size} episodes, ${results.hits.size} songs)")
                     // Clear previous search caches to avoid stale matches
                     browsedTrackCache.keys.removeAll { it.startsWith("search:") }
                     browsedTrackCache["search:$query"] = items
@@ -2157,42 +2159,43 @@ class PlaybackService : MediaLibraryService() {
 
     /** Subscribed podcast list (browsable folders) */
     private suspend fun getPodcastsSubscriptionsList(): List<MediaItem> {
-        val buildItem = { podcast: com.mvbar.android.data.model.Podcast ->
-            val artUri = podcast.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
-                ?: podcast.imageUrl
-                ?: ApiClient.podcastArtUrl(podcast.id)
-            val subtitle = buildString {
-                podcast.author?.takeIf { it.isNotBlank() }?.let { append(it) }
-                if (podcast.unplayedCount > 0) {
-                    if (isNotEmpty()) append(" - ")
-                    append("${podcast.unplayedCount} unplayed")
-                }
-            }
-            MediaItem.Builder()
-                .setMediaId("podcast:${podcast.id}")
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(podcast.title)
-                        .apply {
-                            (subtitle.takeIf { it.isNotBlank() } ?: podcast.author)?.let { setArtist(it) }
-                            subtitle.takeIf { it.isNotBlank() }?.let { setSubtitle(it) }
-                        }
-                        .setIsBrowsable(true)
-                        .setIsPlayable(false)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST)
-                        .setArtworkUri(ArtworkProvider.buildUri(artUri))
-                        .build()
-                )
-                .build()
-        }
         return apiOrCache("Podcasts",
             apiCall = {
-                ApiClient.api.getPodcasts().podcasts.map { buildItem(it) }
+                ApiClient.api.getPodcasts().podcasts.map { buildPodcastMediaItem(it) }
             },
             cacheCall = {
-                db.podcastDao().getAllPodcasts().map { e -> buildItem(e.toModel()) }
+                db.podcastDao().getAllPodcasts().map { e -> buildPodcastMediaItem(e.toModel()) }
             }
         )
+    }
+
+    private fun buildPodcastMediaItem(podcast: Podcast): MediaItem {
+        val artUri = podcast.imagePath?.let { ApiClient.podcastArtPathUrl(it) }
+            ?: podcast.imageUrl
+            ?: ApiClient.podcastArtUrl(podcast.id)
+        val subtitle = buildString {
+            podcast.author?.takeIf { it.isNotBlank() }?.let { append(it) }
+            if (podcast.unplayedCount > 0) {
+                if (isNotEmpty()) append(" - ")
+                append("${podcast.unplayedCount} unplayed")
+            }
+        }
+        return MediaItem.Builder()
+            .setMediaId("podcast:${podcast.id}")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(podcast.title)
+                    .apply {
+                        (subtitle.takeIf { it.isNotBlank() } ?: podcast.author)?.let { setArtist(it) }
+                        subtitle.takeIf { it.isNotBlank() }?.let { setSubtitle(it) }
+                    }
+                    .setIsBrowsable(true)
+                    .setIsPlayable(false)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST)
+                    .setArtworkUri(ArtworkProvider.buildUri(artUri))
+                    .build()
+            )
+            .build()
     }
 
     /** Build a playable MediaItem from an Episode model (shared by continue listening / new / per-podcast) */
@@ -2255,6 +2258,37 @@ class PlaybackService : MediaLibraryService() {
                 db.podcastDao().getEpisodes(podcastId).map { e -> buildEpisodeMediaItem(e.toModel()) }
             }
         )
+    }
+
+    private suspend fun getAutoSearchResults(query: String, limit: Int): SearchResults {
+        if (!NetworkMonitor.isOnline.value) {
+            return getCachedAutoSearchResults(query, limit)
+        }
+        return try {
+            ApiClient.api.search(query, limit = limit)
+        } catch (e: Exception) {
+            DebugLog.w("Auto", "Online search failed; using cache", e)
+            getCachedAutoSearchResults(query, limit)
+        }
+    }
+
+    private suspend fun getCachedAutoSearchResults(query: String, limit: Int): SearchResults {
+        val tracks = db.trackDao().search(query, limit, 0).map { it.toModel() }
+        val podcasts = db.podcastDao().searchPodcasts(query, limit).map { it.toModel() }
+        val episodes = db.podcastDao().searchEpisodes(query, limit).map { it.toModel() }
+        return SearchResults(
+            ok = true,
+            hits = tracks,
+            podcasts = podcasts,
+            podcastEpisodes = episodes
+        )
+    }
+
+    private fun buildAutoSearchItems(results: SearchResults): List<MediaItem> {
+        return (results.podcasts.map { buildPodcastMediaItem(it) } +
+            results.podcastEpisodes.map { buildEpisodeMediaItem(it) } +
+            results.hits.map { trackToMediaItem(it) })
+            .distinctBy { it.mediaId }
     }
 
     // Audiobook browse
