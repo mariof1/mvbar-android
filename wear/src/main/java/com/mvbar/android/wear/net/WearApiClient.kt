@@ -1,6 +1,8 @@
 package com.mvbar.android.wear.net
 
 import android.content.Context
+import android.os.Build
+import com.mvbar.android.wear.BuildConfig
 import com.mvbar.android.wear.AuthTokenStore
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
@@ -9,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
@@ -32,6 +35,13 @@ object WearApiClient {
     @Volatile private var lastBase: String = ""
     @Volatile private var apiRef: MvbarWearApi? = null
 
+    private fun clientId(context: Context): String {
+        val prefs = context.getSharedPreferences("mvbar_wear_client", Context.MODE_PRIVATE)
+        return prefs.getString("client_id", null) ?: "wear_${UUID.randomUUID()}".also {
+            prefs.edit().putString("client_id", it).apply()
+        }
+    }
+
     fun api(context: Context): MvbarWearApi {
         val ctx = context.applicationContext
         val store = AuthTokenStore.get(ctx)
@@ -45,6 +55,11 @@ object WearApiClient {
         val authInterceptor = Interceptor { chain ->
             val token = AuthTokenStore.get(ctx).token
             val req = chain.request().newBuilder().apply {
+                addHeader("X-MVBar-Client", "wear")
+                addHeader("X-MVBar-Client-Id", clientId(ctx))
+                addHeader("X-MVBar-Version", BuildConfig.VERSION_NAME)
+                addHeader("X-MVBar-Device", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
+                addHeader("X-MVBar-Platform", "Wear OS ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
                 if (!token.isNullOrBlank()) {
                     addHeader("Authorization", "Bearer $token")
                     addHeader("Cookie", "mvbar_token=$token")

@@ -1,5 +1,8 @@
 package com.mvbar.android.data.api
 
+import android.content.Context
+import android.os.Build
+import com.mvbar.android.BuildConfig
 import com.mvbar.android.debug.DebugLog
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
@@ -8,12 +11,14 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
     private var baseUrl: String = "http://localhost/"
     private var authToken: String? = null
     private var _api: MvbarApi? = null
+    @Volatile private var clientId: String = "android_${UUID.randomUUID()}"
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -25,6 +30,14 @@ object ApiClient {
         baseUrl = if (serverUrl.endsWith("/")) serverUrl else "$serverUrl/"
         authToken = token
         _api = null
+    }
+
+    fun initializeClient(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences("mvbar_client", Context.MODE_PRIVATE)
+        val existing = prefs.getString("client_id", null)
+        clientId = existing ?: "android_${UUID.randomUUID()}".also {
+            prefs.edit().putString("client_id", it).apply()
+        }
     }
 
     fun setToken(token: String?) {
@@ -43,6 +56,11 @@ object ApiClient {
             if (_api == null) {
                 val authInterceptor = Interceptor { chain ->
                     val builder = chain.request().newBuilder()
+                        .header("X-MVBar-Client", "android")
+                        .header("X-MVBar-Client-Id", clientId)
+                        .header("X-MVBar-Version", BuildConfig.VERSION_NAME)
+                        .header("X-MVBar-Device", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
+                        .header("X-MVBar-Platform", "Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
                     authToken?.let { builder.addHeader("Authorization", "Bearer $it") }
                     chain.proceed(builder.build())
                 }
