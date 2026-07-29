@@ -39,7 +39,7 @@ permissions:
 
 jobs:
   check:
-    name: Release Check
+    name: Build Check
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -52,13 +52,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v5
 
-      - name: Compile release variants
+      - name: Build debug APKs
         run: |
           chmod +x ./gradlew
           if [[ "${{ inputs.modules }}" == "all" ]]; then
-            ./gradlew :app:compileReleaseKotlin :wear:compileReleaseKotlin --console=plain
+            ./gradlew assembleDebug --console=plain
           else
-            ./gradlew :app:compileReleaseKotlin --console=plain
+            ./gradlew :app:assembleDebug --console=plain
           fi
 
   version:
