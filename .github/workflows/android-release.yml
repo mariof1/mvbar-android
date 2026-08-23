@@ -7,305 +7,208 @@ on:
         description: Build type
         required: true
         type: choice
-        options:
-          - dev
-          - release
+        options: [dev, release]
         default: dev
       version_bump:
         description: Version bump (release only)
         required: false
         type: choice
-        options:
-          - patch
-          - minor
-          - major
-          - custom
+        options: [patch, minor, major, custom]
         default: patch
       custom_version:
-        description: Custom version (e.g. 1.2.3) - only used if version_bump is custom
+        description: Custom version (for a custom release bump)
         required: false
         type: string
       modules:
         description: APK modules
         required: true
         type: choice
-        options:
-          - app
-          - all
+        options: [app, all]
         default: app
 
 permissions:
   contents: write
 
+concurrency:
+  group: android-package-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  check:
-    name: Build Check
+  package:
+    name: Build signed ${{ inputs.build_type }} APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v5
+    timeout-minutes: 30
 
-      - uses: actions/setup-java@v5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v5
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v5
 
-      - name: Build debug APKs
+      - name: Prepare version
+        id: version
+        shell: bash
+        env:
+          BUILD_TYPE: ${{ inputs.build_type }}
+          BUMP_TYPE: ${{ inputs.version_bump }}
+          CUSTOM_VERSION: ${{ inputs.custom_version }}
         run: |
-          chmod +x ./gradlew
-          if [[ "${{ inputs.modules }}" == "all" ]]; then
-            ./gradlew assembleDebug --console=plain
-          else
-            ./gradlew :app:assembleDebug --console=plain
+          set -euo pipefail
+          current_version="$(sed -n 's/^VERSION_NAME=//p' version.properties)"
+          current_code="$(sed -n 's/^VERSION_CODE=//p' version.properties)"
+          new_version="$current_version"
+          new_code="$current_code"
+
+          if [[ "$BUILD_TYPE" == "release" ]]; then
+            if [[ "$BUMP_TYPE" == "custom" ]]; then
+              if [[ ! "$CUSTOM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "::error::custom_version must look like 1.2.3"
+                exit 1
+              fi
+              new_version="$CUSTOM_VERSION"
+            else
+              IFS='.' read -r major minor patch <<< "$current_version"
+              case "$BUMP_TYPE" in
+                major) new_version="$((major + 1)).0.0" ;;
+                minor) new_version="${major}.$((minor + 1)).0" ;;
+                patch) new_version="${major}.${minor}.$((patch + 1))" ;;
+                *) echo "::error::Unsupported version bump: $BUMP_TYPE"; exit 1 ;;
+              esac
+            fi
+            new_code="$((current_code + 1))"
+            printf 'VERSION_NAME=%s\nVERSION_CODE=%s\n' "$new_version" "$new_code" > version.properties
+            if git rev-parse -q --verify "refs/tags/v${new_version}" >/dev/null; then
+              echo "::error::Tag v${new_version} already exists"
+              exit 1
+            fi
           fi
 
-  version:
-    name: Bump Version
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: check
-    if: inputs.build_type == 'release'
-    outputs:
-      version: ${{ steps.bump.outputs.version }}
-      version_code: ${{ steps.bump.outputs.version_code }}
-      tag: ${{ steps.bump.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "version_code=$new_code" >> "$GITHUB_OUTPUT"
+          echo "tag=v${new_version}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "Building version $new_version ($new_code)"
 
-      - name: Configure Git
+      - name: Restore signing keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing Android signing secret: $name"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/mvbar-release.jks"
+
+      - name: Build signed APKs
+        shell: bash
+        env:
+          MVBAR_RELEASE_STORE_FILE: ${{ runner.temp }}/mvbar-release.jks
+          MVBAR_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          MVBAR_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          MVBAR_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          tasks=(":app:assembleRelease")
+          if [[ "${{ inputs.modules }}" == "all" ]]; then
+            tasks+=(":wear:assembleRelease")
+          fi
+          ./gradlew "${tasks[@]}" --build-cache --parallel --console=plain
+
+      - name: Verify signed APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_tools="$ANDROID_HOME/build-tools/34.0.0"
+          phone_apk="app/build/outputs/apk/release/app-release.apk"
+          "$build_tools/apksigner" verify --verbose --print-certs "$phone_apk"
+
+          badging="$("$build_tools/aapt" dump badging "$phone_apk")"
+          printf '%s\n' "$badging" | sed -n "/^package:/p;/^sdkVersion:/p;/^targetSdkVersion:/p;/^native-code:/p;/android.hardware.type.watch/p"
+          grep -q "^native-code:.*'arm64-v8a'" <<< "$badging" || {
+            echo "::error::Phone APK does not advertise arm64-v8a support"
+            exit 1
+          }
+          if grep -q "android.hardware.type.watch" <<< "$badging"; then
+            echo "::error::Phone APK unexpectedly requires Wear OS hardware"
+            exit 1
+          fi
+
+          if [[ "${{ inputs.modules }}" == "all" ]]; then
+            "$build_tools/apksigner" verify --verbose --print-certs wear/build/outputs/apk/release/wear-release.apk
+          fi
+
+      - name: Collect APKs
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          version="${{ steps.version.outputs.version }}"
+          if [[ "${{ inputs.build_type }}" == "release" ]]; then
+            phone_name="mvbar-android-arm64-${version}"
+            wear_name="mvbar-wear-${version}"
+          else
+            phone_name="mvbar-android-arm64-dev-${version}-${{ steps.version.outputs.short_sha }}"
+            wear_name="mvbar-wear-dev-${version}-${{ steps.version.outputs.short_sha }}"
+          fi
+          cp app/build/outputs/apk/release/app-release.apk "dist/${phone_name}.apk"
+          if [[ "${{ inputs.modules }}" == "all" ]]; then
+            cp wear/build/outputs/apk/release/wear-release.apk "dist/${wear_name}.apk"
+          fi
+          echo "name=$phone_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: ${{ inputs.build_type == 'release' && 90 || 30 }}
+
+      - name: Commit release version
+        if: inputs.build_type == 'release'
+        shell: bash
+        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Calculate new version
-        id: bump
-        run: |
-          CURRENT_VERSION="$(grep '^VERSION_NAME=' version.properties | cut -d= -f2)"
-          CURRENT_CODE="$(grep '^VERSION_CODE=' version.properties | cut -d= -f2)"
-          BUMP_TYPE="${{ inputs.version_bump }}"
-          CUSTOM="${{ inputs.custom_version }}"
-
-          if [[ "$BUMP_TYPE" == "custom" ]]; then
-            if [[ ! "$CUSTOM" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
-              echo "::error::custom_version must look like 1.2.3"
-              exit 1
-            fi
-            NEW_VERSION="$CUSTOM"
-          else
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-            case "$BUMP_TYPE" in
-              major) NEW_VERSION="$((MAJOR + 1)).0.0" ;;
-              minor) NEW_VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
-              patch) NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
-              *) NEW_VERSION="$CURRENT_VERSION" ;;
-            esac
-          fi
-
-          NEW_CODE="$((CURRENT_CODE + 1))"
-          TAG="v${NEW_VERSION}"
-
-          {
-            echo "VERSION_NAME=${NEW_VERSION}"
-            echo "VERSION_CODE=${NEW_CODE}"
-          } > version.properties
-
-          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "version_code=${NEW_CODE}" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "New Android version: ${NEW_VERSION} (${NEW_CODE})"
-
-      - name: Commit version bump
-        run: |
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add version.properties
-          git commit -m "chore: bump Android version to ${{ steps.bump.outputs.version }}"
-          git push
+          git commit -m "chore: bump Android version to ${{ steps.version.outputs.version }}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Android release ${{ steps.version.outputs.version }}"
+          git push origin "${{ steps.version.outputs.tag }}"
 
-      - name: Create and push tag
-        run: |
-          git tag -a "${{ steps.bump.outputs.tag }}" -m "Android release ${{ steps.bump.outputs.version }}"
-          git push origin "${{ steps.bump.outputs.tag }}"
-
-  build-dev:
-    name: Build Signed APK (dev)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    needs: check
-    if: inputs.build_type == 'dev'
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - uses: gradle/actions/setup-gradle@v5
-
-      - name: Restore release keystore
+      - name: Publish GitHub release
+        if: inputs.build_type == 'release'
         env:
-          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
-          ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
-          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
-          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          for name in ANDROID_RELEASE_KEYSTORE_BASE64 ANDROID_RELEASE_KEYSTORE_PASSWORD ANDROID_RELEASE_KEY_ALIAS ANDROID_RELEASE_KEY_PASSWORD; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Missing required secret: ${name}"
-              exit 1
-            fi
-          done
-          printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/mvbar-release.jks"
-
-      - name: Build signed release APKs
-        env:
-          MVBAR_RELEASE_STORE_FILE: ${{ runner.temp }}/mvbar-release.jks
-          MVBAR_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
-          MVBAR_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
-          MVBAR_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
-        run: |
-          chmod +x ./gradlew
-          if [[ "${{ inputs.modules }}" == "all" ]]; then
-            ./gradlew assembleRelease --console=plain
-          else
-            ./gradlew :app:assembleRelease --console=plain
-          fi
-
-      - name: Verify phone APK compatibility
-        run: |
-          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
-          if [[ -z "$AAPT" ]]; then
-            echo "::error::Could not find aapt in Android SDK build-tools"
-            exit 1
-          fi
-
-          PHONE_APK="app/build/outputs/apk/release/app-release.apk"
-          BADGING="$("$AAPT" dump badging "$PHONE_APK")"
-          echo "$BADGING" | sed -n "/^package:/p;/^sdkVersion:/p;/^targetSdkVersion:/p;/^native-code:/p;/android.hardware.type.watch/p"
-
-          if ! grep -q "^native-code:.*'arm64-v8a'" <<< "$BADGING"; then
-            echo "::error::Phone APK does not advertise arm64-v8a native-code support"
-            exit 1
-          fi
-
-          if grep -q "android.hardware.type.watch" <<< "$BADGING"; then
-            echo "::error::Phone APK unexpectedly requires Wear OS watch hardware"
-            exit 1
-          fi
-
-      - name: Collect APKs
-        id: collect
-        run: |
-          VERSION="$(grep '^VERSION_NAME=' version.properties | cut -d= -f2)"
-          SHORT_SHA="${GITHUB_SHA::7}"
-          mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/mvbar-android-arm64-dev-${VERSION}-${SHORT_SHA}.apk"
-          if [[ "${{ inputs.modules }}" == "all" ]]; then
-            cp wear/build/outputs/apk/release/wear-release.apk "dist/mvbar-wear-dev-${VERSION}-${SHORT_SHA}.apk"
-          fi
-          echo "artifact_name=mvbar-android-arm64-dev-${VERSION}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ steps.collect.outputs.artifact_name }}
-          path: dist/*.apk
-          if-no-files-found: error
-          retention-days: 30
-
-  build-release:
-    name: Build Signed APK (release)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    needs: version
-    if: inputs.build_type == 'release'
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ needs.version.outputs.tag }}
-
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - uses: gradle/actions/setup-gradle@v5
-
-      - name: Restore release keystore
-        env:
-          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
-          ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
-          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
-          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
-        run: |
-          for name in ANDROID_RELEASE_KEYSTORE_BASE64 ANDROID_RELEASE_KEYSTORE_PASSWORD ANDROID_RELEASE_KEY_ALIAS ANDROID_RELEASE_KEY_PASSWORD; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Missing required secret: ${name}"
-              exit 1
-            fi
-          done
-          printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/mvbar-release.jks"
-
-      - name: Build signed release APKs
-        env:
-          MVBAR_RELEASE_STORE_FILE: ${{ runner.temp }}/mvbar-release.jks
-          MVBAR_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
-          MVBAR_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
-          MVBAR_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
-        run: |
-          chmod +x ./gradlew
-          if [[ "${{ inputs.modules }}" == "all" ]]; then
-            ./gradlew assembleRelease --console=plain
-          else
-            ./gradlew :app:assembleRelease --console=plain
-          fi
-
-      - name: Verify phone APK compatibility
-        run: |
-          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
-          if [[ -z "$AAPT" ]]; then
-            echo "::error::Could not find aapt in Android SDK build-tools"
-            exit 1
-          fi
-
-          PHONE_APK="app/build/outputs/apk/release/app-release.apk"
-          BADGING="$("$AAPT" dump badging "$PHONE_APK")"
-          echo "$BADGING" | sed -n "/^package:/p;/^sdkVersion:/p;/^targetSdkVersion:/p;/^native-code:/p;/android.hardware.type.watch/p"
-
-          if ! grep -q "^native-code:.*'arm64-v8a'" <<< "$BADGING"; then
-            echo "::error::Phone APK does not advertise arm64-v8a native-code support"
-            exit 1
-          fi
-
-          if grep -q "android.hardware.type.watch" <<< "$BADGING"; then
-            echo "::error::Phone APK unexpectedly requires Wear OS watch hardware"
-            exit 1
-          fi
-
-      - name: Collect APKs
-        run: |
-          mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/mvbar-android-arm64-${{ needs.version.outputs.version }}.apk"
-          if [[ "${{ inputs.modules }}" == "all" ]]; then
-            cp wear/build/outputs/apk/release/wear-release.apk "dist/mvbar-wear-${{ needs.version.outputs.version }}.apk"
-          fi
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: mvbar-android-arm64-${{ needs.version.outputs.version }}
-          path: dist/*.apk
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${{ needs.version.outputs.tag }}" dist/*.apk \
-            --title "MVBar Android ${{ needs.version.outputs.version }}" \
-            --notes "Signed Android ARM64-compatible APK release ${{ needs.version.outputs.version }} (${{ needs.version.outputs.version_code }})." \
+          gh release create "${{ steps.version.outputs.tag }}" dist/*.apk \
+            --verify-tag \
+            --title "MVBar Android ${{ steps.version.outputs.version }}" \
             --generate-notes
+
+      - name: Remove signing keystore
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/mvbar-release.jks" ]]; then
+            shred -u "$RUNNER_TEMP/mvbar-release.jks"
+          fi
