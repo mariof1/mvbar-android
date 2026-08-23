@@ -39,6 +39,7 @@ import com.mvbar.android.data.model.SmartPlaylistFilters
 import com.mvbar.android.data.model.SuggestResponse
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.debug.DebugLog
+import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.components.*
@@ -364,6 +365,14 @@ fun MainScreen(
                     try { navController.navigate("album?name=${Uri.encode(albumName)}") }
                     catch (_: Exception) {}
                 }
+            },
+            onDownload = {
+                AudioCacheManager.downloadTrack(track.id)
+                ToastManager.show("Downloading \"${track.displayTitle}\" for offline", ToastIcon.DOWNLOAD)
+            },
+            onRemoveDownload = {
+                AudioCacheManager.removeTrackDownload(track.id)
+                ToastManager.show("Offline download removed", ToastIcon.SUCCESS)
             }
         )
     }

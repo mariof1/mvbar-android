@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -26,7 +28,8 @@ enum class MediaAvailability(val isPlayable: Boolean) {
 @Composable
 fun trackAvailability(trackId: Int): MediaAvailability {
     val isOnline = LocalIsOnline.current
-    return remember(trackId, isOnline) {
+    val cacheRevision by AudioCacheManager.cacheRevision.collectAsState()
+    return remember(trackId, isOnline, cacheRevision) {
         val isCached = if (trackId > 0) {
             AudioCacheManager.isTrackCached(trackId)
         } else {
@@ -39,7 +42,8 @@ fun trackAvailability(trackId: Int): MediaAvailability {
 @Composable
 fun episodeAvailability(episodeId: Int): MediaAvailability {
     val isOnline = LocalIsOnline.current
-    return remember(episodeId, isOnline) {
+    val cacheRevision by AudioCacheManager.cacheRevision.collectAsState()
+    return remember(episodeId, isOnline, cacheRevision) {
         mediaAvailability(
             isOnline = isOnline,
             isCached = AudioCacheManager.isEpisodeCached(episodeId)
@@ -50,7 +54,8 @@ fun episodeAvailability(episodeId: Int): MediaAvailability {
 @Composable
 fun chapterAvailability(audiobookId: Int, chapterId: Int): MediaAvailability {
     val isOnline = LocalIsOnline.current
-    return remember(audiobookId, chapterId, isOnline) {
+    val cacheRevision by AudioCacheManager.cacheRevision.collectAsState()
+    return remember(audiobookId, chapterId, isOnline, cacheRevision) {
         mediaAvailability(
             isOnline = isOnline,
             isCached = AudioCacheManager.isChapterCached(audiobookId, chapterId)

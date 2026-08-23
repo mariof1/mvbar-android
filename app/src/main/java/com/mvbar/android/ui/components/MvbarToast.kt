@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.*
@@ -24,7 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
-enum class ToastIcon { QUEUE, SUCCESS, ERROR, FAVORITE, PLAYLIST }
+enum class ToastIcon { QUEUE, SUCCESS, ERROR, FAVORITE, PLAYLIST, DOWNLOAD }
 
 data class ToastItem(
     val id: Long = System.currentTimeMillis(),
@@ -90,4 +91,5 @@ private fun toastIconData(icon: ToastIcon): Pair<ImageVector, Color> = when (ico
     ToastIcon.ERROR -> Icons.Filled.Error to Pink500
     ToastIcon.FAVORITE -> Icons.Filled.Favorite to Pink500
     ToastIcon.PLAYLIST -> Icons.AutoMirrored.Filled.PlaylistAdd to Cyan500
+    ToastIcon.DOWNLOAD -> Icons.Filled.Download to Cyan500
 }

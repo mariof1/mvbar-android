@@ -18,6 +18,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Downloading
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -38,8 +42,13 @@ import androidx.compose.ui.unit.sp
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Episode
 import com.mvbar.android.data.model.Podcast
+import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.player.CacheDownloadPhase
 import com.mvbar.android.ui.components.AvailabilityBadge
 import com.mvbar.android.ui.components.ArtworkImage
+import com.mvbar.android.ui.components.MediaAvailability
+import com.mvbar.android.ui.components.ToastIcon
+import com.mvbar.android.ui.components.ToastManager
 import com.mvbar.android.ui.components.episodeAvailability
 import com.mvbar.android.ui.theme.*
 
@@ -246,9 +255,13 @@ private fun ResumeEpisodeCard(
     onMarkPlayed: () -> Unit
 ) {
     var showDetails by remember(episode.id) { mutableStateOf(false) }
+    var showMenu by remember(episode.id) { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
     val availability = episodeAvailability(episode.id)
     val isPlayable = availability.isPlayable
+    val downloadStates by AudioCacheManager.downloadStates.collectAsState()
+    val downloadState = downloadStates[AudioCacheManager.episodeDownloadKey(episode.id)]
+    val isDownloading = downloadState?.phase == CacheDownloadPhase.DOWNLOADING
     val artUrl = episodeArtUrl(episode)
     val remaining = episodeRemainingText(episode)
     val description = remember(episode.description) { cleanPodcastDescription(episode.description) }
@@ -367,6 +380,63 @@ private fun ResumeEpisodeCard(
                         availability = availability,
                         modifier = Modifier.padding(start = 8.dp)
                     )
+                }
+
+                if (isDownloading) {
+                    val percent = downloadState?.progress?.let { " ${(it * 100).toInt()}%" }.orEmpty()
+                    Text(
+                        "Downloading$percent",
+                        color = Cyan400,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                } else if (downloadState?.phase == CacheDownloadPhase.FAILED) {
+                    Text(
+                        downloadState.error ?: "Download failed",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Box {
+                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Filled.MoreVert, "Episode options", tint = OnSurfaceSubtle, modifier = Modifier.size(21.dp))
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        containerColor = SurfaceDark
+                    ) {
+                        when {
+                            availability == MediaAvailability.Cached -> DropdownMenuItem(
+                                text = { Text("Remove offline download") },
+                                leadingIcon = { Icon(Icons.Filled.DeleteOutline, null) },
+                                onClick = {
+                                    showMenu = false
+                                    AudioCacheManager.removeEpisodeDownload(episode.id)
+                                    ToastManager.show("Offline episode removed", ToastIcon.SUCCESS)
+                                }
+                            )
+                            isDownloading -> DropdownMenuItem(
+                                text = {
+                                    val percent = downloadState?.progress?.let { " ${(it * 100).toInt()}%" }.orEmpty()
+                                    Text("Downloading$percent")
+                                },
+                                leadingIcon = { Icon(Icons.Filled.Downloading, null) },
+                                enabled = false,
+                                onClick = {}
+                            )
+                            else -> DropdownMenuItem(
+                                text = { Text(if (downloadState?.phase == CacheDownloadPhase.FAILED) "Retry offline download" else "Download for offline") },
+                                leadingIcon = { Icon(Icons.Filled.Download, null) },
+                                onClick = {
+                                    showMenu = false
+                                    AudioCacheManager.downloadEpisode(episode.id)
+                                    ToastManager.show("Downloading episode for offline", ToastIcon.DOWNLOAD)
+                                }
+                            )
+                        }
+                    }
                 }
                 IconButton(onClick = onMarkPlayed, modifier = Modifier.size(36.dp)) {
                     Icon(
@@ -519,9 +589,13 @@ fun EpisodeListItem(
     onMarkPlayed: () -> Unit
 ) {
     var showDetails by remember(episode.id) { mutableStateOf(false) }
+    var showMenu by remember(episode.id) { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
     val availability = episodeAvailability(episode.id)
     val isPlayable = availability.isPlayable
+    val downloadStates by AudioCacheManager.downloadStates.collectAsState()
+    val downloadState = downloadStates[AudioCacheManager.episodeDownloadKey(episode.id)]
+    val isDownloading = downloadState?.phase == CacheDownloadPhase.DOWNLOADING
     val description = remember(episode.description) { cleanPodcastDescription(episode.description) }
 
     if (showDetails) {
@@ -607,6 +681,23 @@ fun EpisodeListItem(
                     )
                 }
 
+                if (isDownloading) {
+                    val percent = downloadState?.progress?.let { " ${(it * 100).toInt()}%" }.orEmpty()
+                    Text(
+                        "Downloading$percent",
+                        color = Cyan400,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                } else if (downloadState?.phase == CacheDownloadPhase.FAILED) {
+                    Text(
+                        downloadState.error ?: "Download failed",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 if (showDescription && description.isNotBlank()) {
                     Spacer(Modifier.height(5.dp))
                     Text(
@@ -630,16 +721,58 @@ fun EpisodeListItem(
                 }
             }
 
-            IconButton(
-                onClick = onMarkPlayed,
-                modifier = Modifier.size(38.dp)
-            ) {
-                Icon(
-                    if (episode.played) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
-                    contentDescription = if (episode.played) "Mark unplayed" else "Mark played",
-                    tint = if (episode.played) Orange500 else OnSurfaceSubtle,
-                    modifier = Modifier.size(21.dp)
-                )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box {
+                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Filled.MoreVert, "Episode options", tint = OnSurfaceSubtle, modifier = Modifier.size(21.dp))
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        containerColor = SurfaceDark
+                    ) {
+                        when {
+                            availability == MediaAvailability.Cached -> DropdownMenuItem(
+                                text = { Text("Remove offline download") },
+                                leadingIcon = { Icon(Icons.Filled.DeleteOutline, null) },
+                                onClick = {
+                                    showMenu = false
+                                    AudioCacheManager.removeEpisodeDownload(episode.id)
+                                    ToastManager.show("Offline episode removed", ToastIcon.SUCCESS)
+                                }
+                            )
+                            isDownloading -> DropdownMenuItem(
+                                text = {
+                                    val percent = downloadState?.progress?.let { " ${(it * 100).toInt()}%" }.orEmpty()
+                                    Text("Downloading$percent")
+                                },
+                                leadingIcon = { Icon(Icons.Filled.Downloading, null) },
+                                enabled = false,
+                                onClick = {}
+                            )
+                            else -> DropdownMenuItem(
+                                text = { Text(if (downloadState?.phase == CacheDownloadPhase.FAILED) "Retry offline download" else "Download for offline") },
+                                leadingIcon = { Icon(Icons.Filled.Download, null) },
+                                onClick = {
+                                    showMenu = false
+                                    AudioCacheManager.downloadEpisode(episode.id)
+                                    ToastManager.show("Downloading episode for offline", ToastIcon.DOWNLOAD)
+                                }
+                            )
+                        }
+                    }
+                }
+                IconButton(
+                    onClick = onMarkPlayed,
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        if (episode.played) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
+                        contentDescription = if (episode.played) "Mark unplayed" else "Mark played",
+                        tint = if (episode.played) Orange500 else OnSurfaceSubtle,
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
             }
         }
     }

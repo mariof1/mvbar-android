@@ -20,8 +20,26 @@ import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import okhttp3.OkHttpClient
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+
+enum class CacheDownloadPhase { DOWNLOADING, COMPLETE, FAILED }
+
+data class CacheDownloadState(
+    val phase: CacheDownloadPhase,
+    val progress: Float? = null,
+    val bytesCached: Long = 0,
+    val contentLength: Long? = null,
+    val error: String? = null
+)
+
+internal fun isCompleteCacheEntry(contentLength: Long?, cachedBytes: Long, rangeCached: Boolean): Boolean =
+    contentLength != null && contentLength > 0 && cachedBytes >= contentLength && rangeCached
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object AudioCacheManager {
@@ -43,6 +61,11 @@ object AudioCacheManager {
     private var prefetchJob: Job? = null
     private var autoCacheJob: Job? = null
     private var podcastCacheJob: Job? = null
+    private val manualDownloadJobs = ConcurrentHashMap<String, Job>()
+    private val _downloadStates = MutableStateFlow<Map<String, CacheDownloadState>>(emptyMap())
+    val downloadStates: StateFlow<Map<String, CacheDownloadState>> = _downloadStates.asStateFlow()
+    private val _cacheRevision = MutableStateFlow(0L)
+    val cacheRevision: StateFlow<Long> = _cacheRevision.asStateFlow()
 
     val maxCacheMb: Int get() = prefs?.getInt(KEY_MAX_CACHE_MB, 500) ?: 500
     val prefetchCount: Int get() = prefs?.getInt(KEY_PREFETCH_COUNT, 3) ?: 3
@@ -94,14 +117,9 @@ object AudioCacheManager {
 
     fun getCache(): SimpleCache? = cache
 
-    /** Check whether a music track's audio is cached (fully or partially) */
+    /** Check whether a music track's complete audio file is cached. */
     fun isTrackCached(trackId: Int): Boolean {
-        val url = ApiClient.streamUrl(trackId)
-        val c = cache ?: return false
-        // isCached with MAX_VALUE fails when content-length metadata is missing
-        if (c.isCached(url, 0, Long.MAX_VALUE)) return true
-        // Fallback: check if any cached bytes exist for this key
-        return c.getCachedBytes(url, 0, Long.MAX_VALUE) > 0
+        return isUrlFullyCached(ApiClient.streamUrl(trackId))
     }
 
     fun getCacheSizeMb(): Long = (cache?.cacheSpace ?: 0) / (1024 * 1024)
@@ -115,7 +133,7 @@ object AudioCacheManager {
         val keys = cache?.keys ?: return emptyList()
         val prefix = "api/library/tracks/"
         val suffix = "/stream"
-        return keys.mapNotNull { key ->
+        return keys.filter(::isUrlFullyCached).mapNotNull { key ->
             val start = key.indexOf(prefix)
             if (start < 0 || !key.endsWith(suffix)) return@mapNotNull null
             val idStr = key.substring(start + prefix.length, key.length - suffix.length)
@@ -128,7 +146,7 @@ object AudioCacheManager {
      * parsed back to a track/episode/chapter ID.
      */
     fun getCachedKeys(): List<String> {
-        return cache?.keys?.toList() ?: emptyList()
+        return cache?.keys?.filter(::isUrlFullyCached) ?: emptyList()
     }
 
     /**
@@ -136,7 +154,10 @@ object AudioCacheManager {
      */
     fun removeCachedItem(key: String) {
         try {
+            manualDownloadJobs.remove(key)?.cancel()
             cache?.removeResource(key)
+            _downloadStates.update { it - key }
+            notifyCacheChanged()
             DebugLog.d("Cache", "Removed cached item: $key")
         } catch (e: Exception) {
             DebugLog.e("Cache", "Failed to remove cached item", e)
@@ -147,9 +168,7 @@ object AudioCacheManager {
      * Get the cached size in bytes for a specific key (stream URL).
      */
     fun getCachedSizeBytes(key: String): Long {
-        val contentMetadata = cache?.getContentMetadata(key) ?: return 0L
-        return androidx.media3.datasource.cache.ContentMetadata.getContentLength(contentMetadata)
-            .takeIf { it > 0 } ?: cache?.getCachedBytes(key, 0, Long.MAX_VALUE) ?: 0L
+        return cache?.getCachedSpans(key)?.sumOf { it.length } ?: 0L
     }
 
     fun setMaxCacheMb(mb: Int) {
@@ -229,9 +248,13 @@ object AudioCacheManager {
 
     fun clearCache() {
         try {
+            manualDownloadJobs.values.forEach { it.cancel() }
+            manualDownloadJobs.clear()
             cache?.keys?.toList()?.forEach { key ->
                 cache?.removeResource(key)
             }
+            _downloadStates.value = emptyMap()
+            notifyCacheChanged()
             DebugLog.i("Cache", "Audio cache cleared")
             // Re-cache favorites if auto-cache is enabled
             reCacheFavorites()
@@ -371,7 +394,11 @@ object AudioCacheManager {
     }
 
     /** Download a URL into the cache. Must be called from a coroutine on IO. */
-    private fun cacheUrl(c: SimpleCache, url: String) {
+    private fun cacheUrl(
+        c: SimpleCache,
+        url: String,
+        progressListener: CacheWriter.ProgressListener? = null
+    ) {
         val okClient = OkHttpClient.Builder()
             .addInterceptor { chain ->
                 val builder = chain.request().newBuilder()
@@ -389,7 +416,7 @@ object AudioCacheManager {
             .setUri(url)
             .setKey(url)
             .build()
-        CacheWriter(cacheDataSourceFactory.createDataSource(), dataSpec, null, null).cache()
+        CacheWriter(cacheDataSourceFactory.createDataSource(), dataSpec, null, progressListener).cache()
     }
 
     /**
@@ -421,20 +448,110 @@ object AudioCacheManager {
         }
     }
 
-    /** Check whether a podcast episode is cached */
+    /** Check whether a complete podcast episode is cached. */
     fun isEpisodeCached(episodeId: Int): Boolean {
-        val url = ApiClient.episodeStreamUrl(episodeId)
-        val c = cache ?: return false
-        if (c.isCached(url, 0, Long.MAX_VALUE)) return true
-        return c.getCachedBytes(url, 0, Long.MAX_VALUE) > 0
+        return isUrlFullyCached(ApiClient.episodeStreamUrl(episodeId))
     }
 
     /** Check whether an audiobook chapter is cached */
     fun isChapterCached(audiobookId: Int, chapterId: Int): Boolean {
-        val url = ApiClient.audiobookChapterStreamUrl(audiobookId, chapterId)
+        return isUrlFullyCached(ApiClient.audiobookChapterStreamUrl(audiobookId, chapterId))
+    }
+
+    fun trackDownloadKey(trackId: Int): String = ApiClient.streamUrl(trackId)
+
+    fun episodeDownloadKey(episodeId: Int): String = ApiClient.episodeStreamUrl(episodeId)
+
+    /** Explicit user download. Manual downloads intentionally ignore the Wi-Fi-only auto-cache setting. */
+    fun downloadTrack(trackId: Int) = startManualDownload(trackDownloadKey(trackId), "track $trackId")
+
+    /** Explicit user download. Manual downloads intentionally ignore the Wi-Fi-only auto-cache setting. */
+    fun downloadEpisode(episodeId: Int) = startManualDownload(episodeDownloadKey(episodeId), "episode $episodeId")
+
+    fun removeTrackDownload(trackId: Int) = removeCachedItem(trackDownloadKey(trackId))
+
+    fun removeEpisodeDownload(episodeId: Int) = removeCachedItem(episodeDownloadKey(episodeId))
+
+    private fun startManualDownload(url: String, label: String) {
+        if (manualDownloadJobs[url]?.isActive == true) return
+        val ctx = appContext ?: return
+        val job = prefetchScope.launch {
+            try {
+                init(ctx)
+                val c = cache ?: error("Audio cache is unavailable")
+                if (isUrlFullyCached(url)) {
+                    _downloadStates.update {
+                        it + (url to CacheDownloadState(CacheDownloadPhase.COMPLETE, progress = 1f))
+                    }
+                    notifyCacheChanged()
+                    return@launch
+                }
+                _downloadStates.update {
+                    it + (url to CacheDownloadState(CacheDownloadPhase.DOWNLOADING, progress = 0f))
+                }
+                cacheUrl(c, url) { requestLength, bytesCached, _ ->
+                    val length = requestLength.takeIf { it > 0 }
+                    val progress = length?.let { (bytesCached.toDouble() / it).coerceIn(0.0, 1.0).toFloat() }
+                    _downloadStates.update {
+                        it + (url to CacheDownloadState(
+                            phase = CacheDownloadPhase.DOWNLOADING,
+                            progress = progress,
+                            bytesCached = bytesCached,
+                            contentLength = length
+                        ))
+                    }
+                }
+                if (!isUrlFullyCached(url)) {
+                    error("Download ended before the complete file was cached")
+                }
+                val length = contentLength(url)
+                _downloadStates.update {
+                    it + (url to CacheDownloadState(
+                        phase = CacheDownloadPhase.COMPLETE,
+                        progress = 1f,
+                        bytesCached = length ?: 0,
+                        contentLength = length
+                    ))
+                }
+                notifyCacheChanged()
+                DebugLog.i("Cache", "Manual download complete: $label (${length ?: 0} bytes)")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _downloadStates.update {
+                    it + (url to CacheDownloadState(
+                        phase = CacheDownloadPhase.FAILED,
+                        error = e.message ?: "Download failed"
+                    ))
+                }
+                notifyCacheChanged()
+                DebugLog.e("Cache", "Manual download failed: $label", e)
+            } finally {
+                manualDownloadJobs.remove(url)
+            }
+        }
+        manualDownloadJobs[url] = job
+    }
+
+    private fun contentLength(url: String): Long? {
+        val c = cache ?: return null
+        return androidx.media3.datasource.cache.ContentMetadata
+            .getContentLength(c.getContentMetadata(url))
+            .takeIf { it > 0 }
+    }
+
+    private fun isUrlFullyCached(url: String): Boolean {
         val c = cache ?: return false
-        if (c.isCached(url, 0, Long.MAX_VALUE)) return true
-        return c.getCachedBytes(url, 0, Long.MAX_VALUE) > 0
+        val length = contentLength(url) ?: return false
+        return isCompleteCacheEntry(
+            contentLength = length,
+            cachedBytes = c.getCachedBytes(url, 0, length),
+            rangeCached = c.isCached(url, 0, length)
+        )
+    }
+
+    private fun notifyCacheChanged() {
+        _cacheRevision.value = _cacheRevision.value + 1
     }
 
     private fun shouldSkipDownload(): Boolean {
@@ -449,6 +566,8 @@ object AudioCacheManager {
         prefetchJob?.cancel()
         autoCacheJob?.cancel()
         podcastCacheJob?.cancel()
+        manualDownloadJobs.values.forEach { it.cancel() }
+        manualDownloadJobs.clear()
         cache?.release()
         cache = null
     }

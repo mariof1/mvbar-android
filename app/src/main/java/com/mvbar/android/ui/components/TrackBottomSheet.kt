@@ -19,6 +19,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Track
+import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.player.CacheDownloadPhase
 import com.mvbar.android.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,8 +33,14 @@ fun TrackBottomSheet(
     onToggleFavorite: () -> Unit,
     onAddToPlaylist: (() -> Unit)? = null,
     onGoToArtist: (() -> Unit)? = null,
-    onGoToAlbum: (() -> Unit)? = null
+    onGoToAlbum: (() -> Unit)? = null,
+    onDownload: (() -> Unit)? = null,
+    onRemoveDownload: (() -> Unit)? = null
 ) {
+    val downloadStates by AudioCacheManager.downloadStates.collectAsState()
+    val cacheRevision by AudioCacheManager.cacheRevision.collectAsState()
+    val downloadState = downloadStates[AudioCacheManager.trackDownloadKey(track.id)]
+    val isCached = remember(track.id, cacheRevision) { AudioCacheManager.isTrackCached(track.id) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = SurfaceContainerDark,
@@ -89,6 +97,31 @@ fun TrackBottomSheet(
                 tint = if (track.isFavorite) Pink500 else OnSurfaceDim,
                 onClick = { onToggleFavorite(); onDismiss() }
             )
+            when {
+                isCached && onRemoveDownload != null -> {
+                    SheetAction(
+                        Icons.Filled.DeleteOutline,
+                        "Remove offline download",
+                        onClick = { onRemoveDownload(); onDismiss() }
+                    )
+                }
+                downloadState?.phase == CacheDownloadPhase.DOWNLOADING -> {
+                    val percent = downloadState.progress?.let { " ${(it * 100).toInt()}%" }.orEmpty()
+                    SheetAction(
+                        Icons.Filled.Downloading,
+                        "Downloading$percent",
+                        enabled = false,
+                        onClick = {}
+                    )
+                }
+                onDownload != null -> {
+                    SheetAction(
+                        Icons.Filled.Download,
+                        if (downloadState?.phase == CacheDownloadPhase.FAILED) "Retry offline download" else "Download for offline",
+                        onClick = { onDownload(); onDismiss() }
+                    )
+                }
+            }
             onGoToArtist?.let {
                 SheetAction(Icons.Filled.Person, "Go to Artist", onClick = { it(); onDismiss() })
             }
@@ -104,17 +137,18 @@ private fun SheetAction(
     icon: ImageVector,
     label: String,
     tint: androidx.compose.ui.graphics.Color = OnSurfaceDim,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+        Icon(icon, null, tint = if (enabled) tint else OnSurfaceSubtle, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(16.dp))
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = if (enabled) OnSurface else OnSurfaceSubtle)
     }
 }
