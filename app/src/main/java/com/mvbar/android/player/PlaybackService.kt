@@ -82,17 +82,16 @@ class PlaybackService : MediaLibraryService() {
     // ── Audio focus management ──
     private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     private var audioFocusRequest: AudioFocusRequest? = null
-    private var wasPlayingBeforeFocusLoss = false
+    private val audioFocusResumePolicy = AudioFocusResumePolicy()
     private var resumeJob: Job? = null
     /** True when we paused the player due to focus loss (prevents abandon on our own pause) */
     private var pausedByFocusManager = false
     /**
-     * True when the user (or remote controller / car / headset) explicitly paused playback.
-     * Cleared on explicit play / new media. While set, focus-gain events must NOT auto-resume.
-     * This guards against the car pressing pause coinciding with a satnav chime, where a
-     * subsequent AUDIOFOCUS_GAIN would otherwise resume against the user's intent.
+     * True only while this service is issuing pause() in response to audio focus.
+     * A separate transport pause while already focus-paused must still be captured
+     * as explicit user intent even though ExoPlayer will emit no state change.
      */
-    private var userExplicitlyPaused = false
+    private var focusPauseCommandInProgress = false
     /** True while Android Auto (gearhead) is connected */
     private var androidAutoConnected = false
     /** Job that eventually releases foreground after extended pause */
@@ -107,7 +106,7 @@ class PlaybackService : MediaLibraryService() {
             if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
                 Log.i("mvbar.AudioFocus", "AUDIO_BECOMING_NOISY")
                 DebugLog.i("AudioFocus", "AUDIO_BECOMING_NOISY")
-                wasPlayingBeforeFocusLoss = false
+                audioFocusResumePolicy.cancelResume()
                 androidAutoConnected = false // BT disconnected — truly left the car
                 // ExoPlayer's handleAudioBecomingNoisy already pauses
             }
@@ -121,16 +120,15 @@ class PlaybackService : MediaLibraryService() {
                 DebugLog.i("AudioFocus", "GAIN")
                 Log.i("mvbar.AudioFocus", "GAIN")
                 player.volume = 1.0f
-                if (userExplicitlyPaused) {
+                if (audioFocusResumePolicy.userExplicitlyPaused) {
                     // User paused — never auto-resume from focus gain.
                     DebugLog.i("AudioFocus", "GAIN ignored — user explicitly paused")
-                    wasPlayingBeforeFocusLoss = false
-                } else if (wasPlayingBeforeFocusLoss) {
-                    wasPlayingBeforeFocusLoss = false
+                    audioFocusResumePolicy.cancelResume()
+                } else if (audioFocusResumePolicy.consumeResumeOnFocusGain()) {
                     resumeJob?.cancel()
                     resumeJob = serviceScope.launch {
                         delay(500)
-                        if (userExplicitlyPaused) {
+                        if (audioFocusResumePolicy.userExplicitlyPaused) {
                             DebugLog.i("AudioFocus", "Resume skipped — user paused during delay")
                             return@launch
                         }
@@ -145,12 +143,11 @@ class PlaybackService : MediaLibraryService() {
                 Log.i("mvbar.AudioFocus", "LOSS (permanent)")
                 resumeJob?.cancel()
                 if (player.isPlaying || player.playWhenReady) {
-                    pausedByFocusManager = true
-                    player.pause()
+                    pauseForAudioFocus(player)
                 }
                 // Permanent loss must never auto-resume. The user can explicitly
                 // start playback again after the competing audio session ends.
-                wasPlayingBeforeFocusLoss = false
+                audioFocusResumePolicy.cancelResume()
                 audioFocusRequest = null
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
@@ -158,10 +155,10 @@ class PlaybackService : MediaLibraryService() {
                 Log.i("mvbar.AudioFocus", "LOSS_TRANSIENT")
                 resumeJob?.cancel()
                 if (player.isPlaying || player.playWhenReady) {
-                    // Only mark for auto-resume if the user hasn't already chosen to pause.
-                    wasPlayingBeforeFocusLoss = !userExplicitlyPaused
-                    pausedByFocusManager = true
-                    player.pause()
+                    audioFocusResumePolicy.onTransientFocusLoss(wasPlaying = true)
+                    pauseForAudioFocus(player)
+                } else {
+                    audioFocusResumePolicy.onTransientFocusLoss(wasPlaying = false)
                 }
                 // Keep the request alive and wait for Android's GAIN callback.
                 // Re-requesting focus here can restart playback during a phone call.
@@ -171,6 +168,24 @@ class PlaybackService : MediaLibraryService() {
                 player.volume = 0.2f
             }
         }
+    }
+
+    private fun pauseForAudioFocus(player: Player) {
+        pausedByFocusManager = true
+        focusPauseCommandInProgress = true
+        try {
+            player.pause()
+        } finally {
+            focusPauseCommandInProgress = false
+        }
+    }
+
+    private fun recordExplicitPause(source: String) {
+        resumeJob?.cancel()
+        audioFocusResumePolicy.onExplicitPause()
+        pausedByFocusManager = false
+        abandonAudioFocus()
+        DebugLog.i("AudioFocus", "Explicit pause recorded ($source)")
     }
 
     companion object {
@@ -651,20 +666,20 @@ class PlaybackService : MediaLibraryService() {
 
                 if (playWhenReady) {
                     foregroundTimeoutJob?.cancel()
-                    userExplicitlyPaused = false
+                    audioFocusResumePolicy.onExplicitPlay()
                     when (requestAudioFocus()) {
                         AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> {
                             pausedByFocusManager = false
                         }
                         AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
                             DebugLog.i("AudioFocus", "Playback waiting for delayed focus")
-                            wasPlayingBeforeFocusLoss = true
+                            audioFocusResumePolicy.waitForDelayedFocus()
                             pausedByFocusManager = true
                             player.pause()
                         }
                         else -> {
                             DebugLog.w("AudioFocus", "Playback paused because focus was denied")
-                            wasPlayingBeforeFocusLoss = false
+                            audioFocusResumePolicy.cancelResume()
                             pausedByFocusManager = true
                             player.pause()
                         }
@@ -673,9 +688,7 @@ class PlaybackService : MediaLibraryService() {
                     // User or remote controller (car / headset) paused — abandon focus,
                     // and remember this so a later AUDIOFOCUS_GAIN won't auto-resume
                     // (e.g. car pause followed by satnav chime).
-                    wasPlayingBeforeFocusLoss = false
-                    userExplicitlyPaused = true
-                    abandonAudioFocus()
+                    recordExplicitPause("playWhenReady/$reasonStr")
                 }
             }
 
@@ -707,6 +720,15 @@ class PlaybackService : MediaLibraryService() {
         val forwardingPlayer = object : ForwardingPlayer(player) {
             private fun isPodcastOrAudiobook(): Boolean {
                 return specialPlaybackTarget(wrappedPlayer.currentMediaItem) != null
+            }
+
+            override fun pause() {
+                if (!focusPauseCommandInProgress) {
+                    // Capture pause at the transport boundary. If focus loss has
+                    // already paused ExoPlayer, no playWhenReady callback follows.
+                    recordExplicitPause("transport")
+                }
+                super.pause()
             }
 
             override fun seekToNext() {
@@ -2609,7 +2631,7 @@ class PlaybackService : MediaLibraryService() {
             val player = mediaSession?.player
             if (player != null && !player.isPlaying && !player.playWhenReady) {
                 DebugLog.i("Player", "Foreground timeout — abandoning focus after 10 min pause")
-                wasPlayingBeforeFocusLoss = false
+                audioFocusResumePolicy.cancelResume()
                 abandonAudioFocus()
             }
         }

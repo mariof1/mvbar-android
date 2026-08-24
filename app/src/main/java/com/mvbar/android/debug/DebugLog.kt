@@ -17,8 +17,8 @@ import java.util.*
 import java.util.concurrent.ConcurrentLinkedDeque
 
 object DebugLog {
-    private const val MAX_ENTRIES = 500
-    private const val MAX_LOG_FILE_BYTES = 512 * 1024L
+    private const val MAX_ENTRIES = 2_000
+    private const val MAX_LOG_FILE_BYTES = 2 * 1024 * 1024L
     private const val LOG_FILE_NAME = "debug_log.txt"
     private const val PREFS_NAME = "mvbar_debug"
     private const val KEY_ENABLED = "debug_enabled"
@@ -196,6 +196,7 @@ object DebugLog {
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "text/plain; charset=utf-8")
             conn.setRequestProperty("X-Device", device)
+            conn.setRequestProperty("X-App-Version", BuildConfig.VERSION_NAME)
             if (token != null) {
                 conn.setRequestProperty("Authorization", "Bearer $token")
                 conn.setRequestProperty("Cookie", "mvbar_token=$token")
