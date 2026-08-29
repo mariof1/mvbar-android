@@ -33,6 +33,16 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+/** Migration 4→5: retain collaborative-playlist permissions and labels offline. */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE playlists ADD COLUMN ownerEmail TEXT")
+        db.execSQL("ALTER TABLE playlists ADD COLUMN isOwner INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE playlists ADD COLUMN isCollaborative INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE playlists ADD COLUMN collaboratorCount INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [
         TrackEntity::class,
@@ -52,7 +62,7 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         AudiobookChapterEntity::class,
         PendingActionEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -78,7 +88,7 @@ abstract class MvbarDatabase : RoomDatabase() {
                     MvbarDatabase::class.java,
                     "mvbar_cache.db"
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }

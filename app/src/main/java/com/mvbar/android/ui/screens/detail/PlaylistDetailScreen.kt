@@ -77,7 +77,13 @@ fun PlaylistDetailScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        "${tracks.size} tracks",
+                        if (playlist?.isOwner == false) {
+                            "Shared by ${playlist.owner?.email ?: "a friend"} • ${tracks.size} tracks"
+                        } else if (playlist?.isCollaborative == true) {
+                            "${tracks.size} tracks • ${playlist.collaboratorCount} collaborators"
+                        } else {
+                            "${tracks.size} tracks"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = OnSurfaceSubtle
                     )

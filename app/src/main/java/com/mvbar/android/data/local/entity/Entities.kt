@@ -80,7 +80,11 @@ data class PlaylistEntity(
     val name: String,
     val userId: Int,
     val createdAt: String?,
-    val itemCount: Int
+    val itemCount: Int,
+    val ownerEmail: String? = null,
+    val isOwner: Boolean = true,
+    val isCollaborative: Boolean = false,
+    val collaboratorCount: Int = 0
 )
 
 @Entity(

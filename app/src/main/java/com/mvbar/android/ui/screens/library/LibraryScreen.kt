@@ -248,7 +248,11 @@ private fun PlaylistsTab(
                 items(playlists) { playlist ->
                     PlaylistCard(
                         name = playlist.name,
-                        subtitle = "${playlist.itemCount} tracks",
+                        subtitle = if (playlist.isOwner) {
+                            if (playlist.isCollaborative) "${playlist.itemCount} tracks • Collab" else "${playlist.itemCount} tracks"
+                        } else {
+                            "Shared by ${playlist.owner?.email ?: "a friend"} • ${playlist.itemCount} tracks"
+                        },
                         icon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = Cyan500, modifier = Modifier.size(32.dp)) },
                         accentColor = Cyan600,
                         onClick = { onPlaylistClick(playlist.id) }

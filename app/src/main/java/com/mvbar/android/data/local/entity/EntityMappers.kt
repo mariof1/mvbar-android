@@ -71,12 +71,17 @@ fun LanguageEntity.toModel() = Language(name = name, trackCount = trackCount, ar
 // Playlist ↔ PlaylistEntity
 fun Playlist.toEntity() = PlaylistEntity(
     id = id, name = name, userId = userId,
-    createdAt = createdAt, itemCount = itemCount
+    createdAt = createdAt, itemCount = itemCount,
+    ownerEmail = owner?.email, isOwner = isOwner,
+    isCollaborative = isCollaborative, collaboratorCount = collaboratorCount
 )
 
 fun PlaylistEntity.toModel(items: List<PlaylistItem>? = null) = Playlist(
     id = id, name = name, userId = userId,
-    createdAt = createdAt, itemCount = itemCount, items = items
+    createdAt = createdAt, itemCount = itemCount,
+    owner = ownerEmail?.let { PlaylistOwner(email = it) }, isOwner = isOwner,
+    isCollaborative = isCollaborative, collaboratorCount = collaboratorCount,
+    items = items
 )
 
 // PlaylistItem ↔ PlaylistItemEntity
