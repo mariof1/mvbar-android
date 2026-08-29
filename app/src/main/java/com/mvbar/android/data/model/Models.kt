@@ -185,6 +185,131 @@ data class PlaylistItem(
     }
 }
 
+// Friends and private track sharing
+@Serializable
+data class SocialUser(
+    val id: String = "",
+    val email: String = "",
+    val avatarPath: String? = null
+)
+
+@Serializable
+data class SocialRelationship(
+    val relationshipId: Int = 0,
+    val user: SocialUser = SocialUser(),
+    val createdAt: String = "",
+    val respondedAt: String? = null
+)
+
+@Serializable
+data class SocialSummary(
+    val ok: Boolean = false,
+    val friends: List<SocialRelationship> = emptyList(),
+    val incoming: List<SocialRelationship> = emptyList(),
+    val outgoing: List<SocialRelationship> = emptyList(),
+    val unreadShares: Int = 0
+)
+
+@Serializable
+data class SocialSearchUser(
+    val id: String = "",
+    val email: String = "",
+    val avatarPath: String? = null,
+    val relationshipId: Int? = null,
+    val relationship: String = "none"
+) {
+    fun asSocialUser() = SocialUser(id = id, email = email, avatarPath = avatarPath)
+}
+
+@Serializable
+data class SocialUserSearchResponse(
+    val ok: Boolean = false,
+    val users: List<SocialSearchUser> = emptyList()
+)
+
+@Serializable
+data class SharedTrack(
+    val id: Int = 0,
+    val title: String? = null,
+    val artist: String? = null,
+    val album: String? = null,
+    val durationMs: Double? = null,
+    val artPath: String? = null,
+    val artHash: String? = null
+) {
+    fun toTrack() = Track(
+        id = id,
+        title = title,
+        artist = artist,
+        album = album,
+        durationMs = durationMs,
+        artPath = artPath,
+        artHash = artHash
+    )
+}
+
+@Serializable
+data class TrackShare(
+    val id: Int = 0,
+    val track: SharedTrack = SharedTrack(),
+    val sender: SocialUser = SocialUser(),
+    val message: String? = null,
+    val createdAt: String = "",
+    val readAt: String? = null
+)
+
+@Serializable
+data class TrackSharesResponse(
+    val ok: Boolean = false,
+    val shares: List<TrackShare> = emptyList(),
+    val total: Int = 0,
+    val unread: Int = 0,
+    val limit: Int = 50,
+    val offset: Int = 0
+)
+
+@Serializable
+data class ShareTarget(
+    val id: String = "",
+    val email: String = "",
+    val avatarPath: String? = null,
+    val canAccess: Boolean = false
+)
+
+@Serializable
+data class ShareTargetsResponse(
+    val ok: Boolean = false,
+    val friends: List<ShareTarget> = emptyList()
+)
+
+@Serializable
+data class FriendRequestBody(val userId: String)
+
+@Serializable
+data class FriendRequestResponse(
+    val ok: Boolean = false,
+    val request: SocialRelationship = SocialRelationship()
+)
+
+@Serializable
+data class ShareTrackBody(
+    val trackId: Int,
+    val recipientIds: List<String>,
+    val message: String? = null
+)
+
+@Serializable
+data class ShareTrackResponse(
+    val ok: Boolean = false,
+    val shared: Int = 0
+)
+
+@Serializable
+data class SocialActionResponse(
+    val ok: Boolean = false,
+    val updated: Int = 0
+)
+
 @Serializable
 data class SearchResults(
     val ok: Boolean = false,

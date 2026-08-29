@@ -58,6 +58,8 @@ import com.mvbar.android.ui.screens.library.LibraryScreen
 import com.mvbar.android.ui.screens.nowplaying.NowPlayingScreen
 import com.mvbar.android.ui.screens.search.SearchScreen
 import com.mvbar.android.ui.screens.settings.SettingsScreen
+import com.mvbar.android.ui.screens.social.ShareTrackDialog
+import com.mvbar.android.ui.screens.social.SocialScreen
 import com.mvbar.android.ui.screens.smartplaylist.CreateSmartPlaylistScreen
 import com.mvbar.android.ui.screens.podcast.PodcastsScreen
 import com.mvbar.android.ui.screens.podcast.PodcastDetailScreen
@@ -67,6 +69,8 @@ import com.mvbar.android.ui.screens.audiobooks.AudiobookDetailScreen
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.BrowseViewModel
 import com.mvbar.android.viewmodel.MainViewModel
+import com.mvbar.android.viewmodel.SocialViewModel
+import com.mvbar.android.social.SocialNavigationRequests
 import com.mvbar.android.viewmodel.PodcastViewModel
 import com.mvbar.android.viewmodel.AudiobookViewModel
 import kotlinx.serialization.json.intOrNull
@@ -103,6 +107,31 @@ sealed class CollectionRef {
     data class ArtistById(val id: Int, val name: String, val artUrl: String? = null, val trackCount: Int = 0, val albumCount: Int = 0) : CollectionRef()
 }
 
+@Composable
+private fun SocialNavigationButton(
+    badgeCount: Int,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    IconButton(onClick = onClick) {
+        BadgedBox(
+            badge = {
+                if (badgeCount > 0) {
+                    Badge(containerColor = Pink500) {
+                        Text(if (badgeCount > 99) "99+" else "$badgeCount")
+                    }
+                }
+            }
+        ) {
+            Icon(
+                Icons.Filled.People,
+                contentDescription = "Friends and shares",
+                tint = if (selected) Cyan500 else OnSurfaceDim
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
@@ -114,6 +143,7 @@ fun MainScreen(
     val browseVm: BrowseViewModel = viewModel()
     val podcastVm: PodcastViewModel = viewModel()
     val audiobookVm: AudiobookViewModel = viewModel()
+    val socialVm: SocialViewModel = viewModel()
     var showSearch by remember { mutableStateOf(false) }
     var showNowPlaying by remember { mutableStateOf(false) }
     var contextTrack by remember { mutableStateOf<Track?>(null) }
@@ -122,6 +152,7 @@ fun MainScreen(
     var collectionTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
     var showAddCollectionToPlaylist by remember { mutableStateOf(false) }
     var showSubscribeDialog by remember { mutableStateOf(false) }
+    var shareTrack by remember { mutableStateOf<Track?>(null) }
 
     val currentRoute by navController.currentBackStackEntryAsState()
     val currentTab = currentRoute?.destination?.route
@@ -175,6 +206,8 @@ fun MainScreen(
     val allTracks by mainVm.allTracks.collectAsState()
     val allTracksLoading by mainVm.allTracksLoading.collectAsState()
     val hasMoreAllTracks by mainVm.hasMoreAllTracks.collectAsState()
+    val socialState by socialVm.state.collectAsState()
+    val shareDialogState by socialVm.shareDialog.collectAsState()
 
     // Podcast state
     val podcastsList by podcastVm.podcasts.collectAsState()
@@ -212,6 +245,12 @@ fun MainScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(navController) {
+        for (ignored in SocialNavigationRequests.events) {
+            navController.navigate("social") { launchSingleTop = true }
+        }
     }
 
     // Auto-resume: restore last session and open player
@@ -290,6 +329,26 @@ fun MainScreen(
         )
     }
 
+    shareTrack?.let { track ->
+        ShareTrackDialog(
+            track = track,
+            state = shareDialogState,
+            onDismiss = {
+                shareTrack = null
+                socialVm.closeShareDialog()
+            },
+            onShare = { recipientIds, message ->
+                socialVm.shareTrack(recipientIds, message) { shared ->
+                    shareTrack = null
+                    ToastManager.show(
+                        if (shared == 1) "Song shared with 1 friend" else "Song shared with $shared friends",
+                        ToastIcon.SUCCESS
+                    )
+                }
+            }
+        )
+    }
+
     // Collection (album/artist) add-to-playlist dialog
     if (showAddCollectionToPlaylist) {
         LaunchedEffect(showAddCollectionToPlaylist) { mainVm.loadPlaylists() }
@@ -358,6 +417,11 @@ fun MainScreen(
             onAddToPlaylist = {
                 contextTrack = null
                 showAddToPlaylist = track
+            },
+            onShare = {
+                contextTrack = null
+                shareTrack = track
+                socialVm.openShareDialog(track.id)
             },
             onGoToAlbum = track.album?.let { albumName ->
                 {
@@ -490,6 +554,7 @@ fun MainScreen(
         currentTab == "audiobooks" || currentTab?.startsWith("audiobook/") == true -> "Audiobooks"
         currentTab == "favorites" -> "Favorites"
         currentTab == "settings" -> "Settings"
+        currentTab == "social" -> "Friends & Shares"
         currentTab == "cache-browser" -> "Cache"
         else -> ""
     }
@@ -505,7 +570,8 @@ fun MainScreen(
         currentTab?.startsWith("podcast/") == true ||
         currentTab?.startsWith("audiobook/") == true ||
         currentTab == "history" ||
-        currentTab == "cache-browser"
+        currentTab == "cache-browser" ||
+        currentTab == "social"
 
     CompositionLocalProvider(LocalIsOnline provides isOnline) {
     Box(modifier = Modifier.fillMaxSize()) {
@@ -537,6 +603,12 @@ fun MainScreen(
                         IconButton(onClick = { showSearch = true }) {
                             Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                         }
+
+                        SocialNavigationButton(
+                            badgeCount = socialState.badgeCount,
+                            selected = currentTab == "social",
+                            onClick = { navController.navigate("social") { launchSingleTop = true } }
+                        )
 
                         Box(
                             modifier = Modifier
@@ -623,6 +695,11 @@ fun MainScreen(
                             IconButton(onClick = { showSearch = true }) {
                                 Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                             }
+                            SocialNavigationButton(
+                                badgeCount = socialState.badgeCount,
+                                selected = currentTab == "social",
+                                onClick = { navController.navigate("social") { launchSingleTop = true } }
+                            )
                             IconButton(onClick = {
                                 navController.navigate("settings") {
                                     launchSingleTop = true
@@ -1257,6 +1334,29 @@ fun MainScreen(
                     SettingsScreen(
                         onLogout = onLogout,
                         onBrowseCache = { navController.navigate("cache-browser") }
+                    )
+                }
+
+                composable("social") {
+                    SocialScreen(
+                        state = socialState,
+                        onRefresh = { socialVm.refresh() },
+                        onSearch = socialVm::setSearchQuery,
+                        onSendRequest = socialVm::sendFriendRequest,
+                        onAcceptRequest = socialVm::acceptFriendRequest,
+                        onRemoveRequest = socialVm::removeFriendRequest,
+                        onRemoveFriend = socialVm::removeFriend,
+                        onMarkRead = socialVm::markShareRead,
+                        onMarkAllRead = socialVm::markAllSharesRead,
+                        onDeleteShare = socialVm::deleteShare,
+                        onPlay = { track -> mainVm.playTrack(track) },
+                        onQueue = { track ->
+                            if (mainVm.addToQueue(track)) {
+                                ToastManager.show("Added to queue", ToastIcon.QUEUE)
+                            }
+                        },
+                        onDismissError = socialVm::clearError,
+                        bottomPadding = innerPadding.calculateBottomPadding()
                     )
                 }
 

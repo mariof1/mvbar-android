@@ -15,6 +15,8 @@ object SyncManager {
     private const val KEY_SYNC_INTERVAL = "sync_interval_hours"
     private const val WORK_NAME = "mvbar_periodic_sync"
     private const val FAV_WORK_NAME = "mvbar_favorites_sync"
+    private const val SOCIAL_WORK_NAME = "mvbar_social_notifications"
+    private const val SOCIAL_NOW_WORK_NAME = "mvbar_social_notifications_now"
 
     private val _lastSyncTime = MutableStateFlow(0L)
     val lastSyncTime: StateFlow<Long> = _lastSyncTime.asStateFlow()
@@ -107,6 +109,38 @@ object SyncManager {
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             FAV_WORK_NAME,
             ExistingPeriodicWorkPolicy.UPDATE,
+            request
+        )
+    }
+
+    /** Catch up on friend requests and shared songs after Android suspends the app. */
+    fun scheduleSocialNotifications(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val request = PeriodicWorkRequestBuilder<SocialNotificationWorker>(
+            15, TimeUnit.MINUTES
+        )
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
+            .build()
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            SOCIAL_WORK_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            request
+        )
+    }
+
+    fun checkSocialNotificationsNow(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val request = OneTimeWorkRequestBuilder<SocialNotificationWorker>()
+            .setConstraints(constraints)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            SOCIAL_NOW_WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
             request
         )
     }

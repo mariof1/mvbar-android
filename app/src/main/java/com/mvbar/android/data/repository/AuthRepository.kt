@@ -8,6 +8,8 @@ import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.GoogleTokenRequest
 import com.mvbar.android.data.model.LoginRequest
 import com.mvbar.android.data.model.User
+import com.mvbar.android.data.sync.SyncManager
+import com.mvbar.android.social.SocialRealtimeManager
 import com.mvbar.android.wearbridge.WearStatePublisher
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -50,6 +52,8 @@ class AuthRepository(private val context: Context) {
                         prefs[KEY_ROLE] = user.role
                     }
                     WearStatePublisher.publishAuth(context)
+                    SocialRealtimeManager.start(context)
+                    SyncManager.checkSocialNotificationsNow(context)
                     Result.success(user)
                 } else {
                     Result.failure(Exception("No token received"))
@@ -80,6 +84,8 @@ class AuthRepository(private val context: Context) {
                         prefs[KEY_ROLE] = user.role
                     }
                     WearStatePublisher.publishAuth(context)
+                    SocialRealtimeManager.start(context)
+                    SyncManager.checkSocialNotificationsNow(context)
                     Result.success(user)
                 } else {
                     Result.failure(Exception("No token received"))
@@ -129,11 +135,13 @@ class AuthRepository(private val context: Context) {
         val server = getSavedServer() ?: return false
         val token = getSavedToken() ?: return false
         ApiClient.configure(server, token)
+        SocialRealtimeManager.start(context)
         return true
     }
 
     suspend fun logout() {
         context.dataStore.edit { it.clear() }
+        SocialRealtimeManager.stop()
         ApiClient.setToken(null)
     }
 }

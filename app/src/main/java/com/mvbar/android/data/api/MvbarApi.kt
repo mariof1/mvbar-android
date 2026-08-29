@@ -152,6 +152,46 @@ interface MvbarApi {
     @DELETE("api/playlists/{id}/items/{trackId}")
     suspend fun removeFromPlaylist(@Path("id") id: Int, @Path("trackId") trackId: Int): Response<Unit>
 
+    // Friends and private track sharing
+    @GET("api/social/summary")
+    suspend fun getSocialSummary(): SocialSummary
+
+    @GET("api/social/users")
+    suspend fun searchSocialUsers(@Query("q") query: String): SocialUserSearchResponse
+
+    @POST("api/social/friend-requests")
+    suspend fun sendFriendRequest(@Body body: FriendRequestBody): FriendRequestResponse
+
+    @POST("api/social/friend-requests/{id}/accept")
+    suspend fun acceptFriendRequest(@Path("id") relationshipId: Int): SocialActionResponse
+
+    @DELETE("api/social/friend-requests/{id}")
+    suspend fun removeFriendRequest(@Path("id") relationshipId: Int): SocialActionResponse
+
+    @DELETE("api/social/friends/{userId}")
+    suspend fun removeFriend(@Path("userId") userId: String): SocialActionResponse
+
+    @GET("api/social/share-targets/{trackId}")
+    suspend fun getShareTargets(@Path("trackId") trackId: Int): ShareTargetsResponse
+
+    @POST("api/social/shares")
+    suspend fun shareTrack(@Body body: ShareTrackBody): ShareTrackResponse
+
+    @GET("api/social/shares")
+    suspend fun getTrackShares(
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0
+    ): TrackSharesResponse
+
+    @POST("api/social/shares/{id}/read")
+    suspend fun markTrackShareRead(@Path("id") shareId: Int): SocialActionResponse
+
+    @POST("api/social/shares/read-all")
+    suspend fun markAllTrackSharesRead(): SocialActionResponse
+
+    @DELETE("api/social/shares/{id}")
+    suspend fun deleteTrackShare(@Path("id") shareId: Int): SocialActionResponse
+
     // Lyrics
     @GET("api/library/tracks/{id}/lyrics")
     suspend fun getLyrics(@Path("id") trackId: Int): Response<LyricsResponse>

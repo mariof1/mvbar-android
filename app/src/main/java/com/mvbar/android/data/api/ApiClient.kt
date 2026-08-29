@@ -1,6 +1,7 @@
 package com.mvbar.android.data.api
 
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import com.mvbar.android.BuildConfig
 import com.mvbar.android.debug.DebugLog
@@ -121,6 +122,7 @@ object ApiClient {
     fun artistArtUrl(artistId: Int): String = "${baseUrl}api/artists/$artistId/art"
     fun artPathUrl(artPath: String): String = "${baseUrl}api/art/$artPath"
     fun streamUrl(trackId: Int): String = "${baseUrl}api/library/tracks/$trackId/stream"
+    fun avatarUrl(avatarPath: String): String = "${baseUrl}api/avatars/${Uri.encode(avatarPath)}"
 
     // Podcasts
     fun podcastArtUrl(podcastId: Int): String = "${baseUrl}api/podcasts/$podcastId/art"

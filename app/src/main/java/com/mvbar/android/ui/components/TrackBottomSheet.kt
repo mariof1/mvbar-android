@@ -32,6 +32,7 @@ fun TrackBottomSheet(
     onAddToQueue: () -> Unit,
     onToggleFavorite: () -> Unit,
     onAddToPlaylist: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
     onGoToArtist: (() -> Unit)? = null,
     onGoToAlbum: (() -> Unit)? = null,
     onDownload: (() -> Unit)? = null,
@@ -90,6 +91,9 @@ fun TrackBottomSheet(
             SheetAction(Icons.AutoMirrored.Filled.QueueMusic, "Add to Queue", onClick = { onAddToQueue(); onDismiss() })
             onAddToPlaylist?.let {
                 SheetAction(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to Playlist", onClick = { it(); onDismiss() })
+            }
+            onShare?.let {
+                SheetAction(Icons.Filled.Share, "Share with a friend", onClick = { it(); onDismiss() })
             }
             SheetAction(
                 if (track.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,

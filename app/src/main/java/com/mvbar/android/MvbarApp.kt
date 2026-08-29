@@ -13,6 +13,7 @@ import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.data.sync.SyncManager
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.social.SocialNotificationManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,12 +30,15 @@ class MvbarApp : Application(), ImageLoaderFactory {
         AudioCacheManager.initPrefs(this)
         NetworkMonitor.init(this)
         ApiClient.initializeClient(this)
+        SocialNotificationManager.createChannel(this)
 
         // Restore API session early so PlaybackService (Android Auto) can access the server
         appScope.launch {
             try {
                 val auth = AuthRepository(this@MvbarApp)
-                auth.restoreSession()
+                if (auth.restoreSession()) {
+                    SyncManager.checkSocialNotificationsNow(this@MvbarApp)
+                }
             } catch (e: Exception) {
                 DebugLog.e("App", "Failed to restore session at startup", e)
             }
@@ -50,6 +54,7 @@ class MvbarApp : Application(), ImageLoaderFactory {
         SyncManager.init(this)
         SyncManager.schedulePeriodic(this)
         SyncManager.scheduleFavoritesSync(this)
+        SyncManager.scheduleSocialNotifications(this)
 
         // Mirror player state onto the Wearable Data Layer for paired Wear OS apps.
         com.mvbar.android.wearbridge.WearStatePublisher.start(this)

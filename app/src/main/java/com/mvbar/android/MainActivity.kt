@@ -1,8 +1,13 @@
 package com.mvbar.android
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
@@ -12,11 +17,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.fragment.app.FragmentActivity
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.player.PlayerManager
 import com.mvbar.android.player.PlaybackService
+import com.mvbar.android.social.SocialNavigationRequests
+import com.mvbar.android.social.SocialNotificationManager
 import com.mvbar.android.ui.navigation.MainScreen
 import com.mvbar.android.ui.screens.login.LoginScreen
 import com.mvbar.android.ui.theme.Cyan500
@@ -30,6 +38,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleMediaSearchIntent(intent)
+        handleSocialIntent(intent)
         setContent {
             MvbarTheme {
                 LaunchedEffect(Unit) {
@@ -39,6 +48,25 @@ class MainActivity : FragmentActivity() {
 
                 val authVm: AuthViewModel = viewModel()
                 val authState by authVm.state.collectAsState()
+                val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { }
+
+                LaunchedEffect(authState.isLoggedIn) {
+                    if (!authState.isLoggedIn || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                        return@LaunchedEffect
+                    }
+                    val prefs = getSharedPreferences("mvbar_permissions", MODE_PRIVATE)
+                    val alreadyAsked = prefs.getBoolean("social_notifications_asked", false)
+                    if (!alreadyAsked && ContextCompat.checkSelfPermission(
+                            this@MainActivity,
+                            Manifest.permission.POST_NOTIFICATIONS
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        prefs.edit().putBoolean("social_notifications_asked", true).apply()
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
 
                 // Derive a stable screen key so AnimatedContent only animates on
                 // major transitions (loading → login → main), not every AuthState change.
@@ -90,6 +118,7 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleMediaSearchIntent(intent)
+        handleSocialIntent(intent)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
@@ -130,6 +159,13 @@ class MainActivity : FragmentActivity() {
                 putExtra("query", query)
             }
             startForegroundService(svcIntent)
+        }
+    }
+
+    private fun handleSocialIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(SocialNotificationManager.EXTRA_OPEN_SOCIAL, false) == true) {
+            intent.removeExtra(SocialNotificationManager.EXTRA_OPEN_SOCIAL)
+            SocialNavigationRequests.openSocial()
         }
     }
 }
