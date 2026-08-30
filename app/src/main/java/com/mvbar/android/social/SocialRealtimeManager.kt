@@ -23,6 +23,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.HttpUrl
 import java.util.concurrent.TimeUnit
 
 object SocialRealtimeManager {
@@ -64,12 +65,7 @@ object SocialRealtimeManager {
     private fun connect() {
         if (stopped || socket != null) return
         val token = ApiClient.getToken() ?: return
-        val base = ApiClient.getBaseUrl().toHttpUrlOrNull() ?: return
-        val scheme = if (base.isHttps) "wss" else "ws"
-        val url = base.newBuilder()
-            .scheme(scheme)
-            .addPathSegments("api/ws")
-            .build()
+        val url = webSocketRequestUrl(ApiClient.getBaseUrl()) ?: return
         val request = Request.Builder()
             .url(url)
             .header("Authorization", "Bearer $token")
@@ -77,6 +73,13 @@ object SocialRealtimeManager {
             .build()
         socket = client.newWebSocket(request, Listener())
     }
+
+    /** OkHttp upgrades HTTP(S) requests to WS(S) inside newWebSocket(). */
+    internal fun webSocketRequestUrl(baseUrl: String): HttpUrl? =
+        baseUrl.toHttpUrlOrNull()
+            ?.newBuilder()
+            ?.addPathSegments("api/ws")
+            ?.build()
 
     @Synchronized
     private fun disconnected(webSocket: WebSocket) {
