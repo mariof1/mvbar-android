@@ -78,10 +78,15 @@ fun QueueScreen(onBack: () -> Unit) {
                     if (!isCurrent) {
                         Button(
                             onClick = { WearPlayerHolder.removeFromQueue(index) },
-                            colors = ButtonDefaults.secondaryButtonColors(backgroundColor = WearTheme.Background),
-                            modifier = Modifier.size(32.dp).clip(CircleShape)
+                            colors = ButtonDefaults.secondaryButtonColors(backgroundColor = WearTheme.SurfaceRaised),
+                            modifier = Modifier.size(40.dp).clip(CircleShape)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Remove", tint = WearTheme.Pink, modifier = Modifier.size(16.dp))
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Remove ${item.title} from queue",
+                                tint = WearTheme.Pink,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
                 }

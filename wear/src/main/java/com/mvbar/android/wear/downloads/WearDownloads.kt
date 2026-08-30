@@ -23,6 +23,7 @@ import android.net.Uri
  * Uses the same `MediaCache` as streaming, so manual downloads and
  * stream-while-listen recordings share the 2 GB budget under LRU.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object WearDownloads {
 
     data class Status(val itemId: Int, val percent: Int, val done: Boolean = false, val error: String? = null)

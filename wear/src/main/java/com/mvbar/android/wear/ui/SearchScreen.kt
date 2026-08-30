@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,6 +15,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.items
@@ -79,13 +81,14 @@ fun SearchScreen(
                 label = {
                     Text(
                         if (query.isBlank()) "Speak search" else "Search again",
-                        color = WearTheme.OnSurface,
+                        color = Color.Black,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold
                     )
                 },
                 secondaryLabel = if (query.isNotBlank()) {
-                    { Text(query, color = WearTheme.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    { Text(query, color = Color.Black, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 } else null
             )
         }
@@ -103,7 +106,7 @@ fun SearchScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ChipDefaults.secondaryChipColors(backgroundColor = WearTheme.Surface),
-                        icon = { Icon(Icons.Default.PlaylistPlay, contentDescription = null, tint = WearTheme.Cyan) },
+                        icon = { Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null, tint = WearTheme.Cyan) },
                         label = { Text("Play results", color = WearTheme.OnSurface) },
                         secondaryLabel = { Text("${results.tracks.size} tracks", color = WearTheme.OnSurfaceDim) }
                     )

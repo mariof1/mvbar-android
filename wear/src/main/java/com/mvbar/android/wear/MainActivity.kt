@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
-import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.TimeText
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
@@ -30,6 +29,7 @@ import com.mvbar.android.wear.ui.AlbumsScreen
 import com.mvbar.android.wear.ui.Backend
 import com.mvbar.android.wear.ui.EpisodesScreen
 import com.mvbar.android.wear.ui.LibraryScreen
+import com.mvbar.android.wear.ui.MvbarWearTheme
 import com.mvbar.android.wear.ui.PairingScreen
 import com.mvbar.android.wear.ui.PlaylistTracksScreen
 import com.mvbar.android.wear.ui.QueueScreen
@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NowPlayingRepository.attach(applicationContext)
-        setContent { MaterialTheme { MvbarWearApp() } }
+        setContent { MvbarWearTheme { MvbarWearApp() } }
     }
 }
 
@@ -110,7 +110,10 @@ private fun MvbarWearApp() {
             composable("settings") {
                 SettingsScreen(
                     onBack = { nav.popBackStack() },
-                    onSignOut = { nav.popBackStack("library", inclusive = false) }
+                    onSignOut = {
+                        configured = false
+                        nav.popBackStack("library", inclusive = false)
+                    }
                 )
             }
             composable("albums") {

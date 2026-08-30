@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit
  * "Download" actions which preload bytes into the same cache so they
  * survive eviction only by recency, not by source.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object MediaCache {
 
     const val MAX_BYTES: Long = 2L * 1024 * 1024 * 1024

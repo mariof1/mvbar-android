@@ -34,6 +34,7 @@ import com.google.common.util.concurrent.ListenableFuture
  * snapshot synchronously from a process-local cache that the
  * repository keeps in sync.
  */
+@androidx.annotation.OptIn(androidx.wear.protolayout.expression.ProtoLayoutExperimental::class)
 class NowPlayingTileService : TileService() {
 
     override fun onTileRequest(

@@ -13,6 +13,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.items
@@ -91,8 +93,8 @@ fun TrackListScreen(
                         modifier = Modifier.fillMaxWidth(),
                         colors = ChipDefaults.primaryChipColors(backgroundColor = WearTheme.Cyan),
                         icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
-                        label = { Text("Play all", color = WearTheme.OnSurface) },
-                        secondaryLabel = { Text("${tracks.size} tracks", color = WearTheme.OnSurface) }
+                        label = { Text("Play all", color = Color.Black, fontWeight = FontWeight.SemiBold) },
+                        secondaryLabel = { Text("${tracks.size} tracks", color = Color.Black) }
                     )
                 }
                 items(tracks) { track ->

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Favorite
@@ -16,7 +17,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Podcasts
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -112,11 +113,11 @@ fun LibraryScreen(
         item { NowPlayingHero(onOpen = onOpenNowPlaying) }
         item {
             CenteredActions {
-                RoundIconAction("Now playing", Icons.Default.MusicNote, WearTheme.Cyan, onOpenNowPlaying)
-                Spacer(Modifier.size(14.dp))
-                RoundIconAction("Search", Icons.Default.Mic, WearTheme.Surface, { showSearch = true })
-                Spacer(Modifier.size(14.dp))
-                RoundIconAction("Settings", Icons.Default.Settings, WearTheme.Surface, onOpenSettings)
+                RoundIconAction("Voice search", Icons.Default.Mic, WearTheme.Cyan, { showSearch = true }, iconTint = Color.Black)
+                Spacer(Modifier.size(12.dp))
+                RoundIconAction("Refresh library", Icons.Default.Refresh, WearTheme.SurfaceRaised, { refreshKey++ })
+                Spacer(Modifier.size(12.dp))
+                RoundIconAction("Settings", Icons.Default.Settings, WearTheme.SurfaceRaised, onOpenSettings)
             }
         }
 
@@ -227,11 +228,7 @@ private fun NowPlayingHero(onOpen: () -> Unit) {
         local.isActive -> {
             val item = local.item
             title = item?.title ?: "Watch playback"
-            subtitle = if (!remote.isEmpty) {
-                "Watch active / phone available"
-            } else {
-                item?.subtitle.orEmpty()
-            }
+            subtitle = "Playing on this watch"
             artUrl = when (item) {
                 is PlayableItem.Music -> backend.artworkUrl(item.track.artPath)
                 is PlayableItem.PodcastEp -> backend.artworkUrl(item.episode.imagePath ?: item.episode.podcastImagePath)
@@ -241,13 +238,13 @@ private fun NowPlayingHero(onOpen: () -> Unit) {
         }
         !remote.isEmpty -> {
             title = remote.title
-            subtitle = "Playing on phone"
+            subtitle = "Playing on your phone"
             artUrl = remote.artworkUrl
             accent = if (remote.isPodcast || remote.isAudiobook) WearTheme.Orange else WearTheme.Cyan
         }
         else -> {
             title = "mvbar"
-            subtitle = "Ready on watch"
+            subtitle = "Ready to play on your watch"
             artUrl = null
             accent = WearTheme.Cyan
         }
@@ -325,7 +322,7 @@ private fun PlaylistChip(playlist: Playlist, onClick: () -> Unit) {
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         colors = ChipDefaults.secondaryChipColors(backgroundColor = WearTheme.Surface),
-        icon = { Icon(Icons.Default.QueueMusic, contentDescription = null, tint = WearTheme.Cyan) },
+        icon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null, tint = WearTheme.Cyan) },
         label = { Text(playlist.name, color = WearTheme.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         secondaryLabel = {
             Text("${playlist.trackCount} tracks", color = WearTheme.OnSurfaceDim, style = MaterialTheme.typography.caption2)

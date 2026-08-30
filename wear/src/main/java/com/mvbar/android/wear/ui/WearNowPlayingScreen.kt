@@ -10,15 +10,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -88,7 +88,7 @@ fun WearNowPlayingScreen(onOpenQueue: () -> Unit) {
         preferredTargetName = target.name
     }
     val focusRequester = remember { FocusRequester() }
-    var rotaryRemainder by remember(selectedTarget) { mutableStateOf(0f) }
+    var rotaryRemainder by remember(selectedTarget) { mutableFloatStateOf(0f) }
     LaunchedEffect(selectedTarget, hasLocal, hasRemote) {
         if (selectedTarget != null) {
             withFrameNanos { }
@@ -287,7 +287,7 @@ private fun LocalNowPlaying(
                     onClick = { WearPlayerHolder.previous() },
                     enabled = state.hasPrevious,
                     colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
-                    modifier = Modifier.size(36.dp).clip(CircleShape)
+                    modifier = Modifier.size(40.dp).clip(CircleShape)
                 ) { Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = WearTheme.OnSurface) }
                 Spacer(Modifier.width(10.dp))
                 Button(
@@ -298,7 +298,7 @@ private fun LocalNowPlaying(
                     Icon(
                         if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (state.isPlaying) "Pause" else "Play",
-                        tint = WearTheme.OnSurface,
+                        tint = Color.Black,
                         modifier = Modifier.size(26.dp)
                     )
                 }
@@ -307,7 +307,7 @@ private fun LocalNowPlaying(
                     onClick = { WearPlayerHolder.next() },
                     enabled = state.hasNext,
                     colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
-                    modifier = Modifier.size(36.dp).clip(CircleShape)
+                    modifier = Modifier.size(40.dp).clip(CircleShape)
                 ) { Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = WearTheme.OnSurface) }
             }
 
@@ -338,7 +338,7 @@ private fun LocalNowPlaying(
                     Spacer(Modifier.size(28.dp))
                 }
                 SmallCircleAction(
-                    icon = Icons.Default.VolumeUp,
+                    icon = Icons.AutoMirrored.Filled.VolumeUp,
                     tint = WearTheme.OnSurface,
                     description = "Volume",
                     onClick = {
@@ -351,7 +351,7 @@ private fun LocalNowPlaying(
                     }
                 )
                 SmallCircleAction(
-                    icon = Icons.Default.QueueMusic,
+                    icon = Icons.AutoMirrored.Filled.QueueMusic,
                     tint = WearTheme.OnSurface,
                     description = "Queue",
                     onClick = onOpenQueue
@@ -410,7 +410,7 @@ private fun CompactLocalNowPlaying(
                     onClick = { WearPlayerHolder.previous() },
                     enabled = state.hasPrevious,
                     colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
-                    modifier = Modifier.size(34.dp).clip(CircleShape)
+                    modifier = Modifier.size(40.dp).clip(CircleShape)
                 ) { Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = WearTheme.OnSurface) }
                 Spacer(Modifier.width(8.dp))
                 Button(
@@ -421,7 +421,7 @@ private fun CompactLocalNowPlaying(
                     Icon(
                         if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (state.isPlaying) "Pause" else "Play",
-                        tint = WearTheme.OnSurface
+                        tint = Color.Black
                     )
                 }
                 Spacer(Modifier.width(8.dp))
@@ -429,7 +429,7 @@ private fun CompactLocalNowPlaying(
                     onClick = { WearPlayerHolder.next() },
                     enabled = state.hasNext,
                     colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
-                    modifier = Modifier.size(34.dp).clip(CircleShape)
+                    modifier = Modifier.size(40.dp).clip(CircleShape)
                 ) { Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = WearTheme.OnSurface) }
             }
         }
@@ -446,7 +446,7 @@ private fun SmallCircleAction(
     Button(
         onClick = onClick,
         colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)),
-        modifier = Modifier.size(34.dp).clip(CircleShape)
+        modifier = Modifier.size(40.dp).clip(CircleShape)
     ) {
         Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(16.dp))
     }
@@ -524,15 +524,15 @@ private fun RemoteNowPlaying(
             }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = { phone.previous() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)), modifier = Modifier.size(34.dp).clip(CircleShape)) {
+                Button(onClick = { phone.previous() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)), modifier = Modifier.size(40.dp).clip(CircleShape)) {
                     Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = WearTheme.OnSurface)
                 }
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = { phone.playPause() }, colors = ButtonDefaults.primaryButtonColors(backgroundColor = accent), modifier = Modifier.size(50.dp).clip(CircleShape)) {
-                    Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (state.isPlaying) "Pause" else "Play", tint = WearTheme.OnSurface)
+                    Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (state.isPlaying) "Pause" else "Play", tint = Color.Black)
                 }
                 Spacer(Modifier.width(8.dp))
-                Button(onClick = { phone.next() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)), modifier = Modifier.size(34.dp).clip(CircleShape)) {
+                Button(onClick = { phone.next() }, colors = ButtonDefaults.secondaryButtonColors(backgroundColor = Color(0x40FFFFFF)), modifier = Modifier.size(40.dp).clip(CircleShape)) {
                     Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = WearTheme.OnSurface)
                 }
             }
@@ -548,8 +548,8 @@ private fun TargetSwitcher(
     Row(
         modifier = Modifier
             .fillMaxWidth(0.74f)
-            .height(32.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .height(36.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(Color(0x3DFFFFFF))
             .padding(2.dp),
         verticalAlignment = Alignment.CenterVertically

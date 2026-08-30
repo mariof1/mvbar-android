@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,9 +7,32 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.isFile) {
+        file.inputStream().use(::load)
+    }
+}
+
+val releaseSigningRequired = gradle.startParameter.taskNames.any { task ->
+    val normalized = task.lowercase()
+    normalized.endsWith("assemblerelease") || normalized.endsWith("bundlerelease")
+}
+
 fun signingValue(name: String): String? =
     (findProperty(name) as String?)?.takeIf { it.isNotBlank() }
+        ?: localProperties.getProperty(name)?.takeIf { it.isNotBlank() }
         ?: System.getenv(name)?.takeIf { it.isNotBlank() }
+
+fun signingValueOrPlaceholder(name: String): String =
+    signingValue(name)
+        ?: if (releaseSigningRequired) {
+            throw GradleException(
+                "Missing release signing value '$name'. Set it in local.properties, Gradle properties, or the environment."
+            )
+        } else {
+            "missing"
+        }
 
 android {
     namespace = "com.mvbar.android.wear"
@@ -24,9 +49,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile = rootProject.file(signingValue("MVBAR_RELEASE_STORE_FILE") ?: "mvbar-release.jks")
-            storePassword = signingValue("MVBAR_RELEASE_STORE_PASSWORD") ?: "Kl1ng0n5"
+            storePassword = signingValueOrPlaceholder("MVBAR_RELEASE_STORE_PASSWORD")
             keyAlias = signingValue("MVBAR_RELEASE_KEY_ALIAS") ?: "mvbar"
-            keyPassword = signingValue("MVBAR_RELEASE_KEY_PASSWORD") ?: "Kl1ng0n5"
+            keyPassword = signingValueOrPlaceholder("MVBAR_RELEASE_KEY_PASSWORD")
         }
     }
 
