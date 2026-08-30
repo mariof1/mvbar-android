@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -49,6 +50,15 @@ object SocialRealtimeManager {
         stopped = false
         if (socket != null || ApiClient.getToken().isNullOrBlank()) return
         connect()
+    }
+
+    /**
+     * Invalidates social data held by active screens. This is also called by the
+     * background notification worker, whose server snapshot is newer than any
+     * view model that Android may have kept alive while the app was stopped.
+     */
+    fun requestRefresh() {
+        _revision.update { it + 1 }
     }
 
     @Synchronized
@@ -99,6 +109,8 @@ object SocialRealtimeManager {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             attempts = 0
             DebugLog.i("SocialWS", "Connected")
+            // Events are not replayed after a disconnect, so catch up from the API.
+            requestRefresh()
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -111,7 +123,7 @@ object SocialRealtimeManager {
                 }
                 if (type.startsWith("social:") || type.startsWith("playlist:collaborator_")) {
                     handleSocialEvent(type, root["data"]?.jsonObject)
-                    _revision.value += 1
+                    requestRefresh()
                 }
             } catch (e: Exception) {
                 DebugLog.e("SocialWS", "Invalid event", e)

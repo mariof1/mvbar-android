@@ -25,4 +25,13 @@ class SocialRealtimeManagerTest {
     fun `invalid server URL cannot create websocket request`() {
         assertNull(SocialRealtimeManager.webSocketRequestUrl("not a server"))
     }
+
+    @Test
+    fun `refresh request advances social revision`() {
+        val previous = SocialRealtimeManager.revision.value
+
+        SocialRealtimeManager.requestRefresh()
+
+        assertEquals(previous + 1, SocialRealtimeManager.revision.value)
+    }
 }

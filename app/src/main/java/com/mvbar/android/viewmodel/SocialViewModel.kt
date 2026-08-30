@@ -60,9 +60,12 @@ class SocialViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refresh(silent: Boolean = false) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isLoading = !silent && _state.value.summary.ok.not(),
-                isRefreshing = !silent && _state.value.summary.ok,
+            val current = _state.value
+            _state.value = current.copy(
+                // A realtime/background refresh must not clear an initial or
+                // user-requested loading indicator that is already in progress.
+                isLoading = if (silent) current.isLoading else current.summary.ok.not(),
+                isRefreshing = if (silent) current.isRefreshing else current.summary.ok,
                 error = null
             )
             try {

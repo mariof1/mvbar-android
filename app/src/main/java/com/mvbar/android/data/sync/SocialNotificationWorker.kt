@@ -7,6 +7,7 @@ import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.social.SocialNotificationManager
+import com.mvbar.android.social.SocialRealtimeManager
 import retrofit2.HttpException
 import java.io.IOException
 
@@ -23,6 +24,9 @@ class SocialNotificationWorker(
             val summary = ApiClient.api.getSocialSummary()
             val shares = ApiClient.api.getTrackShares(limit = 50)
             SocialNotificationManager.processSnapshot(applicationContext, summary, shares.shares)
+            // Keep an existing activity/view model in sync with the snapshot that
+            // produced the notification instead of requiring a manual refresh.
+            SocialRealtimeManager.requestRefresh()
             Result.success()
         } catch (e: HttpException) {
             DebugLog.e("SocialSync", "Server error ${e.code()}")

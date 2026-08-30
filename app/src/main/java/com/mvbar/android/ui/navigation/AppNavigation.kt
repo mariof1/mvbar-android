@@ -71,6 +71,7 @@ import com.mvbar.android.viewmodel.BrowseViewModel
 import com.mvbar.android.viewmodel.MainViewModel
 import com.mvbar.android.viewmodel.SocialViewModel
 import com.mvbar.android.social.SocialNavigationRequests
+import com.mvbar.android.social.SocialRealtimeManager
 import com.mvbar.android.viewmodel.PodcastViewModel
 import com.mvbar.android.viewmodel.AudiobookViewModel
 import kotlinx.serialization.json.intOrNull
@@ -241,6 +242,8 @@ fun MainScreen(
             }
             if (event == Lifecycle.Event.ON_RESUME) {
                 mainVm.onAppResumed()
+                SocialRealtimeManager.start(context)
+                socialVm.refresh(silent = true)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -249,6 +252,9 @@ fun MainScreen(
 
     LaunchedEffect(navController) {
         for (ignored in SocialNavigationRequests.events) {
+            // A notification can be produced by WorkManager while this activity
+            // and its view model are stopped but still alive.
+            socialVm.refresh(silent = true)
             navController.navigate("social") { launchSingleTop = true }
         }
     }
@@ -1338,6 +1344,11 @@ fun MainScreen(
                 }
 
                 composable("social") {
+                    LaunchedEffect(Unit) {
+                        // Initial view-model creation already loads this data. On
+                        // later visits, always validate the cached social screen.
+                        if (socialVm.state.value.summary.ok) socialVm.refresh(silent = true)
+                    }
                     SocialScreen(
                         state = socialState,
                         onRefresh = { socialVm.refresh() },
