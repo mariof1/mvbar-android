@@ -148,6 +148,7 @@ data class Playlist(
     val name: String = "",
     @SerialName("user_id") val userId: Int = 0,
     @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("shared_at") val sharedAt: String? = null,
     @SerialName("item_count") val itemCount: Int = 0,
     val owner: PlaylistOwner? = null,
     @SerialName("is_owner") val isOwner: Boolean = true,

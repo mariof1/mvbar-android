@@ -23,7 +23,13 @@ class SocialNotificationWorker(
         return try {
             val summary = ApiClient.api.getSocialSummary()
             val shares = ApiClient.api.getTrackShares(limit = 50)
-            SocialNotificationManager.processSnapshot(applicationContext, summary, shares.shares)
+            val playlists = ApiClient.api.getPlaylists()
+            SocialNotificationManager.processSnapshot(
+                applicationContext,
+                summary,
+                shares.shares,
+                playlists.playlists
+            )
             // Keep an existing activity/view model in sync with the snapshot that
             // produced the notification instead of requiring a manual refresh.
             SocialRealtimeManager.requestRefresh()

@@ -11,3 +11,13 @@ object SocialNavigationRequests {
         requests.trySend(Unit)
     }
 }
+
+object PlaylistNavigationRequests {
+    private val requests = Channel<Unit>(capacity = Channel.CONFLATED)
+
+    val events = requests
+
+    fun openPlaylists() {
+        requests.trySend(Unit)
+    }
+}

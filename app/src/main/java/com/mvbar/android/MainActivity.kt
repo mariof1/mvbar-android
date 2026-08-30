@@ -25,6 +25,7 @@ import com.mvbar.android.player.PlayerManager
 import com.mvbar.android.player.PlaybackService
 import com.mvbar.android.social.SocialNavigationRequests
 import com.mvbar.android.social.SocialNotificationManager
+import com.mvbar.android.social.PlaylistNavigationRequests
 import com.mvbar.android.ui.navigation.MainScreen
 import com.mvbar.android.ui.screens.login.LoginScreen
 import com.mvbar.android.ui.theme.Cyan500
@@ -166,6 +167,10 @@ class MainActivity : FragmentActivity() {
         if (intent?.getBooleanExtra(SocialNotificationManager.EXTRA_OPEN_SOCIAL, false) == true) {
             intent.removeExtra(SocialNotificationManager.EXTRA_OPEN_SOCIAL)
             SocialNavigationRequests.openSocial()
+        }
+        if (intent?.getBooleanExtra(SocialNotificationManager.EXTRA_OPEN_PLAYLISTS, false) == true) {
+            intent.removeExtra(SocialNotificationManager.EXTRA_OPEN_PLAYLISTS)
+            PlaylistNavigationRequests.openPlaylists()
         }
     }
 }

@@ -162,6 +162,14 @@ object SocialRealtimeManager {
                 val title = data["track"]?.jsonObject?.get("title")?.jsonPrimitive?.contentOrNull
                 SocialNotificationManager.notifyTrackShared(context, id, email, title)
             }
+            "social:playlist_shared" -> {
+                val playlist = data?.get("playlist")?.jsonObject ?: return
+                val id = playlist["id"]?.jsonPrimitive?.intOrNull ?: return
+                val name = playlist["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val email = data["sender"]?.jsonObject?.get("email")?.jsonPrimitive?.contentOrNull.orEmpty()
+                val sharedAt = data["sharedAt"]?.jsonPrimitive?.contentOrNull
+                SocialNotificationManager.notifyPlaylistShared(context, id, email, name, sharedAt)
+            }
         }
     }
 }

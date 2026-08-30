@@ -71,6 +71,7 @@ import com.mvbar.android.viewmodel.BrowseViewModel
 import com.mvbar.android.viewmodel.MainViewModel
 import com.mvbar.android.viewmodel.SocialViewModel
 import com.mvbar.android.social.SocialNavigationRequests
+import com.mvbar.android.social.PlaylistNavigationRequests
 import com.mvbar.android.social.SocialRealtimeManager
 import com.mvbar.android.viewmodel.PodcastViewModel
 import com.mvbar.android.viewmodel.AudiobookViewModel
@@ -256,6 +257,13 @@ fun MainScreen(
             // and its view model are stopped but still alive.
             socialVm.refresh(silent = true)
             navController.navigate("social") { launchSingleTop = true }
+        }
+    }
+
+    LaunchedEffect(navController) {
+        for (ignored in PlaylistNavigationRequests.events) {
+            mainVm.loadPlaylists()
+            navController.navigate("library") { launchSingleTop = true }
         }
     }
 

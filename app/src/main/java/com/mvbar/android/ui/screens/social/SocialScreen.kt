@@ -154,7 +154,7 @@ private fun NotificationBanner(onSettings: () -> Unit) {
             Icon(Icons.Filled.NotificationsOff, null, tint = Cyan400)
             Spacer(Modifier.width(10.dp))
             Text(
-                "Turn on notifications for new requests and shared songs.",
+                "Turn on notifications for new requests and shared songs or playlists.",
                 style = MaterialTheme.typography.bodySmall,
                 color = OnSurface,
                 modifier = Modifier.weight(1f)

@@ -71,4 +71,31 @@ class SocialModelsTest {
         assertNull(share.readAt)
         assertFalse(share.sender.email.isBlank())
     }
+
+    @Test
+    fun `shared playlist includes owner and share timestamp`() {
+        val response = json.decodeFromString<PlaylistsResponse>(
+            """
+            {
+              "ok": true,
+              "playlists": [{
+                "id": 12,
+                "name": "Plane mixes",
+                "created_at": "2026-08-29T10:00:00Z",
+                "shared_at": "2026-08-30T09:30:00Z",
+                "item_count": 4,
+                "owner": {"id": "owner-id", "email": "owner@example.com", "avatarPath": null},
+                "is_owner": false,
+                "is_collaborative": true,
+                "collaborator_count": 1
+              }]
+            }
+            """.trimIndent()
+        )
+
+        val playlist = response.playlists.single()
+        assertFalse(playlist.isOwner)
+        assertEquals("owner@example.com", playlist.owner?.email)
+        assertEquals("2026-08-30T09:30:00Z", playlist.sharedAt)
+    }
 }

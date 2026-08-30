@@ -113,7 +113,7 @@ object SyncManager {
         )
     }
 
-    /** Catch up on friend requests and shared songs after Android suspends the app. */
+    /** Catch up on friend requests and shared songs or playlists after Android suspends the app. */
     fun scheduleSocialNotifications(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
