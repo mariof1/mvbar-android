@@ -1,6 +1,8 @@
 package com.mvbar.android.ui.screens.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -12,7 +14,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mvbar.android.BuildConfig
@@ -273,37 +278,232 @@ private fun formatUpdateCheckedAt(timestamp: Long): String {
 }
 
 @Composable
-internal fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelLarge.copy(
-            letterSpacing = 1.5.sp,
-            fontWeight = FontWeight.Bold
-        ),
-        color = Cyan500,
-        modifier = Modifier.padding(start = 20.dp, top = 24.dp, bottom = 12.dp)
+internal fun SettingsSectionCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark),
+        border = BorderStroke(1.dp, WhiteOverlay10)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .background(Cyan500.copy(alpha = 0.14f), RoundedCornerShape(13.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = Cyan400, modifier = Modifier.size(22.dp))
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = OnSurface
+                    )
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceDim,
+                        lineHeight = 17.sp
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+internal fun SettingsInfoRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    trailing: (@Composable RowScope.() -> Unit)? = null
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SettingsRowIcon(icon)
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = OnSurface)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceDim,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 17.sp
+            )
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(10.dp))
+            trailing()
+        }
+    }
+}
+
+@Composable
+private fun SettingsRowIcon(icon: ImageVector) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .background(WhiteOverlay5, RoundedCornerShape(11.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
+internal fun SettingsDivider(indented: Boolean = true) {
+    HorizontalDivider(
+        modifier = if (indented) Modifier.padding(start = 48.dp) else Modifier,
+        color = WhiteOverlay10
     )
 }
 
 @Composable
+internal fun SettingsValueBadge(text: String, color: Color = Cyan400) {
+    Surface(
+        color = color.copy(alpha = 0.13f),
+        contentColor = color,
+        shape = RoundedCornerShape(50)
+    ) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+internal fun SettingsConfirmationDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    destructive: Boolean = false,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceContainerDark,
+        title = { Text(title, color = OnSurface) },
+        text = {
+            Text(
+                message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = OnSurfaceVariant,
+                lineHeight = 20.sp
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (destructive) MaterialTheme.colorScheme.error else Cyan500,
+                    contentColor = if (destructive) Color.White else Color.Black
+                )
+            ) {
+                Text(confirmLabel, fontWeight = FontWeight.SemiBold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = OnSurfaceVariant)
+            }
+        }
+    )
+}
+
+@Composable
+internal fun SettingsSlider(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    valueLabel: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int
+) {
+    Column(modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)) {
+        SettingsInfoRow(
+            icon = icon,
+            title = title,
+            subtitle = subtitle,
+            trailing = { SettingsValueBadge(valueLabel) }
+        )
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            onValueChangeFinished = onValueChangeFinished,
+            valueRange = valueRange,
+            steps = steps,
+            modifier = Modifier.padding(horizontal = 4.dp),
+            colors = SliderDefaults.colors(
+                thumbColor = Cyan400,
+                activeTrackColor = Cyan500,
+                inactiveTrackColor = WhiteOverlay10
+            )
+        )
+    }
+}
+
+@Composable
 internal fun SettingsToggle(
+    icon: ImageVector,
     title: String,
     subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                onValueChange = onCheckedChange
+            )
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        SettingsRowIcon(icon)
+        Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceDim,
+                lineHeight = 17.sp
+            )
         }
+        Spacer(Modifier.width(10.dp))
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = Cyan500,
@@ -313,4 +513,3 @@ internal fun SettingsToggle(
         )
     }
 }
-

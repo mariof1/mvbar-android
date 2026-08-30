@@ -1,8 +1,8 @@
 package com.mvbar.android.ui.screens.settings
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.SendToMobile
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.wearbridge.WearNode
 import com.mvbar.android.wearbridge.WearPairingStatus
@@ -32,95 +33,87 @@ internal fun WearOsCard() {
 
     LaunchedEffect(Unit) { refresh() }
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
+    SettingsSectionCard(
+        title = "Wear OS",
+        subtitle = "Pair your watch for independent streaming and downloads",
+        icon = Icons.Filled.Watch
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                "Pairing",
-                style = MaterialTheme.typography.bodyLarge,
-                color = OnSurface
+        when {
+            loading -> SettingsInfoRow(
+                icon = Icons.Filled.Sync,
+                title = "Looking for watches",
+                subtitle = "Checking nearby and cloud-connected Wear OS devices"
             )
-            Spacer(Modifier.height(4.dp))
-            when {
-                loading -> Text(
-                    "Looking for paired watches…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceDim
-                )
-                watches.isEmpty() -> Text(
-                    "No watches detected. Install mvbar on your watch and ensure it is paired via Wear OS / Galaxy Wearable.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceDim
-                )
-                else -> {
-                    watches.forEach { node ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Filled.Watch,
-                                contentDescription = null,
-                                tint = if (node.isNearby) Cyan500 else OnSurfaceDim,
-                                modifier = Modifier.size(20.dp)
+            watches.isEmpty() -> SettingsInfoRow(
+                icon = Icons.Filled.Watch,
+                title = "No watch detected",
+                subtitle = "Install mvbar on your watch and pair it through Wear OS or Galaxy Wearable"
+            )
+            else -> {
+                watches.forEachIndexed { index, node ->
+                    if (index > 0) SettingsDivider()
+                    SettingsInfoRow(
+                        icon = Icons.Filled.Watch,
+                        title = node.displayName.ifBlank { "Wear OS watch" },
+                        subtitle = if (node.isNearby) {
+                            "Connected directly to this phone"
+                        } else {
+                            "Available through cloud relay"
+                        },
+                        trailing = {
+                            SettingsValueBadge(
+                                text = if (node.isNearby) "Nearby" else "Cloud",
+                                color = if (node.isNearby) Cyan400 else Orange400
                             )
-                            Spacer(Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    node.displayName.ifBlank { "Watch" },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = OnSurface
-                                )
-                                Text(
-                                    if (node.isNearby) "Connected" else "Cloud-relayed",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = OnSurfaceDim
-                                )
-                            }
                         }
-                    }
+                    )
                 }
             }
+        }
 
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "Push the current server URL and login token to the watch so it can stream and download independently.",
-                style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceDim
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            WearStatePublisher.publishAuth(context)
-                            pushStatus = "Pushed credentials to watch"
-                            refresh()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
-                ) {
-                    Icon(Icons.Filled.Sync, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Push to watch")
-                }
-                Spacer(Modifier.width(12.dp))
-                TextButton(onClick = { scope.launch { refresh() } }) {
-                    Text("Refresh", color = Cyan500)
-                }
+        SettingsDivider(indented = false)
+        Text(
+            "Send the current server and login securely to your watch so it can work away from the phone.",
+            style = MaterialTheme.typography.bodySmall,
+            color = OnSurfaceDim,
+            lineHeight = 17.sp,
+            modifier = Modifier.padding(vertical = 12.dp)
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        WearStatePublisher.publishAuth(context)
+                        pushStatus = "Credentials sent to your watch"
+                        refresh()
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Cyan500.copy(alpha = 0.16f),
+                    contentColor = Cyan400
+                )
+            ) {
+                Icon(Icons.AutoMirrored.Filled.SendToMobile, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Send to watch")
             }
-            pushStatus?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(it, style = MaterialTheme.typography.bodySmall, color = Cyan500)
+            OutlinedButton(
+                onClick = { scope.launch { refresh() } },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan400)
+            ) {
+                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Refresh")
             }
+        }
+        pushStatus?.let {
+            Spacer(Modifier.height(10.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = Cyan400)
         }
     }
 }
-

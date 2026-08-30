@@ -1,13 +1,8 @@
 package com.mvbar.android.ui.screens.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
@@ -35,11 +30,9 @@ import com.mvbar.android.ui.theme.*
 import com.mvbar.android.update.AppUpdateInfo
 import com.mvbar.android.update.AppUpdateManager
 import com.mvbar.android.update.UpdateInstallResult
-import com.mvbar.android.wearbridge.WearNode
-import com.mvbar.android.wearbridge.WearPairingStatus
-import com.mvbar.android.wearbridge.WearStatePublisher
 import java.io.File
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 internal data class UpdateUiState(
     val isChecking: Boolean = false,
@@ -67,6 +60,8 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     var isUploading by remember { mutableStateOf(false) }
     var updateState by remember { mutableStateOf(UpdateUiState()) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    var showClearCacheDialog by remember { mutableStateOf(false) }
+    var showSignOutDialog by remember { mutableStateOf(false) }
 
     // Cache settings
     var cacheSizeMb by remember { mutableLongStateOf(AudioCacheManager.getCacheSizeMb()) }
@@ -79,7 +74,6 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     var prefetchCount by remember { mutableIntStateOf(AudioCacheManager.prefetchCount) }
     var wifiOnly by remember { mutableStateOf(AudioCacheManager.wifiOnlyDownload) }
     var autoCacheFavorites by remember { mutableStateOf(AudioCacheManager.autoCacheFavorites) }
-    var autoCachePodcasts by remember { mutableStateOf(AudioCacheManager.autoCachePodcasts) }
 
     // Sync settings
     val lastSync by SyncManager.lastSyncTime.collectAsState()
@@ -247,316 +241,255 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
         )
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 140.dp)
-    ) {
-        // ── ACCOUNT ──────────────────────────────────────────────
-        item {
-            SectionHeader("ACCOUNT")
-        }
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Info, null, tint = Cyan500)
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("mvbar Android", style = MaterialTheme.typography.titleMedium, color = OnSurface)
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    "Version ${BuildConfig.VERSION_NAME}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = OnSurfaceDim
-                                )
-                                CompactUpdateButton(
-                                    state = updateState,
-                                    onClick = {
-                                        showUpdateDialog = true
-                                        if (!updateState.hasChecked && updateState.downloadedFile == null) {
-                                            checkForAppUpdate(force = true)
-                                        }
+    if (showClearCacheDialog) {
+        SettingsConfirmationDialog(
+            title = "Clear offline audio?",
+            message = "This removes downloaded and cached audio from this device. Your favorites, playlists, and listening history stay on the server.",
+            confirmLabel = "Clear audio",
+            destructive = true,
+            onConfirm = {
+                showClearCacheDialog = false
+                AudioCacheManager.clearCache()
+                cacheSizeMb = 0
+                cachedTrackCount = 0
+            },
+            onDismiss = { showClearCacheDialog = false }
+        )
+    }
+
+    if (showSignOutDialog) {
+        SettingsConfirmationDialog(
+            title = "Sign out of mvbar?",
+            message = "You will need your server address and account details to sign in again. Offline audio remains on this device.",
+            confirmLabel = "Sign out",
+            destructive = true,
+            onConfirm = {
+                showSignOutDialog = false
+                onLogout()
+            },
+            onDismiss = { showSignOutDialog = false }
+        )
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .widthIn(max = 760.dp)
+                .fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 140.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                SettingsSectionCard(
+                    title = "App & account",
+                    subtitle = "Connection, version, and account access",
+                    icon = Icons.Filled.Person
+                ) {
+                    SettingsInfoRow(
+                        icon = Icons.Filled.MusicNote,
+                        title = "mvbar Android",
+                        subtitle = "Version ${BuildConfig.VERSION_NAME}",
+                        trailing = {
+                            CompactUpdateButton(
+                                state = updateState,
+                                onClick = {
+                                    showUpdateDialog = true
+                                    if (!updateState.hasChecked && updateState.downloadedFile == null) {
+                                        checkForAppUpdate(force = true)
                                     }
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Dns, null, tint = Cyan500)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Server", style = MaterialTheme.typography.titleMedium, color = OnSurface)
-                            Text(
-                                ApiClient.getBaseUrl().removeSuffix("/"),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceDim
+                                }
                             )
                         }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(16.dp))
-
-                    Button(
-                        onClick = onLogout,
+                    )
+                    SettingsDivider()
+                    SettingsInfoRow(
+                        icon = Icons.Filled.Dns,
+                        title = "Connected server",
+                        subtitle = ApiClient.getBaseUrl().removeSuffix("/")
+                    )
+                    SettingsDivider(indented = false)
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = { showSignOutDialog = true },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
+                            .heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ExitToApp, null)
+                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Sign Out")
+                        Text("Sign out", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
-        }
 
-        // ── PLAYBACK ─────────────────────────────────────────────
-        item {
-            SectionHeader("PLAYBACK")
-        }
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+            item {
+                SettingsSectionCard(
+                    title = "Playback",
+                    subtitle = "Startup and seamless listening",
+                    icon = Icons.Filled.PlayCircle
+                ) {
                     SettingsToggle(
-                        title = "Auto-Resume",
-                        subtitle = "Restore last queue and open player when app launches",
+                        icon = Icons.Filled.Restore,
+                        title = "Resume where I left off",
+                        subtitle = "Restore the last queue and reopen the player at launch",
                         checked = autoResume,
                         onCheckedChange = {
                             autoResume = it
                             scope.launch { AaPreferences.saveAutoResume(context, it) }
                         }
                     )
-
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Prefetch Next Tracks", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-                        Text(
-                            "$prefetchCount",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Cyan500,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Text(
-                        "Auto-download upcoming tracks for seamless playback",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceDim
-                    )
-                    Slider(
+                    SettingsDivider()
+                    SettingsSlider(
+                        icon = Icons.Filled.SkipNext,
+                        title = "Preload upcoming tracks",
+                        subtitle = "Keep the next songs ready for gap-free playback",
+                        valueLabel = if (prefetchCount == 0) "Off" else "$prefetchCount track${if (prefetchCount == 1) "" else "s"}",
                         value = prefetchCount.toFloat(),
-                        onValueChange = { prefetchCount = it.toInt() },
+                        onValueChange = { prefetchCount = it.roundToInt() },
                         onValueChangeFinished = { AudioCacheManager.setPrefetchCount(prefetchCount) },
                         valueRange = 0f..5f,
-                        steps = 4,
-                        colors = SliderDefaults.colors(
-                            thumbColor = Cyan500,
-                            activeTrackColor = Cyan500,
-                            inactiveTrackColor = SurfaceDark
-                        )
+                        steps = 4
                     )
                 }
             }
-        }
 
-        // ── STORAGE & CACHE ──────────────────────────────────────
-        item {
-            SectionHeader("STORAGE & CACHE")
-        }
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Audio Cache", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-                    Text(
-                        "${cacheSizeMb} MB used · $cachedTrackCount tracks cached",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceDim
+            item {
+                val limitMb = cacheLimitSteps[cacheLimitIndex]
+                val limitLabel = if (limitMb >= 1000) {
+                    val gigabytes = limitMb / 1000.0
+                    if (gigabytes % 1.0 == 0.0) "${gigabytes.toInt()} GB" else "${gigabytes} GB"
+                } else {
+                    "$limitMb MB"
+                }
+                val usageFraction = (cacheSizeMb.toFloat() / limitMb.toFloat()).coerceIn(0f, 1f)
+
+                SettingsSectionCard(
+                    title = "Downloads & storage",
+                    subtitle = "Control offline audio and data usage",
+                    icon = Icons.Filled.DownloadForOffline
+                ) {
+                    SettingsInfoRow(
+                        icon = Icons.Filled.OfflinePin,
+                        title = "Offline audio",
+                        subtitle = "$cachedTrackCount audio item${if (cachedTrackCount == 1) "" else "s"} available offline",
+                        trailing = { SettingsValueBadge("$cacheSizeMb MB") }
+                    )
+                    LinearProgressIndicator(
+                        progress = { usageFraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp),
+                        color = Cyan500,
+                        trackColor = WhiteOverlay10
                     )
                     Spacer(Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         OutlinedButton(
                             onClick = onBrowseCache,
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan400)
                         ) {
-                            Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Browse", fontSize = 13.sp)
+                            Text("Manage")
                         }
                         OutlinedButton(
-                            onClick = {
-                                AudioCacheManager.clearCache()
-                                cacheSizeMb = 0
-                                cachedTrackCount = 0
-                            },
+                            onClick = { showClearCacheDialog = true },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                         ) {
-                            Icon(Icons.Filled.Delete, null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Clear", fontSize = 13.sp)
+                            Text("Clear")
                         }
                     }
-
                     Spacer(Modifier.height(12.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    val limitMb = cacheLimitSteps[cacheLimitIndex]
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Max Cache Size", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-                        Text(
-                            if (limitMb >= 1000) "${limitMb / 1000} GB" else "$limitMb MB",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Cyan500,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Slider(
+                    SettingsDivider(indented = false)
+                    SettingsSlider(
+                        icon = Icons.Filled.Storage,
+                        title = "Storage limit",
+                        subtitle = "mvbar removes the least recently used audio when full",
+                        valueLabel = limitLabel,
                         value = cacheLimitIndex.toFloat(),
-                        onValueChange = { cacheLimitIndex = it.toInt() },
-                        onValueChangeFinished = { AudioCacheManager.setMaxCacheMb(cacheLimitSteps[cacheLimitIndex]) },
+                        onValueChange = { cacheLimitIndex = it.roundToInt() },
+                        onValueChangeFinished = {
+                            AudioCacheManager.setMaxCacheMb(cacheLimitSteps[cacheLimitIndex])
+                        },
                         valueRange = 0f..(cacheLimitSteps.size - 1).toFloat(),
-                        steps = cacheLimitSteps.size - 2,
-                        colors = SliderDefaults.colors(
-                            thumbColor = Cyan500,
-                            activeTrackColor = Cyan500,
-                            inactiveTrackColor = SurfaceDark
-                        )
+                        steps = cacheLimitSteps.size - 2
                     )
-
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
+                    SettingsDivider()
                     SettingsToggle(
-                        title = "WiFi Only Downloads",
-                        subtitle = "Only prefetch and cache on WiFi",
+                        icon = Icons.Filled.Wifi,
+                        title = "Download on Wi-Fi only",
+                        subtitle = "Automatic downloads wait for a Wi-Fi connection",
                         checked = wifiOnly,
-                        onCheckedChange = { wifiOnly = it; AudioCacheManager.setWifiOnlyDownload(it) }
+                        onCheckedChange = {
+                            wifiOnly = it
+                            AudioCacheManager.setWifiOnlyDownload(it)
+                        }
                     )
-
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
+                    SettingsDivider()
                     SettingsToggle(
-                        title = "Auto-Cache Favorites",
-                        subtitle = "Keep favorited tracks available offline",
+                        icon = Icons.Filled.Favorite,
+                        title = "Keep favorites offline",
+                        subtitle = "Automatically download favorited songs",
                         checked = autoCacheFavorites,
-                        onCheckedChange = { autoCacheFavorites = it; AudioCacheManager.setAutoCacheFavorites(it) }
+                        onCheckedChange = {
+                            autoCacheFavorites = it
+                            AudioCacheManager.setAutoCacheFavorites(it)
+                        }
                     )
                 }
             }
-        }
 
-        // ── SYNC ─────────────────────────────────────────────────
-        item {
-            SectionHeader("SYNC")
-        }
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    val lastSyncText = if (lastSync > 0) {
-                        val sdf = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault())
-                        "Last synced: ${sdf.format(java.util.Date(lastSync))}"
-                    } else {
-                        "Never synced"
-                    }
-                    Text(lastSyncText, style = MaterialTheme.typography.bodyMedium, color = OnSurface)
-                    Text(
-                        "$dbTrackCount tracks cached locally",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceDim
+            item {
+                val lastSyncText = if (lastSync > 0) {
+                    val formatter = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault())
+                    "Last synced ${formatter.format(java.util.Date(lastSync))}"
+                } else {
+                    "Not synced yet"
+                }
+                val intervalHours = syncIntervalOptions[syncIntervalIndex]
+
+                SettingsSectionCard(
+                    title = "Library sync",
+                    subtitle = "Keep browsing data ready when you are offline",
+                    icon = Icons.Filled.Sync
+                ) {
+                    SettingsInfoRow(
+                        icon = if (isSyncing) Icons.Filled.Sync else Icons.Filled.CloudDone,
+                        title = if (isSyncing) syncStatus.ifEmpty { "Syncing library…" } else lastSyncText,
+                        subtitle = "$dbTrackCount tracks stored in the local library index",
+                        trailing = {
+                            SettingsValueBadge(
+                                text = if (isSyncing) "Working" else "Ready",
+                                color = if (isSyncing) Orange400 else Cyan400
+                            )
+                        }
                     )
-
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Sync Interval", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-                        Text(
-                            "Every ${syncIntervalOptions[syncIntervalIndex]} hour${if (syncIntervalOptions[syncIntervalIndex] != 1) "s" else ""}",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Cyan500,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Slider(
+                    SettingsDivider()
+                    SettingsSlider(
+                        icon = Icons.Filled.Schedule,
+                        title = "Background refresh",
+                        subtitle = "How often mvbar refreshes its local library data",
+                        valueLabel = if (intervalHours == 1) "Hourly" else "Every $intervalHours h",
                         value = syncIntervalIndex.toFloat(),
-                        onValueChange = { syncIntervalIndex = it.toInt() },
+                        onValueChange = { syncIntervalIndex = it.roundToInt() },
                         onValueChangeFinished = {
                             SyncManager.setSyncIntervalHours(context, syncIntervalOptions[syncIntervalIndex])
                         },
                         valueRange = 0f..(syncIntervalOptions.size - 1).toFloat(),
-                        steps = syncIntervalOptions.size - 2,
-                        colors = SliderDefaults.colors(
-                            thumbColor = Cyan500,
-                            activeTrackColor = Cyan500,
-                            inactiveTrackColor = SurfaceDark
-                        )
+                        steps = syncIntervalOptions.size - 2
                     )
-
                     Button(
                         onClick = {
                             SyncManager.syncNow(context)
@@ -568,138 +501,125 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                             }
                         },
                         enabled = !isSyncing,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Cyan500.copy(alpha = 0.15f),
-                            contentColor = Cyan500
+                            containerColor = Cyan500.copy(alpha = 0.16f),
+                            contentColor = Cyan400
                         )
                     ) {
                         if (isSyncing) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
-                                color = Cyan500,
+                                color = Cyan400,
                                 strokeWidth = 2.dp
                             )
-                            Spacer(Modifier.width(8.dp))
-                            Text(syncStatus.ifEmpty { "Syncing…" }, fontSize = 13.sp)
                         } else {
-                            Icon(Icons.Filled.Sync, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Sync Now")
+                            Icon(Icons.Filled.Sync, contentDescription = null, modifier = Modifier.size(19.dp))
                         }
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (isSyncing) "Syncing…" else "Sync now", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
-        }
 
-        // ── ANDROID AUTO ─────────────────────────────────────────
-        item {
-            SectionHeader("ANDROID AUTO")
-        }
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "Category Order",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = OnSurface
-                    )
-                    Text(
-                        "Reorder categories shown in Android Auto. Top items appear on the main screen.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceDim
-                    )
-                    Spacer(Modifier.height(12.dp))
-
-                    categories.forEachIndexed { index, key ->
-                        if (index > 0) {
-                            HorizontalDivider(color = SurfaceDark)
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "${index + 1}",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Cyan500,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.width(28.dp)
-                            )
-                            Text(
-                                AaPreferences.displayName(key),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = OnSurface,
-                                modifier = Modifier.weight(1f)
-                            )
-                            IconButton(
-                                onClick = { moveCategory(index, -1) },
-                                enabled = index > 0
+            item {
+                SettingsSectionCard(
+                    title = "Android Auto",
+                    subtitle = "Choose the order of categories shown in your car",
+                    icon = Icons.Filled.DirectionsCar
+                ) {
+                    if (categories.isEmpty()) {
+                        SettingsInfoRow(
+                            icon = Icons.Filled.HourglassEmpty,
+                            title = "Loading categories",
+                            subtitle = "Your Android Auto layout will appear here"
+                        )
+                    } else {
+                        categories.forEachIndexed { index, key ->
+                            if (index > 0) SettingsDivider()
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 60.dp)
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    Icons.Filled.KeyboardArrowUp,
-                                    contentDescription = "Move up",
-                                    tint = if (index > 0) Cyan500 else OnSurfaceDim
+                                Surface(
+                                    modifier = Modifier.size(34.dp),
+                                    shape = RoundedCornerShape(11.dp),
+                                    color = Cyan500.copy(alpha = 0.14f),
+                                    contentColor = Cyan400
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            "${index + 1}",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(14.dp))
+                                Text(
+                                    AaPreferences.displayName(key),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = OnSurface,
+                                    modifier = Modifier.weight(1f)
                                 )
-                            }
-                            IconButton(
-                                onClick = { moveCategory(index, 1) },
-                                enabled = index < categories.size - 1
-                            ) {
-                                Icon(
-                                    Icons.Filled.KeyboardArrowDown,
-                                    contentDescription = "Move down",
-                                    tint = if (index < categories.size - 1) Cyan500 else OnSurfaceDim
-                                )
+                                IconButton(
+                                    onClick = { moveCategory(index, -1) },
+                                    enabled = index > 0,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .background(WhiteOverlay5, RoundedCornerShape(12.dp))
+                                ) {
+                                    Icon(
+                                        Icons.Filled.KeyboardArrowUp,
+                                        contentDescription = "Move ${AaPreferences.displayName(key)} up",
+                                        tint = if (index > 0) Cyan400 else OnSurfaceSubtle
+                                    )
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                IconButton(
+                                    onClick = { moveCategory(index, 1) },
+                                    enabled = index < categories.lastIndex,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .background(WhiteOverlay5, RoundedCornerShape(12.dp))
+                                ) {
+                                    Icon(
+                                        Icons.Filled.KeyboardArrowDown,
+                                        contentDescription = "Move ${AaPreferences.displayName(key)} down",
+                                        tint = if (index < categories.lastIndex) Cyan400 else OnSurfaceSubtle
+                                    )
+                                }
                             }
                         }
-                    }
-
-                    if (categories.isNotEmpty()) {
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(8.dp))
                         Text(
-                            "Changes take effect on next Android Auto connection",
+                            "Changes apply the next time Android Auto connects.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceDim
+                            color = OnSurfaceDim,
+                            modifier = Modifier.padding(start = 48.dp)
                         )
                     }
                 }
             }
-        }
 
-        // ── WEAR OS ──────────────────────────────────────────────
-        item {
-            SectionHeader("WEAR OS")
-        }
-        item {
-            WearOsCard()
-        }
+            item { WearOsCard() }
 
-        // ── DEVELOPER ────────────────────────────────────────────
-        item {
-            SectionHeader("DEVELOPER")
-        }
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+            item {
+                SettingsSectionCard(
+                    title = "Help & diagnostics",
+                    subtitle = "Troubleshooting tools and diagnostic logs",
+                    icon = Icons.Filled.Build
+                ) {
                     SettingsToggle(
-                        title = "Debug Logging",
-                        subtitle = "Log API calls, errors, and crashes",
+                        icon = Icons.Filled.BugReport,
+                        title = "Debug logging",
+                        subtitle = "Record API calls, playback errors, and crashes",
                         checked = debugEnabled,
                         onCheckedChange = {
                             debugEnabled = it
@@ -709,14 +629,12 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                             if (it) DebugLog.i("Settings", "Debug logging enabled")
                         }
                     )
-
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    Text("Log Actions", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-                    Spacer(Modifier.height(8.dp))
-
+                    SettingsDivider()
+                    SettingsInfoRow(
+                        icon = Icons.Filled.Description,
+                        title = "Diagnostic log",
+                        subtitle = "${DebugLog.getEntries().size} entries currently stored on this device"
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -728,26 +646,24 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan400)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.List, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("View (${DebugLog.getEntries().size})")
+                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("View", fontSize = 13.sp)
                         }
                         OutlinedButton(
                             onClick = { DebugLog.shareLog(context) },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan400)
                         ) {
-                            Icon(Icons.Filled.Share, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Share")
+                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Share", fontSize = 13.sp)
                         }
                     }
-
                     Spacer(Modifier.height(8.dp))
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -756,36 +672,27 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                             onClick = { DebugLog.copyToClipboard(context) },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan500)
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan400)
                         ) {
-                            Icon(Icons.Filled.ContentCopy, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Copy")
+                            Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Copy", fontSize = 13.sp)
                         }
                         OutlinedButton(
-                            onClick = { DebugLog.clear(); logEntries = emptyList() },
+                            onClick = {
+                                DebugLog.clear()
+                                logEntries = emptyList()
+                            },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                         ) {
-                            Icon(Icons.Filled.Delete, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Clear")
+                            Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Clear log", fontSize = 13.sp)
                         }
                     }
-
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider(color = SurfaceDark)
-                    Spacer(Modifier.height(12.dp))
-
-                    Text("Upload to Server", style = MaterialTheme.typography.bodyLarge, color = OnSurface)
-                    Text(
-                        "Send logs to your mvbar server",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceDim
-                    )
-                    Spacer(Modifier.height(8.dp))
-
+                    Spacer(Modifier.height(14.dp))
                     Button(
                         onClick = {
                             isUploading = true
@@ -802,8 +709,10 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                             }
                         },
                         enabled = !isUploading,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
                     ) {
                         if (isUploading) {
@@ -813,23 +722,30 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                                 strokeWidth = 2.dp
                             )
                         } else {
-                            Icon(Icons.Filled.Upload, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Filled.CloudUpload, contentDescription = null, tint = Color.Black, modifier = Modifier.size(19.dp))
                         }
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            if (isUploading) "Uploading..." else "Upload Logs",
+                            if (isUploading) "Uploading…" else "Upload log to server",
                             color = Color.Black,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-
-                    if (uploadStatus != null) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            uploadStatus ?: "",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (uploadStatus?.startsWith("✓") == true) Color(0xFF22C55E) else MaterialTheme.colorScheme.error
-                        )
+                    uploadStatus?.let { status ->
+                        val success = status.startsWith("✓")
+                        Spacer(Modifier.height(10.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = (if (success) Color(0xFF22C55E) else MaterialTheme.colorScheme.error).copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                status,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (success) Color(0xFF4ADE80) else MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             }
