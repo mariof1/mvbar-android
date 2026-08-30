@@ -29,6 +29,7 @@ import com.mvbar.android.ui.theme.*
 fun TrackListItem(
     track: Track,
     index: Int? = null,
+    leadingText: String? = null,
     isPlaying: Boolean = false,
     onPlay: () -> Unit,
     onFavorite: (() -> Unit)? = null,
@@ -59,9 +60,10 @@ fun TrackListItem(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (index != null) {
+        val displayedLeadingText = leadingText ?: index?.let { "${it + 1}" }
+        if (displayedLeadingText != null) {
             Text(
-                "${index + 1}",
+                displayedLeadingText,
                 style = MaterialTheme.typography.bodySmall,
                 color = OnSurfaceDim,
                 modifier = Modifier.width(28.dp)

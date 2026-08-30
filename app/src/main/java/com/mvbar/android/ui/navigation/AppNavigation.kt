@@ -992,7 +992,9 @@ fun MainScreen(
                         currentTrackId = currentTrackId,
                         onBack = { navController.popBackStack() },
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
-                        onPlayAll = { if (albumTracks.isNotEmpty()) mainVm.playTrack(albumTracks.first(), albumTracks) },
+                        onPlayAll = { queue ->
+                            if (queue.isNotEmpty()) mainVm.playTrack(queue.first(), queue)
+                        },
                         onTrackLongPress = { contextTrack = it },
                         onMore = {
                             val a = selectedAlbum

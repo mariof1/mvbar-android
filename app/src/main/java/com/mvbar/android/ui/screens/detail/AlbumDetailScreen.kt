@@ -28,6 +28,30 @@ import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.components.TrackListItem
 import com.mvbar.android.ui.theme.*
 
+internal data class AlbumDiscSection(
+    val discNumber: Int,
+    val tracks: List<Track>
+)
+
+private fun Track.normalizedDiscNumber(): Int = discNumber?.takeIf { it > 0 } ?: 1
+
+internal fun splitAlbumTracksByDisc(tracks: List<Track>): List<AlbumDiscSection> =
+    tracks.withIndex()
+        .sortedWith(
+            compareBy<IndexedValue<Track>>(
+                { it.value.normalizedDiscNumber() },
+                { it.value.trackNumber?.takeIf { number -> number > 0 } ?: Int.MAX_VALUE },
+                { it.index }
+            )
+        )
+        .groupBy { it.value.normalizedDiscNumber() }
+        .map { (discNumber, indexedTracks) ->
+            AlbumDiscSection(discNumber, indexedTracks.map { it.value })
+        }
+
+internal fun albumTrackNumberLabel(track: Track, fallbackIndex: Int): String =
+    (track.trackNumber?.takeIf { it > 0 } ?: fallbackIndex + 1).toString()
+
 @Composable
 fun AlbumDetailScreen(
     album: Album?,
@@ -36,7 +60,7 @@ fun AlbumDetailScreen(
     currentTrackId: Int?,
     onBack: () -> Unit,
     onPlayTrack: (Track, List<Track>) -> Unit,
-    onPlayAll: () -> Unit,
+    onPlayAll: (List<Track>) -> Unit,
     onTrackLongPress: ((Track) -> Unit)? = null,
     onMore: (() -> Unit)? = null,
     favoriteIds: Set<Int> = emptySet(),
@@ -46,6 +70,10 @@ fun AlbumDetailScreen(
         ?: tracks.firstOrNull()?.id?.let { ApiClient.trackArtUrl(it) }
     val albumArtist = album?.displayArtist ?: album?.artist
         ?: tracks.firstOrNull()?.let { it.albumArtist ?: it.artist } ?: ""
+    val discSections = remember(tracks) { splitAlbumTracksByDisc(tracks) }
+    val orderedTracks = remember(discSections) { discSections.flatMap { it.tracks } }
+    val discCount = maxOf(album?.totalDiscs ?: 1, discSections.maxOfOrNull { it.discNumber } ?: 1)
+    val showDiscHeaders = discCount > 1
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -82,13 +110,14 @@ fun AlbumDetailScreen(
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Text(
-                        "${tracks.size} tracks",
+                        if (discCount > 1) "${tracks.size} tracks • $discCount discs" else "${tracks.size} tracks",
                         style = MaterialTheme.typography.labelSmall,
                         color = OnSurfaceSubtle
                     )
                 }
                 Button(
-                    onClick = onPlayAll,
+                    onClick = { if (orderedTracks.isNotEmpty()) onPlayAll(orderedTracks) },
+                    enabled = orderedTracks.isNotEmpty(),
                     shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Cyan500),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
@@ -106,17 +135,46 @@ fun AlbumDetailScreen(
             }
         }
 
-        itemsIndexed(tracks) { index, track ->
-            val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
-            TrackListItem(
-                track = trackWithFav,
-                index = index,
-                isPlaying = track.id == currentTrackId,
-                onPlay = { onPlayTrack(track, tracks) },
-                onFavorite = onToggleFavorite?.let { { it(track.id) } },
-                onMore = onTrackLongPress?.let { { it(track) } },
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
+        discSections.forEach { section ->
+            if (showDiscHeaders) {
+                item(key = "disc_${section.discNumber}") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Disc ${section.discNumber}",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Cyan400
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "${section.tracks.size} tracks",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = OnSurfaceSubtle
+                        )
+                    }
+                }
+            }
+
+            itemsIndexed(
+                items = section.tracks,
+                key = { _, track -> "track_${track.id}" }
+            ) { trackIndex, track ->
+                val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
+                TrackListItem(
+                    track = trackWithFav,
+                    leadingText = albumTrackNumberLabel(track, trackIndex),
+                    isPlaying = track.id == currentTrackId,
+                    onPlay = { onPlayTrack(track, orderedTracks) },
+                    onFavorite = onToggleFavorite?.let { { it(track.id) } },
+                    onMore = onTrackLongPress?.let { { it(track) } },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
         }
     }
 }
