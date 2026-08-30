@@ -282,7 +282,7 @@ fun NowPlayingScreen(
                                             }
                                         }
                                         IconButton(onClick = { showLyrics = !showLyrics }) {
-                                            Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim, modifier = Modifier.size(28.dp))
+                                            Icon(Icons.Filled.Lyrics, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim, modifier = Modifier.size(28.dp))
                                         }
                                     }
                                     IconButton(onClick = { showQueue = !showQueue }, modifier = Modifier.size(52.dp)) {
@@ -386,7 +386,7 @@ fun NowPlayingScreen(
                                             }
                                         }
                                         IconButton(onClick = { showLyrics = !showLyrics }) {
-                                            Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
+                                            Icon(Icons.Filled.Lyrics, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
                                         }
                                     }
                                     IconButton(onClick = { showQueue = !showQueue }, modifier = Modifier.size(52.dp)) {
@@ -515,7 +515,7 @@ fun NowPlayingScreen(
                                 }
                             }
                             IconButton(onClick = { showLyrics = !showLyrics }) {
-                                Icon(Icons.Filled.MusicNote, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
+                                Icon(Icons.Filled.Lyrics, "Lyrics", tint = if (showLyrics) Cyan500 else OnSurfaceDim)
                             }
                         }
                         IconButton(onClick = { showQueue = !showQueue }, modifier = Modifier.size(52.dp)) {

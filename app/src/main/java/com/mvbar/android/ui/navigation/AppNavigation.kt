@@ -155,6 +155,10 @@ fun MainScreen(
     var showAddCollectionToPlaylist by remember { mutableStateOf(false) }
     var showSubscribeDialog by remember { mutableStateOf(false) }
     var shareTrack by remember { mutableStateOf<Track?>(null) }
+    val openTrackShare: (Track) -> Unit = { track ->
+        shareTrack = track
+        socialVm.openShareDialog(track.id)
+    }
 
     val currentRoute by navController.currentBackStackEntryAsState()
     val currentTab = currentRoute?.destination?.route
@@ -434,8 +438,7 @@ fun MainScreen(
             },
             onShare = {
                 contextTrack = null
-                shareTrack = track
-                socialVm.openShareDialog(track.id)
+                openTrackShare(track)
             },
             onGoToAlbum = track.album?.let { albumName ->
                 {
@@ -742,6 +745,9 @@ fun MainScreen(
                                 onTogglePlay = { mainVm.playerManager.togglePlay() },
                                 onNext = { mainVm.playerManager.next() },
                                 onPrevious = { mainVm.playerManager.previous() },
+                                onShare = {
+                                    playerState.currentTrack?.let(openTrackShare)
+                                },
                                 onTap = { showNowPlaying = true },
                                 onDismiss = { mainVm.playerManager.clearQueue() }
                             )
@@ -1398,6 +1404,9 @@ fun MainScreen(
                                 onTogglePlay = { mainVm.playerManager.togglePlay() },
                                 onNext = { mainVm.playerManager.next() },
                                 onPrevious = { mainVm.playerManager.previous() },
+                                onShare = {
+                                    playerState.currentTrack?.let(openTrackShare)
+                                },
                                 onTap = { showNowPlaying = true },
                                 onDismiss = { mainVm.playerManager.clearQueue() }
                             )

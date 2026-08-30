@@ -35,6 +35,7 @@ fun MiniPlayerBar(
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
     onPrevious: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
     onTap: () -> Unit,
     onDismiss: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -184,6 +185,17 @@ fun MiniPlayerBar(
                 }
 
                 if (!state.isPodcastMode && !state.isAudiobookMode) {
+                    onShare?.let { share ->
+                        IconButton(onClick = share, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                Icons.Filled.Share,
+                                contentDescription = "Share song with a friend",
+                                tint = OnSurfaceDim,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
                     CastRouteButton(
                         modifier = Modifier.size(40.dp),
                         isCasting = state.isCasting
