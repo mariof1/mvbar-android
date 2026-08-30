@@ -20,11 +20,11 @@ on:
         required: false
         type: string
       modules:
-        description: APK modules
+        description: APK modules (tagged releases always include phone and Wear)
         required: true
         type: choice
         options: [app, all]
-        default: app
+        default: all
 
 permissions:
   contents: write
@@ -35,7 +35,7 @@ concurrency:
 
 jobs:
   package:
-    name: Build signed ${{ inputs.build_type }} APK
+    name: Build signed ${{ inputs.build_type }} APKs
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -126,7 +126,7 @@ jobs:
         run: |
           set -euo pipefail
           tasks=(":app:assembleRelease")
-          if [[ "${{ inputs.modules }}" == "all" ]]; then
+          if [[ "${{ inputs.build_type }}" == "release" || "${{ inputs.modules }}" == "all" ]]; then
             tasks+=(":wear:assembleRelease")
           fi
           ./gradlew "${tasks[@]}" --build-cache --parallel --console=plain
@@ -150,8 +150,15 @@ jobs:
             exit 1
           fi
 
-          if [[ "${{ inputs.modules }}" == "all" ]]; then
-            "$build_tools/apksigner" verify --verbose --print-certs wear/build/outputs/apk/release/wear-release.apk
+          if [[ "${{ inputs.build_type }}" == "release" || "${{ inputs.modules }}" == "all" ]]; then
+            wear_apk="wear/build/outputs/apk/release/wear-release.apk"
+            "$build_tools/apksigner" verify --verbose --print-certs "$wear_apk"
+            wear_badging="$("$build_tools/aapt" dump badging "$wear_apk")"
+            printf '%s\n' "$wear_badging" | sed -n "/^package:/p;/^sdkVersion:/p;/^targetSdkVersion:/p;/android.hardware.type.watch/p"
+            grep -q "android.hardware.type.watch" <<< "$wear_badging" || {
+              echo "::error::Wear APK does not require Wear OS hardware"
+              exit 1
+            }
           fi
 
       - name: Collect APKs
@@ -169,10 +176,17 @@ jobs:
             wear_name="mvbar-wear-dev-${version}-${{ steps.version.outputs.short_sha }}"
           fi
           cp app/build/outputs/apk/release/app-release.apk "dist/${phone_name}.apk"
-          if [[ "${{ inputs.modules }}" == "all" ]]; then
+          if [[ "${{ inputs.build_type }}" == "release" || "${{ inputs.modules }}" == "all" ]]; then
             cp wear/build/outputs/apk/release/wear-release.apk "dist/${wear_name}.apk"
           fi
-          echo "name=$phone_name" >> "$GITHUB_OUTPUT"
+          if [[ "${{ inputs.build_type }}" == "release" ]]; then
+            artifact_name="mvbar-release-${version}"
+          elif [[ "${{ inputs.modules }}" == "all" ]]; then
+            artifact_name="mvbar-dev-all-${version}-${{ steps.version.outputs.short_sha }}"
+          else
+            artifact_name="$phone_name"
+          fi
+          echo "name=$artifact_name" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v6
