@@ -42,6 +42,12 @@ data class LoginResponse(
 )
 
 @Serializable
+data class CurrentUserResponse(
+    val ok: Boolean = false,
+    val user: User? = null
+)
+
+@Serializable
 data class User(
     val id: String = "",
     val email: String = "",

@@ -16,6 +16,9 @@ interface MvbarApi {
     @POST("api/auth/google/token")
     suspend fun googleSignIn(@Body request: GoogleTokenRequest): Response<LoginResponse>
 
+    @GET("api/auth/me")
+    suspend fun getCurrentUser(): Response<CurrentUserResponse>
+
     // Library / Tracks
     @GET("api/library/tracks")
     suspend fun getTracks(

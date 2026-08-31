@@ -3,6 +3,7 @@ package com.mvbar.android.ui.screens.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
@@ -12,17 +13,23 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.mvbar.android.BuildConfig
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.local.MvbarDatabase
+import com.mvbar.android.data.model.User
+import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.data.sync.SyncManager
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
@@ -53,6 +60,9 @@ private const val UPDATE_AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
 fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val authRepository = remember(context) { AuthRepository(context.applicationContext) }
+    var currentUser by remember { mutableStateOf<User?>(null) }
+    var currentUserLoading by remember { mutableStateOf(true) }
     var debugEnabled by remember { mutableStateOf(DebugLog.enabled) }
     var showLogViewer by remember { mutableStateOf(false) }
     var logEntries by remember { mutableStateOf(DebugLog.getEntries()) }
@@ -91,6 +101,14 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
 
     // Android Auto categories
     var categories by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(authRepository) {
+        currentUser = authRepository.getSavedUser()
+        currentUserLoading = currentUser == null
+        authRepository.refreshCurrentUser()
+            .onSuccess { currentUser = it }
+        currentUserLoading = false
+    }
 
     LaunchedEffect(Unit) {
         autoResume = AaPreferences.getAutoResume(context)
@@ -286,6 +304,11 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                     subtitle = "Connection, version, and account access",
                     icon = Icons.Filled.Person
                 ) {
+                    CurrentUserProfile(
+                        user = currentUser,
+                        loading = currentUserLoading
+                    )
+                    SettingsDivider(indented = false)
                     SettingsInfoRow(
                         icon = Icons.Filled.MusicNote,
                         title = "mvbar Android",
@@ -748,6 +771,84 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CurrentUserProfile(user: User?, loading: Boolean) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 82.dp)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(Cyan500.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center
+        ) {
+            when {
+                user != null -> Text(
+                    text = user.email.firstOrNull()?.uppercase() ?: "?",
+                    color = Cyan400,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                loading -> CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    color = Cyan400,
+                    strokeWidth = 2.dp
+                )
+                else -> Icon(
+                    Icons.Filled.Person,
+                    contentDescription = null,
+                    tint = Cyan400,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+
+            if (user != null && !user.avatarPath.isNullOrBlank()) {
+                AsyncImage(
+                    model = ApiClient.avatarUrl(user.avatarPath),
+                    contentDescription = "Avatar for ${user.email}",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Signed in as",
+                style = MaterialTheme.typography.labelMedium,
+                color = OnSurfaceDim
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = when {
+                    user != null -> user.email
+                    loading -> "Loading account…"
+                    else -> "Account details unavailable"
+                },
+                style = MaterialTheme.typography.titleMedium,
+                color = OnSurface,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (user != null) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = if (user.role.equals("admin", ignoreCase = true)) "Administrator" else "Member",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim
+                )
             }
         }
     }
