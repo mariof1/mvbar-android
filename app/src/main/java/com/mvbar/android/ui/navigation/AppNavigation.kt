@@ -905,7 +905,7 @@ fun MainScreen(
                             val artUrl = album.artPath?.let { ApiClient.artPathUrl(it) }
                             contextCollection = CollectionRef.AlbumByName(
                                 name = album.displayName,
-                                artist = album.displayArtist ?: album.albumArtist ?: album.artist,
+                                artist = album.artistDisplay,
                                 artUrl = artUrl,
                                 trackCount = album.trackCount
                             )
@@ -958,7 +958,7 @@ fun MainScreen(
                             val artUrl = album.artPath?.let { ApiClient.artPathUrl(it) }
                             contextCollection = CollectionRef.AlbumByName(
                                 name = album.displayName,
-                                artist = album.displayArtist ?: album.albumArtist ?: album.artist,
+                                artist = album.artistDisplay,
                                 artUrl = artUrl,
                                 trackCount = album.trackCount
                             )
@@ -1002,8 +1002,8 @@ fun MainScreen(
                                 ?: albumTracks.firstOrNull()?.id?.let { ApiClient.trackArtUrl(it) }
                             contextCollection = CollectionRef.AlbumByName(
                                 name = name,
-                                artist = a?.displayArtist ?: a?.artist
-                                    ?: albumTracks.firstOrNull()?.let { it.albumArtist ?: it.artist },
+                                artist = a?.artistDisplay
+                                    ?: albumTracks.firstOrNull()?.displayAlbumArtist,
                                 artUrl = artUrl,
                                 trackCount = albumTracks.size
                             )

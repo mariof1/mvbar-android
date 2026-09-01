@@ -145,13 +145,20 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             ?.filter { it.isNotEmpty() }
             .orEmpty()
 
+    private fun splitArtistValues(value: String?): List<String> =
+        value
+            ?.split(Regex("\\s*(?:;|\\||•)\\s*"))
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            .orEmpty()
+
     private suspend fun cachedPlayableCollections(): PlayableCollections {
         val ids = AudioCacheManager.getCachedTrackIds()
         if (ids.isEmpty()) return PlayableCollections()
         val tracks = repo.getTracksByIds(ids).orEmpty()
         val artists = tracks.flatMap { track ->
             listOf(track.artist, track.displayArtistName, track.albumArtist)
-                .flatMap(::splitMetadataValues)
+                .flatMap(::splitArtistValues)
         }.map(::availabilityKey).filter { it.isNotEmpty() }.toSet()
         val albums = tracks.map { availabilityKey(it.album) }.filter { it.isNotEmpty() }.toSet()
         val genres = tracks.flatMap { splitMetadataValues(it.genre) }

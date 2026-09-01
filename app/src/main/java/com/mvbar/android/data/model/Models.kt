@@ -3,6 +3,21 @@ package com.mvbar.android.data.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+private val artistValueSeparator = Regex("\\s*(?:;|\\||•|\\u0000|\\uFEFF)\\s*")
+
+fun formatArtistDisplay(vararg values: String?): String? {
+    for (value in values) {
+        val names = value
+            ?.split(artistValueSeparator)
+            ?.map { it.trim().replace(Regex("\\s+"), " ") }
+            ?.filter { it.isNotEmpty() }
+            ?.distinctBy { it.lowercase() }
+            .orEmpty()
+        if (names.isNotEmpty()) return names.joinToString(" • ")
+    }
+    return null
+}
+
 @Serializable
 data class LoginRequest(val email: String, val password: String)
 
@@ -56,6 +71,12 @@ data class User(
 )
 
 @Serializable
+data class ArtistCredit(
+    val id: Int? = null,
+    val name: String = ""
+)
+
+@Serializable
 data class Track(
     val id: Int = 0,
     val title: String? = null,
@@ -63,6 +84,9 @@ data class Track(
     val album: String? = null,
     @SerialName("album_artist") val albumArtist: String? = null,
     @SerialName("display_artist") val displayArtistName: String? = null,
+    @SerialName("display_album_artist") val displayAlbumArtistName: String? = null,
+    val artists: List<ArtistCredit> = emptyList(),
+    @SerialName("album_artists") val albumArtists: List<ArtistCredit> = emptyList(),
     @SerialName("duration_ms") val durationMs: Double? = null,
     val duration: Double? = null,
     val genre: String? = null,
@@ -81,7 +105,18 @@ data class Track(
     @SerialName("created_at") val createdAt: String? = null
 ) {
     val displayTitle: String get() = title ?: "Untitled"
-    val displayArtist: String get() = displayArtistName ?: artist ?: "Unknown Artist"
+    val displayArtist: String get() = formatArtistDisplay(
+        artists.map { it.name }.takeIf { it.isNotEmpty() }?.joinToString("; "),
+        displayArtistName,
+        artist,
+        albumArtist
+    ) ?: "Unknown Artist"
+    val displayAlbumArtist: String get() = formatArtistDisplay(
+        albumArtists.map { it.name }.takeIf { it.isNotEmpty() }?.joinToString("; "),
+        displayAlbumArtistName,
+        albumArtist,
+        displayArtist
+    ) ?: "Unknown Artist"
     val displayAlbum: String get() = album ?: "Unknown Album"
     val hasDuration: Boolean get() = durationMs != null || duration != null
     val durationSeconds: Int get() {
@@ -119,6 +154,7 @@ data class Album(
 ) {
     /** Album name - handles both 'album' (list) and 'name' (detail) API fields */
     val displayName: String get() = album ?: name ?: ""
+    val artistDisplay: String get() = formatArtistDisplay(displayArtist, albumArtist, artist) ?: "Unknown Artist"
 }
 
 @Serializable
@@ -239,6 +275,7 @@ data class SharedTrack(
     val id: Int = 0,
     val title: String? = null,
     val artist: String? = null,
+    @SerialName("display_artist") val displayArtistName: String? = null,
     val album: String? = null,
     val durationMs: Double? = null,
     val artPath: String? = null,
@@ -248,6 +285,7 @@ data class SharedTrack(
         id = id,
         title = title,
         artist = artist,
+        displayArtistName = displayArtistName,
         album = album,
         durationMs = durationMs,
         artPath = artPath,

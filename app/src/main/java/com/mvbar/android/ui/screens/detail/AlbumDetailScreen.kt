@@ -68,8 +68,8 @@ fun AlbumDetailScreen(
 ) {
     val artUrl = album?.artPath?.let { ApiClient.artPathUrl(it) }
         ?: tracks.firstOrNull()?.id?.let { ApiClient.trackArtUrl(it) }
-    val albumArtist = album?.displayArtist ?: album?.artist
-        ?: tracks.firstOrNull()?.let { it.albumArtist ?: it.artist } ?: ""
+    val albumArtist = album?.artistDisplay
+        ?: tracks.firstOrNull()?.displayAlbumArtist.orEmpty()
     val discSections = remember(tracks) { splitAlbumTracksByDisc(tracks) }
     val orderedTracks = remember(discSections) { discSections.flatMap { it.tracks } }
     val discCount = maxOf(album?.totalDiscs ?: 1, discSections.maxOfOrNull { it.discNumber } ?: 1)

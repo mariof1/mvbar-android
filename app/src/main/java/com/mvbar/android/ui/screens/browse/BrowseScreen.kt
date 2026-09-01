@@ -259,7 +259,7 @@ private fun AlbumsGrid(
                     LetterEmptyState(kind = "albums", selectedLetter = selectedLetter)
                 }
             }
-            items(albums, key = { album -> "${album.displayName}_${album.albumArtist ?: album.artist.orEmpty()}" }) { album ->
+            items(albums, key = { album -> "${album.displayName}_${album.artistDisplay}" }) { album ->
                 val isAvailable = isOnline || album.displayName.trim().lowercase() in playableAlbums
                 AlbumCard(
                     album = album,

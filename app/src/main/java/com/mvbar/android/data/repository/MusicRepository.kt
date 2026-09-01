@@ -19,6 +19,14 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
             ?.distinctBy { it.lowercase() }
             .orEmpty()
 
+    private fun splitArtistValues(value: String?): List<String> =
+        value
+            ?.split(Regex("\\s*(?:;|\\||•)\\s*"))
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.distinctBy { it.lowercase() }
+            .orEmpty()
+
     private fun browseLetterMatches(name: String, letter: String?): Boolean {
         val trimmed = name.trim()
         if (letter == null) return true
@@ -36,7 +44,7 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
         tracks
             .flatMap { track ->
                 val names = listOf(track.displayArtistName, track.artist, track.albumArtist)
-                    .flatMap(::splitMetadataValues)
+                    .flatMap(::splitArtistValues)
                     .ifEmpty { listOf(track.displayArtist) }
                 names.map { name -> name to track }
             }
@@ -82,7 +90,7 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
                 Album(
                     album = first.album?.trim(),
                     artist = first.artist,
-                    displayArtist = first.displayArtistName ?: first.albumArtist ?: first.artist,
+                    displayArtist = first.displayAlbumArtist,
                     albumArtist = first.albumArtist,
                     trackCount = albumTracks.map { it.id }.distinct().size,
                     year = albumTracks.mapNotNull { it.year }.minOrNull(),

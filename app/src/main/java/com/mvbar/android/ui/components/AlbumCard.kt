@@ -92,7 +92,7 @@ fun AlbumCard(
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            album.albumArtist ?: album.artist ?: "",
+            album.artistDisplay,
             style = MaterialTheme.typography.bodySmall,
             color = OnSurfaceDim,
             maxLines = 1,

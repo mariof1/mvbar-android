@@ -3,6 +3,21 @@ package com.mvbar.android.wear.net
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+private val artistValueSeparator = Regex("\\s*(?:;|\\||•|\\u0000|\\uFEFF)\\s*")
+
+private fun formatArtistDisplay(vararg values: String?): String? {
+    for (value in values) {
+        val names = value
+            ?.split(artistValueSeparator)
+            ?.map { it.trim().replace(Regex("\\s+"), " ") }
+            ?.filter { it.isNotEmpty() }
+            ?.distinctBy { it.lowercase() }
+            .orEmpty()
+        if (names.isNotEmpty()) return names.joinToString(" • ")
+    }
+    return null
+}
+
 @Serializable
 data class Track(
     val id: Int = 0,
@@ -18,7 +33,7 @@ data class Track(
     @SerialName("is_favorite") val isFavorite: Boolean = false
 ) {
     val displayTitle: String get() = title ?: "Untitled"
-    val displayArtist: String get() = displayArtistName ?: artist ?: "Unknown Artist"
+    val displayArtist: String get() = formatArtistDisplay(displayArtistName, artist, albumArtist) ?: "Unknown Artist"
 }
 
 @Serializable
@@ -33,7 +48,7 @@ data class Album(
     @SerialName("art_path") val artPath: String? = null
 ) {
     val displayName: String get() = album ?: name ?: ""
-    val displayArtistName: String get() = displayArtist ?: albumArtist ?: artist ?: ""
+    val displayArtistName: String get() = formatArtistDisplay(displayArtist, albumArtist, artist).orEmpty()
 }
 
 @Serializable
