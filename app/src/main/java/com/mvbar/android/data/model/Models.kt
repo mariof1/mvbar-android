@@ -1,22 +1,10 @@
 package com.mvbar.android.data.model
 
+import com.mvbar.android.shared.formatArtistDisplay as sharedArtistDisplay
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-private val artistValueSeparator = Regex("\\s*(?:;|\\||•|\\u0000|\\uFEFF)\\s*")
-
-fun formatArtistDisplay(vararg values: String?): String? {
-    for (value in values) {
-        val names = value
-            ?.split(artistValueSeparator)
-            ?.map { it.trim().replace(Regex("\\s+"), " ") }
-            ?.filter { it.isNotEmpty() }
-            ?.distinctBy { it.lowercase() }
-            .orEmpty()
-        if (names.isNotEmpty()) return names.joinToString(" • ")
-    }
-    return null
-}
+fun formatArtistDisplay(vararg values: String?): String? = sharedArtistDisplay(*values)
 
 @Serializable
 data class LoginRequest(val email: String, val password: String)

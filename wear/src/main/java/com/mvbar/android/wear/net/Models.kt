@@ -1,22 +1,8 @@
 package com.mvbar.android.wear.net
 
+import com.mvbar.android.shared.formatArtistDisplay
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-
-private val artistValueSeparator = Regex("\\s*(?:;|\\||•|\\u0000|\\uFEFF)\\s*")
-
-private fun formatArtistDisplay(vararg values: String?): String? {
-    for (value in values) {
-        val names = value
-            ?.split(artistValueSeparator)
-            ?.map { it.trim().replace(Regex("\\s+"), " ") }
-            ?.filter { it.isNotEmpty() }
-            ?.distinctBy { it.lowercase() }
-            .orEmpty()
-        if (names.isNotEmpty()) return names.joinToString(" • ")
-    }
-    return null
-}
 
 @Serializable
 data class Track(

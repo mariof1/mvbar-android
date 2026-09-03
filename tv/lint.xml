@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- Dependency upgrades past these versions require a newer compile SDK/AGP baseline. -->
+    <issue id="GradleDependency">
+        <ignore path="build.gradle.kts" />
+    </issue>
+
+    <!-- Android TV banners are required to be a single 320x180 xhdpi asset. -->
+    <issue id="IconMissingDensityFolder">
+        <ignore path="src/main/res" />
+    </issue>
+</lint>

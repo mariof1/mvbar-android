@@ -20,10 +20,10 @@ on:
         required: false
         type: string
       modules:
-        description: APK modules (tagged releases always include phone and Wear)
+        description: APK modules (tagged releases always include phone, TV, and Wear)
         required: true
         type: choice
-        options: [app, all]
+        options: [app, tv, all]
         default: all
 
 permissions:
@@ -44,6 +44,9 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v5
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -125,9 +128,13 @@ jobs:
           MVBAR_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          tasks=(":app:assembleRelease")
+          tasks=()
           if [[ "${{ inputs.build_type }}" == "release" || "${{ inputs.modules }}" == "all" ]]; then
-            tasks+=(":wear:assembleRelease")
+            tasks+=(":app:assembleRelease" ":tv:assembleRelease" ":wear:assembleRelease")
+          elif [[ "${{ inputs.modules }}" == "tv" ]]; then
+            tasks+=(":tv:assembleRelease")
+          else
+            tasks+=(":app:assembleRelease")
           fi
           ./gradlew "${tasks[@]}" --build-cache --parallel --console=plain
 
@@ -136,21 +143,44 @@ jobs:
         run: |
           set -euo pipefail
           build_tools="$ANDROID_HOME/build-tools/34.0.0"
-          phone_apk="app/build/outputs/apk/release/app-release.apk"
-          "$build_tools/apksigner" verify --verbose --print-certs "$phone_apk"
+          build_all=false
+          [[ "${{ inputs.build_type }}" == "release" || "${{ inputs.modules }}" == "all" ]] && build_all=true
 
-          badging="$("$build_tools/aapt" dump badging "$phone_apk")"
-          printf '%s\n' "$badging" | sed -n "/^package:/p;/^sdkVersion:/p;/^targetSdkVersion:/p;/^native-code:/p;/android.hardware.type.watch/p"
-          grep -q "^native-code:.*'arm64-v8a'" <<< "$badging" || {
-            echo "::error::Phone APK does not advertise arm64-v8a support"
-            exit 1
-          }
-          if grep -q "android.hardware.type.watch" <<< "$badging"; then
-            echo "::error::Phone APK unexpectedly requires Wear OS hardware"
-            exit 1
+          if [[ "$build_all" == true || "${{ inputs.modules }}" == "app" ]]; then
+            phone_apk="app/build/outputs/apk/release/app-release.apk"
+            "$build_tools/apksigner" verify --verbose --print-certs "$phone_apk"
+            badging="$("$build_tools/aapt" dump badging "$phone_apk")"
+            printf '%s\n' "$badging" | sed -n "/^package:/p;/^sdkVersion:/p;/^targetSdkVersion:/p;/^native-code:/p;/android.hardware.type.watch/p"
+            grep -q "^native-code:.*'arm64-v8a'" <<< "$badging" || {
+              echo "::error::Phone APK does not advertise arm64-v8a support"
+              exit 1
+            }
+            if grep -q "android.hardware.type.watch" <<< "$badging"; then
+              echo "::error::Phone APK unexpectedly requires Wear OS hardware"
+              exit 1
+            fi
           fi
 
-          if [[ "${{ inputs.build_type }}" == "release" || "${{ inputs.modules }}" == "all" ]]; then
+          if [[ "$build_all" == true || "${{ inputs.modules }}" == "tv" ]]; then
+            tv_apk="tv/build/outputs/apk/release/tv-release.apk"
+            "$build_tools/apksigner" verify --verbose --print-certs "$tv_apk"
+            tv_badging="$("$build_tools/aapt" dump badging "$tv_apk")"
+            printf '%s\n' "$tv_badging" | sed -n "/^package:/p;/^sdkVersion:/p;/^targetSdkVersion:/p;/android.software.leanback/p;/android.hardware.touchscreen/p"
+            grep -q "uses-feature: name='android.software.leanback'" <<< "$tv_badging" || {
+              echo "::error::TV APK does not require Android TV leanback support"
+              exit 1
+            }
+            grep -q "uses-feature-not-required: name='android.hardware.touchscreen'" <<< "$tv_badging" || {
+              echo "::error::TV APK unexpectedly requires a touchscreen"
+              exit 1
+            }
+            grep -q "^leanback-launchable-activity:" <<< "$tv_badging" || {
+              echo "::error::TV APK does not expose a Leanback launcher activity"
+              exit 1
+            }
+          fi
+
+          if [[ "$build_all" == true ]]; then
             wear_apk="wear/build/outputs/apk/release/wear-release.apk"
             "$build_tools/apksigner" verify --verbose --print-certs "$wear_apk"
             wear_badging="$("$build_tools/aapt" dump badging "$wear_apk")"
@@ -170,19 +200,36 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           if [[ "${{ inputs.build_type }}" == "release" ]]; then
             phone_name="mvbar-android-arm64-${version}"
+            tv_name="mvbar-tv-${version}"
             wear_name="mvbar-wear-${version}"
           else
             phone_name="mvbar-android-arm64-dev-${version}-${{ steps.version.outputs.short_sha }}"
+            tv_name="mvbar-tv-dev-${version}-${{ steps.version.outputs.short_sha }}"
             wear_name="mvbar-wear-dev-${version}-${{ steps.version.outputs.short_sha }}"
           fi
-          cp app/build/outputs/apk/release/app-release.apk "dist/${phone_name}.apk"
-          if [[ "${{ inputs.build_type }}" == "release" || "${{ inputs.modules }}" == "all" ]]; then
+
+          build_all=false
+          [[ "${{ inputs.build_type }}" == "release" || "${{ inputs.modules }}" == "all" ]] && build_all=true
+          if [[ "$build_all" == true || "${{ inputs.modules }}" == "app" ]]; then
+            cp app/build/outputs/apk/release/app-release.apk "dist/${phone_name}.apk"
+          fi
+          if [[ "$build_all" == true || "${{ inputs.modules }}" == "tv" ]]; then
+            cp tv/build/outputs/apk/release/tv-release.apk "dist/${tv_name}.apk"
+          fi
+          if [[ "$build_all" == true ]]; then
             cp wear/build/outputs/apk/release/wear-release.apk "dist/${wear_name}.apk"
           fi
+          (
+            cd dist
+            sha256sum ./*.apk > SHA256SUMS
+          )
+
           if [[ "${{ inputs.build_type }}" == "release" ]]; then
             artifact_name="mvbar-release-${version}"
           elif [[ "${{ inputs.modules }}" == "all" ]]; then
             artifact_name="mvbar-dev-all-${version}-${{ steps.version.outputs.short_sha }}"
+          elif [[ "${{ inputs.modules }}" == "tv" ]]; then
+            artifact_name="$tv_name"
           else
             artifact_name="$phone_name"
           fi
@@ -192,7 +239,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.artifact.outputs.name }}
-          path: dist/*.apk
+          path: dist/*
           if-no-files-found: error
           retention-days: ${{ inputs.build_type == 'release' && 90 || 30 }}
 
@@ -214,7 +261,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" dist/*.apk \
+          gh release create "${{ steps.version.outputs.tag }}" dist/* \
             --verify-tag \
             --title "MVBar Android ${{ steps.version.outputs.version }}" \
             --generate-notes

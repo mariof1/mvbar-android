@@ -16,4 +16,5 @@ dependencyResolutionManagement {
 rootProject.name = "mvbar-android"
 include(":app")
 include(":shared")
+include(":tv")
 include(":wear")
