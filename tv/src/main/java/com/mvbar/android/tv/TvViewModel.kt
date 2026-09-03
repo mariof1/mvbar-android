@@ -28,6 +28,7 @@ import com.mvbar.android.tv.playback.PlaybackSnapshot
 import com.mvbar.android.tv.playback.PlaybackKind
 import com.mvbar.android.tv.playback.TvPlaybackController
 import com.mvbar.android.tv.home.TvHomePublisher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -71,6 +72,11 @@ data class TvUiState(
     val serverUrl: String = "",
     val authToken: String = "",
     val email: String = "",
+    val googleAuthEnabled: Boolean = false,
+    val googleClientId: String? = null,
+    val googleAuthServerUrl: String = "",
+    val checkingGoogleAuth: Boolean = false,
+    val googleSigningIn: Boolean = false,
     val selectedSection: TvSection = TvSection.FOR_YOU,
     val recommendations: List<RecommendationBucket> = emptyList(),
     val recentlyAdded: List<Track> = emptyList(),
@@ -111,6 +117,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     private var repository: TvRepository? = null
     private var lastRecordedTrackId: Int? = null
     private var searchJob: Job? = null
+    private var googleAuthCheckJob: Job? = null
     private var refreshJob: Job? = null
     private var realtimeRefreshJob: Job? = null
     private var recommendationRefreshJob: Job? = null
@@ -165,9 +172,71 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     fun signIn(serverUrl: String, email: String, password: String) {
         if (_state.value.loading) return
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
+            _state.update { it.copy(loading = true, googleSigningIn = false, error = null) }
             runCatching {
                 TvRepository.login(serverUrl, email, password, sessionStore.clientId)
+            }.onSuccess { session ->
+                sessionStore.save(session)
+                connectNow(session, verify = false)
+            }.onFailure(::showError)
+        }
+    }
+
+    fun checkGoogleAuth(serverUrl: String) {
+        googleAuthCheckJob?.cancel()
+        val requestedServer = serverUrl.trim().trimEnd('/')
+        if (requestedServer.isBlank()) {
+            _state.update {
+                it.copy(
+                    googleAuthEnabled = false,
+                    googleClientId = null,
+                    googleAuthServerUrl = "",
+                    checkingGoogleAuth = false
+                )
+            }
+            return
+        }
+
+        googleAuthCheckJob = viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    googleAuthEnabled = false,
+                    googleClientId = null,
+                    googleAuthServerUrl = requestedServer,
+                    checkingGoogleAuth = true
+                )
+            }
+            try {
+                val info = TvRepository.googleAuthInfo(requestedServer, sessionStore.clientId)
+                _state.update {
+                    it.copy(
+                        googleAuthEnabled = info.enabled && !info.clientId.isNullOrBlank(),
+                        googleClientId = info.clientId?.takeIf(String::isNotBlank),
+                        googleAuthServerUrl = requestedServer,
+                        checkingGoogleAuth = false
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _state.update {
+                    it.copy(
+                        googleAuthEnabled = false,
+                        googleClientId = null,
+                        googleAuthServerUrl = requestedServer,
+                        checkingGoogleAuth = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun googleSignIn(serverUrl: String, idToken: String) {
+        if (_state.value.loading || idToken.isBlank()) return
+        viewModelScope.launch {
+            _state.update { it.copy(loading = true, googleSigningIn = true, error = null) }
+            runCatching {
+                TvRepository.googleSignIn(serverUrl, idToken, sessionStore.clientId)
             }.onSuccess { session ->
                 sessionStore.save(session)
                 connectNow(session, verify = false)
@@ -666,11 +735,13 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
 
     fun signOut() {
         searchJob?.cancel()
+        googleAuthCheckJob?.cancel()
         refreshJob?.cancel()
         realtimeRefreshJob?.cancel()
         recommendationRefreshJob?.cancel()
         noticeJob?.cancel()
         searchJob = null
+        googleAuthCheckJob = null
         refreshJob = null
         realtimeRefreshJob = null
         recommendationRefreshJob = null
@@ -717,6 +788,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
                         serverUrl = session.serverUrl,
                         authToken = session.token,
                         email = session.email,
+                        googleSigningIn = false,
                         loading = false,
                         refreshing = false,
                         error = content.errorMessage
@@ -738,7 +810,12 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(error = "Your session expired. Sign in again.") }
             } else {
                 _state.update {
-                    it.copy(checkingSession = false, loading = false, error = friendlyMessage(throwable))
+                    it.copy(
+                        checkingSession = false,
+                        loading = false,
+                        googleSigningIn = false,
+                        error = friendlyMessage(throwable)
+                    )
                 }
             }
         }
@@ -991,6 +1068,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
                     refreshing = false,
                     actionLoading = false,
                     checkingSession = false,
+                    googleSigningIn = false,
                     error = friendlyMessage(throwable)
                 )
             }

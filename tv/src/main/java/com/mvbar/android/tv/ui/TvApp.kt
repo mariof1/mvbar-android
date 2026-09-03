@@ -67,6 +67,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -80,6 +81,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -111,12 +113,22 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.GetCredentialProviderConfigurationException
+import androidx.credentials.exceptions.GetCredentialUnsupportedException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.mvbar.android.tv.R
 import com.mvbar.android.tv.TrackCollection
 import com.mvbar.android.tv.TvActionPane
@@ -134,6 +146,8 @@ import com.mvbar.android.tv.data.TvPlaylist
 import com.mvbar.android.tv.playback.PlaybackSnapshot
 import com.mvbar.android.tv.playback.PlaybackKind
 import androidx.media3.common.Player
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val Background = Color(0xFF080D18)
@@ -191,10 +205,19 @@ private fun LoginScreen(state: TvUiState, viewModel: TvViewModel) {
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    var googleCredentialLoading by remember { mutableStateOf(false) }
+    var googleError by remember { mutableStateOf<String?>(null) }
     val serverFocus = remember { FocusRequester() }
     val emailFocus = remember { FocusRequester() }
     val passwordFocus = remember { FocusRequester() }
     val signInFocus = remember { FocusRequester() }
+    val googleSignInFocus = remember { FocusRequester() }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val normalizedServer = serverUrl.trim().trimEnd('/')
+    val googleConfigMatches = state.googleAuthServerUrl == normalizedServer
+    val showGoogleButton = googleConfigMatches && state.googleAuthEnabled
+    val googleBusy = googleCredentialLoading || state.googleSigningIn
 
     LaunchedEffect(state.serverUrl) {
         if (serverUrl.isBlank()) serverUrl = state.serverUrl
@@ -202,6 +225,18 @@ private fun LoginScreen(state: TvUiState, viewModel: TvViewModel) {
     LaunchedEffect(Unit) {
         withFrameNanos { }
         if (serverUrl.isBlank()) serverFocus.requestFocus() else emailFocus.requestFocus()
+    }
+    LaunchedEffect(serverUrl) {
+        googleError = null
+        delay(650L)
+        if (isGoogleAuthServerCandidate(serverUrl)) {
+            viewModel.checkGoogleAuth(serverUrl)
+        } else {
+            viewModel.checkGoogleAuth("")
+        }
+    }
+    LaunchedEffect(state.error) {
+        if (state.error != null) googleCredentialLoading = false
     }
 
     Row(
@@ -270,20 +305,127 @@ private fun LoginScreen(state: TvUiState, viewModel: TvViewModel) {
                 }
             )
             state.error?.let { ErrorBanner(it, viewModel::dismissError) }
+            googleError?.let { ErrorBanner(it) { googleError = null } }
             Button(
                 onClick = { viewModel.signIn(serverUrl, email, password) },
-                enabled = !state.loading && email.isNotBlank() && password.isNotBlank(),
+                enabled = !state.loading && !googleCredentialLoading && email.isNotBlank() && password.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().focusRequester(signInFocus),
                 colors = actionButtonColors()
             ) {
-                if (state.loading) {
+                if (state.loading && !state.googleSigningIn) {
                     CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 3.dp, color = Background)
                     Spacer(Modifier.width(10.dp))
                 }
-                Text(if (state.loading) "Signing in…" else "Sign in", fontSize = 18.sp)
+                Text(
+                    if (state.loading && !state.googleSigningIn) "Signing in…" else "Sign in",
+                    fontSize = 18.sp
+                )
+            }
+
+            if (googleConfigMatches && state.checkingGoogleAuth) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Accent)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Checking Google sign-in…", color = Muted, fontSize = 13.sp)
+                }
+            }
+
+            if (showGoogleButton) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HorizontalDivider(Modifier.weight(1f), color = Muted.copy(alpha = 0.35f))
+                    Text("  or  ", color = Muted, fontSize = 13.sp)
+                    HorizontalDivider(Modifier.weight(1f), color = Muted.copy(alpha = 0.35f))
+                }
+                Button(
+                    onClick = {
+                        val clientId = state.googleClientId
+                        val activity = context as? Activity
+                        when {
+                            clientId.isNullOrBlank() -> {
+                                googleError = "This server did not provide a Google client ID."
+                            }
+                            activity == null -> {
+                                googleError = "Google sign-in is not available in this screen."
+                            }
+                            else -> {
+                                googleCredentialLoading = true
+                                googleError = null
+                                scope.launch {
+                                    try {
+                                        val option = GetSignInWithGoogleOption.Builder(clientId).build()
+                                        val request = GetCredentialRequest.Builder()
+                                            .addCredentialOption(option)
+                                            .build()
+                                        val result = CredentialManager.create(context).getCredential(
+                                            context = activity,
+                                            request = request
+                                        )
+                                        val credential = result.credential
+                                        if (
+                                            credential is CustomCredential &&
+                                            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                                        ) {
+                                            val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                                            googleCredentialLoading = false
+                                            viewModel.googleSignIn(serverUrl, googleCredential.idToken)
+                                        } else {
+                                            googleCredentialLoading = false
+                                            googleError = "Google returned an unsupported credential."
+                                        }
+                                    } catch (_: GetCredentialCancellationException) {
+                                        googleCredentialLoading = false
+                                        googleError = "Google sign-in was cancelled."
+                                    } catch (_: NoCredentialException) {
+                                        googleCredentialLoading = false
+                                        googleError = "No Google account is available. Add one in Android TV settings and try again."
+                                    } catch (_: GetCredentialProviderConfigurationException) {
+                                        googleCredentialLoading = false
+                                        googleError = "Update Google Play services on this TV, then try again."
+                                    } catch (_: GetCredentialUnsupportedException) {
+                                        googleCredentialLoading = false
+                                        googleError = "Google sign-in is not supported by this TV."
+                                    } catch (_: GetCredentialException) {
+                                        googleCredentialLoading = false
+                                        googleError = "Google sign-in could not start. Check the TV app registration and try again."
+                                    } catch (error: Exception) {
+                                        googleCredentialLoading = false
+                                        googleError = error.message ?: "Google sign-in failed."
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    enabled = !state.loading && !googleCredentialLoading,
+                    modifier = Modifier.fillMaxWidth().focusRequester(googleSignInFocus),
+                    colors = googleButtonColors()
+                ) {
+                    if (googleBusy) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color(0xFF202124))
+                        Spacer(Modifier.width(10.dp))
+                    } else {
+                        Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                        Spacer(Modifier.width(12.dp))
+                    }
+                    Text(if (googleBusy) "Connecting to Google…" else "Continue with Google", fontSize = 17.sp)
+                }
             }
         }
     }
+}
+
+private fun isGoogleAuthServerCandidate(value: String): Boolean {
+    val trimmed = value.trim().trimEnd('/')
+    if (trimmed.isBlank()) return false
+    val authority = trimmed.substringAfter("://", trimmed).substringBefore('/')
+    val host = authority.substringBefore(':')
+    return host.equals("localhost", ignoreCase = true) || host.contains('.')
 }
 
 @Composable
@@ -2240,6 +2382,16 @@ private fun secondaryButtonColors() = ButtonDefaults.colors(
     focusedContentColor = Background,
     disabledContainerColor = Surface.copy(alpha = 0.45f),
     disabledContentColor = Muted.copy(alpha = 0.45f)
+)
+
+@Composable
+private fun googleButtonColors() = ButtonDefaults.colors(
+    containerColor = Color.White,
+    contentColor = Color(0xFF202124),
+    focusedContainerColor = Color(0xFFE8F0FE),
+    focusedContentColor = Color(0xFF202124),
+    disabledContainerColor = Color.White.copy(alpha = 0.45f),
+    disabledContentColor = Color(0xFF5F6368).copy(alpha = 0.65f)
 )
 
 @Composable

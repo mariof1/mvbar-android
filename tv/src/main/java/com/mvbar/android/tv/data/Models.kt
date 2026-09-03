@@ -8,6 +8,15 @@ import kotlinx.serialization.Serializable
 data class LoginRequest(val email: String, val password: String)
 
 @Serializable
+data class GoogleTokenRequest(val idToken: String)
+
+@Serializable
+data class GoogleAuthEnabledResponse(
+    val enabled: Boolean = false,
+    val clientId: String? = null
+)
+
+@Serializable
 data class LoginResponse(
     val ok: Boolean = false,
     val token: String = "",

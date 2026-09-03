@@ -62,4 +62,14 @@ class TvContentModelsTest {
         assertEquals(listOf("a", "b", "c", "d"), bucket.artHashes)
         assertEquals(4, bucket.count)
     }
+
+    @Test
+    fun decodesGoogleAuthConfigurationFromServer() {
+        val response = json.decodeFromString<GoogleAuthEnabledResponse>(
+            """{"enabled":true,"clientId":"web-client.apps.googleusercontent.com"}"""
+        )
+
+        assertEquals(true, response.enabled)
+        assertEquals("web-client.apps.googleusercontent.com", response.clientId)
+    }
 }

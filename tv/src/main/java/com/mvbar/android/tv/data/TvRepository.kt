@@ -25,6 +25,12 @@ private interface TvApi {
     @POST("api/auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
+    @GET("api/auth/google/enabled")
+    suspend fun googleAuthEnabled(): Response<GoogleAuthEnabledResponse>
+
+    @POST("api/auth/google/token")
+    suspend fun googleSignIn(@Body request: GoogleTokenRequest): Response<LoginResponse>
+
     @GET("api/auth/me")
     suspend fun currentUser(): Response<CurrentUserResponse>
 
@@ -324,6 +330,16 @@ class TvRepository(
         "${serverUrl}api/audiobooks/$audiobookId/chapters/$chapterId/stream"
 
     companion object {
+        suspend fun googleAuthInfo(serverUrl: String, clientId: String): GoogleAuthEnabledResponse {
+            val normalizedUrl = normalizeServerUrl(serverUrl)
+            val response = createApi(normalizedUrl, null, clientId).googleAuthEnabled()
+            return if (response.isSuccessful) {
+                response.body() ?: GoogleAuthEnabledResponse()
+            } else {
+                GoogleAuthEnabledResponse()
+            }
+        }
+
         suspend fun login(
             serverUrl: String,
             email: String,
@@ -338,6 +354,25 @@ class TvRepository(
                 serverUrl = normalizedUrl,
                 token = body.token,
                 email = body.user?.email?.takeIf { it.isNotBlank() } ?: email.trim()
+            )
+        }
+
+        suspend fun googleSignIn(
+            serverUrl: String,
+            idToken: String,
+            clientId: String
+        ): TvSession {
+            val normalizedUrl = normalizeServerUrl(serverUrl)
+            val response = createApi(normalizedUrl, null, clientId)
+                .googleSignIn(GoogleTokenRequest(idToken))
+            val body = response.requireGoogleLoginBody()
+            if (!body.ok || body.token.isBlank()) {
+                throw TvApiException("The server rejected this Google sign-in")
+            }
+            return TvSession(
+                serverUrl = normalizedUrl,
+                token = body.token,
+                email = body.user?.email.orEmpty()
             )
         }
 
@@ -399,6 +434,24 @@ private fun Response<LoginResponse>.requireLoginBody(): LoginResponse {
     }
     if (!isSuccessful) throw TvApiException("Sign-in failed (${code()})")
     return body() ?: throw TvApiException("The server returned an empty sign-in response")
+}
+
+private fun Response<LoginResponse>.requireGoogleLoginBody(): LoginResponse {
+    if (isSuccessful) {
+        return body() ?: throw TvApiException("The server returned an empty Google sign-in response")
+    }
+
+    val details = errorBody()?.string().orEmpty().lowercase()
+    val message = when {
+        code() == 429 -> "Too many sign-in attempts. Wait a moment and try again"
+        "pending" in details -> "Your account is waiting for administrator approval"
+        "rejected" in details -> "Your account was rejected by the administrator"
+        "not configured" in details -> "Google sign-in is not configured on this MVBar server"
+        code() == 401 -> "Google could not verify this sign-in"
+        code() == 403 -> "This Google account is not allowed to sign in"
+        else -> "Google sign-in failed (${code()})"
+    }
+    throw TvApiException(message)
 }
 
 internal fun normalizeServerUrl(value: String): String {
