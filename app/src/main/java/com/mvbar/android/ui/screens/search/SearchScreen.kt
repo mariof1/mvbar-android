@@ -36,6 +36,8 @@ import com.mvbar.android.data.model.SearchAlbum
 import com.mvbar.android.data.model.SearchArtist
 import com.mvbar.android.data.model.SearchPlaylist
 import com.mvbar.android.data.model.SearchResults
+import com.mvbar.android.data.model.RecentSearchItem
+import com.mvbar.android.data.model.RecentSearchType
 import com.mvbar.android.data.model.Episode
 import com.mvbar.android.data.model.Podcast
 import com.mvbar.android.ui.components.ArtworkImage
@@ -48,7 +50,13 @@ fun SearchScreen(
     results: SearchResults?,
     isLoading: Boolean,
     currentTrackId: Int?,
+    recentSearches: List<RecentSearchItem>,
+    recentSearchesLoading: Boolean,
     onSearch: (String) -> Unit,
+    onLoadRecentSearches: () -> Unit,
+    onRecentSearchClick: (RecentSearchItem) -> Unit,
+    onRemoveRecentSearch: (RecentSearchItem) -> Unit,
+    onClearRecentSearches: () -> Unit,
     onPlayTrack: (Track, List<Track>) -> Unit,
     onArtistClick: (SearchArtist) -> Unit,
     onAlbumsSectionClick: ((SearchArtist) -> Unit)? = null,
@@ -71,7 +79,10 @@ fun SearchScreen(
 
     BackHandler(onBack = onClose)
 
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        onLoadRecentSearches()
+    }
 
     Column(
         modifier = Modifier
@@ -265,8 +276,41 @@ fun SearchScreen(
                     Text("Try a different search term", style = MaterialTheme.typography.bodySmall, color = OnSurfaceSubtle)
                 }
             }
+        } else if (!hasQuery && recentSearchesLoading && recentSearches.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(28.dp))
+            }
+        } else if (!hasQuery && recentSearches.isNotEmpty()) {
+            LazyColumn(contentPadding = PaddingValues(bottom = 140.dp)) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, end = 10.dp, top = 8.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Recent searches",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = OnSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onClearRecentSearches) {
+                            Text("Clear all", color = OnSurfaceDim)
+                        }
+                    }
+                }
+                items(recentSearches, key = { it.stableKey }) { recent ->
+                    RecentSearchRow(
+                        item = recent,
+                        onClick = { onRecentSearchClick(recent) },
+                        onRemove = { onRemoveRecentSearch(recent) }
+                    )
+                }
+            }
         } else if (!hasQuery) {
-            // Initial state
+            // Initial state when no result has been selected yet.
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
@@ -277,9 +321,86 @@ fun SearchScreen(
                     Spacer(Modifier.height(16.dp))
                     Text("Search your library", style = MaterialTheme.typography.titleMedium, color = OnSurfaceDim)
                     Spacer(Modifier.height(4.dp))
-                    Text("Find songs, artists, albums, and podcasts", style = MaterialTheme.typography.bodySmall, color = OnSurfaceSubtle)
+                    Text("Items you open from search will appear here", style = MaterialTheme.typography.bodySmall, color = OnSurfaceSubtle)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RecentSearchRow(
+    item: RecentSearchItem,
+    onClick: () -> Unit,
+    onRemove: () -> Unit
+) {
+    val artistShape = item.itemType == RecentSearchType.ARTIST
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(start = 20.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(if (artistShape) CircleShape else RoundedCornerShape(10.dp))
+                .background(SurfaceVariantDark),
+            contentAlignment = Alignment.Center
+        ) {
+            if (artistShape) {
+                Text(
+                    getInitials(item.title),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = OnSurface
+                )
+            } else {
+                val icon = when (item.itemType) {
+                    RecentSearchType.PODCAST, RecentSearchType.PODCAST_EPISODE -> Icons.Filled.Podcasts
+                    RecentSearchType.PLAYLIST -> Icons.AutoMirrored.Filled.QueueMusic
+                    else -> Icons.Filled.MusicNote
+                }
+                Icon(icon, null, tint = OnSurfaceDim, modifier = Modifier.size(21.dp))
+            }
+            ApiClient.absoluteUrl(item.imageUrl)?.let { artworkUrl ->
+                AsyncImage(
+                    model = artworkUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                item.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = OnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            item.subtitle?.takeIf { it.isNotBlank() }?.let { subtitle ->
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        IconButton(onClick = onRemove) {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = "Remove ${item.title} from recent searches",
+                tint = OnSurfaceSubtle,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
@@ -378,11 +499,12 @@ private fun ArtistSearchRow(artist: SearchArtist, onClick: () -> Unit, onLongPre
                 fontWeight = FontWeight.Bold,
                 color = OnSurface
             )
-            if (artist.artPath != null) {
-                val url = ApiClient.artPathUrl(artist.artPath) +
-                    (artist.artHash?.let { "?h=$it" } ?: "")
+            val artworkUrl = artist.artPath?.let { path ->
+                ApiClient.artPathUrl(path) + (artist.artHash?.let { "?h=$it" } ?: "")
+            } ?: artist.artTrackId?.let(ApiClient::trackArtUrl)
+            if (artworkUrl != null) {
                 AsyncImage(
-                    model = url, contentDescription = null,
+                    model = artworkUrl, contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )

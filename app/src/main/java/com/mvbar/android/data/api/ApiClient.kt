@@ -49,6 +49,12 @@ object ApiClient {
     fun getBaseUrl(): String = baseUrl
     fun getToken(): String? = authToken
 
+    fun absoluteUrl(path: String?): String? {
+        val value = path?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (value.startsWith("https://") || value.startsWith("http://")) return value
+        return baseUrl.trimEnd('/') + "/" + value.trimStart('/')
+    }
+
     /** Force rebuild of the HTTP client (call after toggling debug mode) */
     fun rebuild() { _api = null }
 

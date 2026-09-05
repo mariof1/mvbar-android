@@ -1,27 +1,16 @@
 package com.mvbar.android.ui.screens.home
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -30,64 +19,64 @@ import com.mvbar.android.data.model.RecBucket
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.ui.LocalIsOnline
-import com.mvbar.android.ui.components.ArtGrid
 import com.mvbar.android.ui.components.BucketCard
 import com.mvbar.android.ui.components.ErrorMessage
-import com.mvbar.android.ui.components.TrackListItem
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.HomeState
 
 @Composable
 fun HomeScreen(
     state: HomeState,
-    currentTrackId: Int?,
-    favoriteIds: Set<Int> = emptySet(),
     onPlayTrack: (Track, List<Track>) -> Unit,
-    onAlbumClick: (String) -> Unit,
     onRefresh: () -> Unit,
     onInitialLoad: () -> Unit = onRefresh,
-    onToggleFavorite: ((Int) -> Unit)? = null,
-    onTrackLongPress: ((Track) -> Unit)? = null
+    feedbackBusy: Boolean = false,
+    onHideBucket: (RecBucket) -> Unit = {},
+    onRestoreHiddenBuckets: () -> Unit = {}
 ) {
     LaunchedEffect(Unit) { onInitialLoad() }
+    val isOnline = LocalIsOnline.current
 
-    var selectedBucket by remember { mutableStateOf<RecBucket?>(null) }
+    var detailsBucket by remember { mutableStateOf<RecBucket?>(null) }
 
-    // Swipe back from bucket detail returns to home content
-    BackHandler(enabled = selectedBucket != null) {
-        selectedBucket = null
-    }
+    HomeContent(
+        state = state,
+        onPlayTrack = onPlayTrack,
+        onBucketDetails = { detailsBucket = it },
+        onRefresh = onRefresh,
+        feedbackBusy = feedbackBusy,
+        onRestoreHiddenBuckets = onRestoreHiddenBuckets
+    )
 
-    AnimatedContent(
-        targetState = selectedBucket,
-        transitionSpec = {
-            slideInHorizontally { it } + fadeIn() togetherWith
-                    slideOutHorizontally { -it } + fadeOut()
-        },
-        label = "bucket_detail"
-    ) { bucket ->
-        if (bucket != null) {
-            BucketDetailView(
-                bucket = bucket,
-                currentTrackId = currentTrackId,
-                favoriteIds = favoriteIds,
-                onPlayTrack = onPlayTrack,
-                onToggleFavorite = onToggleFavorite,
-                onTrackLongPress = onTrackLongPress,
-                onBack = { selectedBucket = null }
-            )
-        } else {
-            HomeContent(
-                state = state,
-                currentTrackId = currentTrackId,
-                favoriteIds = favoriteIds,
-                onPlayTrack = onPlayTrack,
-                onBucketClick = { selectedBucket = it },
-                onAlbumClick = onAlbumClick,
-                onRefresh = onRefresh,
-                onToggleFavorite = onToggleFavorite
-            )
-        }
+    detailsBucket?.let { bucket ->
+        AlertDialog(
+            onDismissRequest = { detailsBucket = null },
+            title = { Text(bucket.name) },
+            text = {
+                Text(
+                    bucket.reason
+                        ?: bucket.subtitle
+                        ?: "Selected from your listening activity and music library."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        detailsBucket = null
+                        onHideBucket(bucket)
+                    },
+                    enabled = isOnline && !feedbackBusy
+                ) {
+                    Text("Hide this mix", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { detailsBucket = null }) {
+                    Text("Keep this mix")
+                }
+            },
+            containerColor = SurfaceElevated
+        )
     }
 }
 
@@ -95,13 +84,11 @@ fun HomeScreen(
 @Composable
 private fun HomeContent(
     state: HomeState,
-    currentTrackId: Int?,
-    favoriteIds: Set<Int> = emptySet(),
     onPlayTrack: (Track, List<Track>) -> Unit,
-    onBucketClick: (RecBucket) -> Unit,
-    onAlbumClick: (String) -> Unit,
+    onBucketDetails: (RecBucket) -> Unit,
     onRefresh: () -> Unit,
-    onToggleFavorite: ((Int) -> Unit)? = null
+    feedbackBusy: Boolean,
+    onRestoreHiddenBuckets: () -> Unit
 ) {
     val pullRefreshState = rememberPullToRefreshState()
     val isOnline = LocalIsOnline.current
@@ -140,16 +127,35 @@ private fun HomeContent(
             // Recommendation buckets grid
             if (state.buckets.isNotEmpty()) {
                 item(key = "recommended_header") {
-                    Text(
-                        "Recommended",
-                        style = if (isPhoneLandscape) MaterialTheme.typography.titleMedium
-                               else MaterialTheme.typography.titleLarge,
-                        color = OnSurface,
+                    Row(
                         modifier = Modifier.padding(
                             horizontal = if (isPhoneLandscape) 16.dp else 20.dp,
                             vertical = if (isPhoneLandscape) 4.dp else 8.dp
-                        )
-                    )
+                        ),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Made for you",
+                                style = if (isPhoneLandscape) MaterialTheme.typography.titleMedium
+                                       else MaterialTheme.typography.titleLarge,
+                                color = OnSurface
+                            )
+                            Text(
+                                "A focused mix of favourites, rediscovery, and new finds",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OnSurfaceSubtle,
+                                maxLines = 1
+                            )
+                        }
+                        if (state.serverRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Cyan500,
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    }
                 }
 
                 val rows = state.buckets.chunked(bucketColumns)
@@ -169,12 +175,17 @@ private fun HomeContent(
                             }
                             BucketCard(
                                 bucket = bucket,
-                                onClick = { onBucketClick(bucket) },
+                                onClick = {
+                                    if (bucket.tracks.isNotEmpty()) {
+                                        onPlayTrack(bucket.tracks.first(), bucket.tracks)
+                                    }
+                                },
                                 onPlay = {
                                     if (bucket.tracks.isNotEmpty()) {
                                         onPlayTrack(bucket.tracks.first(), bucket.tracks)
                                     }
                                 },
+                                onDetails = { onBucketDetails(bucket) },
                                 bucketIndex = rowIndex * bucketColumns + colIndex,
                                 compact = isPhoneLandscape,
                                 artAspectRatio = bucketAspectRatio,
@@ -185,6 +196,77 @@ private fun HomeContent(
                         repeat(bucketColumns - row.size) {
                             Spacer(Modifier.weight(1f))
                         }
+                    }
+                }
+            }
+
+            if (state.buckets.isEmpty() && !state.isLoading && !state.serverRefreshing) {
+                item(key = "recommendation_empty") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 28.dp, vertical = 56.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Filled.MusicOff,
+                            contentDescription = null,
+                            tint = OnSurfaceSubtle,
+                            modifier = Modifier.size(52.dp)
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            if (state.hiddenMixCount > 0) "All recommendation mixes are hidden"
+                            else if (state.recommendationProfile == com.mvbar.android.data.model.RecommendationProfile.NEW) "Start listening"
+                            else "No mixes available yet",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = OnSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            if (state.hiddenMixCount > 0) {
+                                "You hid ${state.hiddenMixCount} ${if (state.hiddenMixCount == 1) "mix" else "mixes"}. Restore them whenever you want a fresh selection."
+                            } else if (state.recommendationProfile == com.mvbar.android.data.model.RecommendationProfile.NEW) {
+                                "Play some music and your personalized recommendations will appear here."
+                            } else {
+                                "mvbar could not build a varied mix from the currently available music."
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = OnSurfaceDim
+                        )
+                        if (state.hiddenMixCount > 0) {
+                            Spacer(Modifier.height(18.dp))
+                            Button(
+                                onClick = onRestoreHiddenBuckets,
+                                enabled = isOnline && !feedbackBusy,
+                                colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
+                            ) {
+                                if (feedbackBusy) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = Color.Black,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Text("Restore hidden mixes", color = Color.Black)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (state.buckets.isEmpty() && state.serverRefreshing && !state.isLoading) {
+                item(key = "recommendation_rebuilding") {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 56.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(color = Cyan500)
+                        Spacer(Modifier.height(14.dp))
+                        Text("Building fresh mixes", style = MaterialTheme.typography.titleMedium, color = OnSurface)
+                        Text("This normally takes only a few seconds.", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
                     }
                 }
             }
@@ -202,114 +284,3 @@ private fun HomeContent(
         }
     }
 }
-
-@Composable
-private fun BucketDetailView(
-    bucket: RecBucket,
-    currentTrackId: Int?,
-    favoriteIds: Set<Int> = emptySet(),
-    onPlayTrack: (Track, List<Track>) -> Unit,
-    onToggleFavorite: ((Int) -> Unit)? = null,
-    onTrackLongPress: ((Track) -> Unit)? = null,
-    onBack: () -> Unit
-) {
-    val configuration = LocalConfiguration.current
-    val isOnline = LocalIsOnline.current
-    val canPlayAny = remember(isOnline, bucket.tracks) {
-        isOnline || bucket.tracks.any { it.id > 0 && AudioCacheManager.isTrackCached(it.id) }
-    }
-    val isPhoneLandscape = configuration.smallestScreenWidthDp < 600 &&
-            configuration.screenWidthDp > configuration.screenHeightDp
-    val headerHeight = if (isPhoneLandscape) 160.dp else 280.dp
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 140.dp)
-    ) {
-        // Header with art grid
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(headerHeight)
-            ) {
-                ArtGrid(artPaths = bucket.artPaths)
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, BackgroundDark),
-                                startY = 80f
-                            )
-                        )
-                )
-
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.statusBarsPadding().padding(8.dp)
-                        .size(40.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurface)
-                }
-
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(20.dp)
-                ) {
-                    Text(
-                        bucket.name,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = OnSurface
-                    )
-                    if (!bucket.subtitle.isNullOrBlank()) {
-                        Text(
-                            bucket.subtitle,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = OnSurfaceDim
-                        )
-                    }
-                    Text(
-                        "${bucket.tracks.size} songs",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceSubtle
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            if (bucket.tracks.isNotEmpty()) {
-                                onPlayTrack(bucket.tracks.first(), bucket.tracks)
-                            }
-                        },
-                        enabled = canPlayAny,
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Cyan500)
-                    ) {
-                        Icon(Icons.Filled.PlayArrow, null, tint = Color.Black)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Play All", color = Color.Black, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-        }
-
-        // Track list
-        itemsIndexed(bucket.tracks) { index, track ->
-            val trackWithFav = track.copy(isFavorite = track.id in favoriteIds)
-            TrackListItem(
-                track = trackWithFav,
-                index = index,
-                isPlaying = track.id == currentTrackId,
-                onPlay = { onPlayTrack(track, bucket.tracks) },
-                onFavorite = onToggleFavorite?.let { { it(track.id) } },
-                onMore = onTrackLongPress?.let { { it(track) } },
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
-        }
-    }
-}
-

@@ -34,10 +34,15 @@ import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Artist
 import com.mvbar.android.data.model.Playlist
+import com.mvbar.android.data.model.RecentSearchSelection
+import com.mvbar.android.data.model.RecentSearchType
+import com.mvbar.android.data.model.SearchAlbum
 import com.mvbar.android.data.model.SearchArtist
+import com.mvbar.android.data.model.SearchPlaylist
 import com.mvbar.android.data.model.SmartPlaylistFilters
 import com.mvbar.android.data.model.SuggestResponse
 import com.mvbar.android.data.model.Track
+import com.mvbar.android.data.model.Podcast
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.player.PlayerState
@@ -166,6 +171,8 @@ fun MainScreen(
     val isOnline by NetworkMonitor.isOnline.collectAsState()
 
     val homeState by mainVm.homeState.collectAsState()
+    val recommendationFeedbackBusy by mainVm.recommendationFeedbackBusy.collectAsState()
+    val recommendationTuningCount by mainVm.recommendationTuningCount.collectAsState()
     val favorites by mainVm.favorites.collectAsState()
     val favoriteIds by mainVm.favoriteIds.collectAsState()
     val favoritesLoading by mainVm.favoritesLoading.collectAsState()
@@ -179,6 +186,8 @@ fun MainScreen(
     val smartPlaylists by mainVm.smartPlaylists.collectAsState()
     val searchResults by mainVm.searchResults.collectAsState()
     val searchLoading by mainVm.searchLoading.collectAsState()
+    val recentSearches by mainVm.recentSearches.collectAsState()
+    val recentSearchesLoading by mainVm.recentSearchesLoading.collectAsState()
     val hasMoreSearch by mainVm.hasMoreSearch.collectAsState()
     val isLoadingMoreSearch by mainVm.isLoadingMoreSearch.collectAsState()
     val browseState by browseVm.state.collectAsState()
@@ -748,6 +757,10 @@ fun MainScreen(
                                 onShare = {
                                     playerState.currentTrack?.let(openTrackShare)
                                 },
+                                onRecommendationFeedback = if (isOnline && playerState.currentTrack?.recommendationBucketKey != null) {
+                                    { action -> mainVm.submitRecommendationFeedback(action) }
+                                } else null,
+                                recommendationFeedbackBusy = recommendationFeedbackBusy,
                                 onTap = { showNowPlaying = true },
                                 onDismiss = { mainVm.playerManager.clearQueue() }
                             )
@@ -824,21 +837,12 @@ fun MainScreen(
                 composable("home") {
                     HomeScreen(
                         state = homeState,
-                        currentTrackId = currentTrackId,
-                        favoriteIds = favoriteIds,
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
-                        onAlbumClick = { name ->
-                            DebugLog.i("Nav", "Home album click: '$name'")
-                            try {
-                                navController.navigate("album?name=${Uri.encode(name)}")
-                            } catch (e: Exception) {
-                                DebugLog.e("Nav", "Album navigate failed", e)
-                            }
-                        },
                         onRefresh = { mainVm.loadHome(isRefresh = true) },
                         onInitialLoad = { mainVm.loadHome(isRefresh = false) },
-                        onToggleFavorite = { mainVm.toggleFavorite(it) },
-                        onTrackLongPress = { contextTrack = it }
+                        feedbackBusy = recommendationFeedbackBusy,
+                        onHideBucket = { mainVm.hideRecommendationBucket(it) },
+                        onRestoreHiddenBuckets = { mainVm.restoreHiddenRecommendationBuckets() }
                     )
                 }
 
@@ -1355,7 +1359,11 @@ fun MainScreen(
                 composable("settings") {
                     SettingsScreen(
                         onLogout = onLogout,
-                        onBrowseCache = { navController.navigate("cache-browser") }
+                        onBrowseCache = { navController.navigate("cache-browser") },
+                        recommendationTuningCount = recommendationTuningCount,
+                        recommendationFeedbackBusy = recommendationFeedbackBusy,
+                        onLoadRecommendationTuning = { mainVm.loadRecommendationFeedback() },
+                        onResetRecommendationTuning = { mainVm.resetRecommendationFeedback() }
                     )
                 }
 
@@ -1409,6 +1417,10 @@ fun MainScreen(
                                 onShare = {
                                     playerState.currentTrack?.let(openTrackShare)
                                 },
+                                onRecommendationFeedback = if (isOnline && playerState.currentTrack?.recommendationBucketKey != null) {
+                                    { action -> mainVm.submitRecommendationFeedback(action) }
+                                } else null,
+                                recommendationFeedbackBusy = recommendationFeedbackBusy,
                                 onTap = { showNowPlaying = true },
                                 onDismiss = { mainVm.playerManager.clearQueue() }
                             )
@@ -1481,7 +1493,11 @@ fun MainScreen(
                 initialQueueOpen = mainVm.queuePanelOpen,
                 onQueueOpenChanged = { mainVm.queuePanelOpen = it },
                 onSearch = { showNowPlaying = false; showSearch = true },
-                onAddToPlaylist = playerState.currentTrack?.let { t -> { showAddToPlaylist = t } }
+                onAddToPlaylist = playerState.currentTrack?.let { t -> { showAddToPlaylist = t } },
+                onRecommendationFeedback = if (isOnline && playerState.currentTrack?.recommendationBucketKey != null) {
+                    { action -> mainVm.submitRecommendationFeedback(action) }
+                } else null,
+                recommendationFeedbackBusy = recommendationFeedbackBusy
             )
         }
 
@@ -1504,43 +1520,86 @@ fun MainScreen(
                     }
                 }
             }
+            val openSearchAlbum: (SearchAlbum) -> Unit = { album ->
+                showSearch = false
+                mainVm.clearSearch()
+                try { navController.navigate("album?name=${Uri.encode(album.album)}") }
+                catch (_: Exception) {}
+            }
+            val openSearchPlaylist: (SearchPlaylist) -> Unit = { playlist ->
+                showSearch = false
+                mainVm.clearSearch()
+                if (playlist.kind == "smart") {
+                    mainVm.loadSmartPlaylistDetail(playlist.id)
+                    navController.navigate("smart-playlist/${playlist.id}")
+                } else {
+                    val target = playlists.find { it.id == playlist.id }
+                        ?: Playlist(id = playlist.id, name = playlist.name)
+                    mainVm.loadPlaylistDetail(target)
+                    navController.navigate("playlist/${playlist.id}")
+                }
+            }
+            val openSearchPodcast: (Podcast) -> Unit = { podcast ->
+                showSearch = false
+                mainVm.clearSearch()
+                podcastVm.loadPodcastDetail(podcast.id)
+                navController.navigate("podcast/${podcast.id}") {
+                    launchSingleTop = true
+                }
+            }
             SearchScreen(
                 results = searchResults,
                 isLoading = searchLoading,
                 currentTrackId = currentTrackId,
+                recentSearches = recentSearches,
+                recentSearchesLoading = recentSearchesLoading,
                 onSearch = { mainVm.search(it) },
-                onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
-                onArtistClick = openSearchArtist,
-                onAlbumsSectionClick = openSearchArtist,
-                onAlbumClick = { album ->
-                    showSearch = false
-                    mainVm.clearSearch()
-                    try { navController.navigate("album?name=${Uri.encode(album.album)}") }
-                    catch (_: Exception) {}
-                },
-                onPlaylistClick = { playlist ->
-                    showSearch = false
-                    mainVm.clearSearch()
-                    if (playlist.kind == "smart") {
-                        mainVm.loadSmartPlaylistDetail(playlist.id)
-                        navController.navigate("smart-playlist/${playlist.id}")
-                    } else {
-                        playlists.find { it.id == playlist.id }?.let { p ->
-                            mainVm.loadPlaylistDetail(p)
-                            navController.navigate("playlist/${playlist.id}")
+                onLoadRecentSearches = { mainVm.loadRecentSearches() },
+                onRecentSearchClick = { recent ->
+                    mainVm.rememberRecentSearch(recent.asRequest())
+                    when (recent.itemType) {
+                        RecentSearchType.TRACK -> recent.asTrack()?.let { track ->
+                            showSearch = false
+                            mainVm.clearSearch()
+                            mainVm.playTrack(track, listOf(track))
+                        }
+                        RecentSearchType.ARTIST -> recent.asArtist()?.let(openSearchArtist)
+                        RecentSearchType.ALBUM -> recent.asAlbum()?.let(openSearchAlbum)
+                        RecentSearchType.PLAYLIST -> recent.asPlaylist()?.let(openSearchPlaylist)
+                        RecentSearchType.PODCAST -> recent.asPodcast()?.let(openSearchPodcast)
+                        RecentSearchType.PODCAST_EPISODE -> recent.asEpisode()?.let { episode ->
+                            showSearch = false
+                            mainVm.clearSearch()
+                            podcastVm.playEpisode(episode, listOf(episode))
                         }
                     }
                 },
+                onRemoveRecentSearch = { mainVm.removeRecentSearch(it) },
+                onClearRecentSearches = { mainVm.clearRecentSearches() },
+                onPlayTrack = { track, queue ->
+                    mainVm.rememberRecentSearch(RecentSearchSelection.track(track))
+                    mainVm.playTrack(track, queue)
+                },
+                onArtistClick = { artist ->
+                    mainVm.rememberRecentSearch(RecentSearchSelection.artist(artist))
+                    openSearchArtist(artist)
+                },
+                onAlbumsSectionClick = openSearchArtist,
+                onAlbumClick = { album ->
+                    mainVm.rememberRecentSearch(RecentSearchSelection.album(album))
+                    openSearchAlbum(album)
+                },
+                onPlaylistClick = { playlist ->
+                    mainVm.rememberRecentSearch(RecentSearchSelection.playlist(playlist))
+                    openSearchPlaylist(playlist)
+                },
                 onPodcastClick = { podcast ->
-                    showSearch = false
-                    mainVm.clearSearch()
-                    podcastVm.loadPodcastDetail(podcast.id)
-                    navController.navigate("podcast/${podcast.id}") {
-                        launchSingleTop = true
-                    }
+                    mainVm.rememberRecentSearch(RecentSearchSelection.podcast(podcast))
+                    openSearchPodcast(podcast)
                 },
                 onPodcastEpisodeClick = { episode ->
                     val episodeQueue = searchResults?.podcastEpisodes?.takeIf { it.isNotEmpty() } ?: listOf(episode)
+                    mainVm.rememberRecentSearch(RecentSearchSelection.episode(episode))
                     showSearch = false
                     mainVm.clearSearch()
                     podcastVm.playEpisode(episode, episodeQueue)
@@ -1548,6 +1607,7 @@ fun MainScreen(
                 onTrackLongPress = { contextTrack = it },
                 onArtistLongPress = { sa ->
                     val artUrl = sa.artPath?.let { ApiClient.artPathUrl(it) + (sa.artHash?.let { h -> "?h=$h" } ?: "") }
+                        ?: sa.artTrackId?.let { ApiClient.trackArtUrl(it) }
                     contextCollection = CollectionRef.ArtistById(sa.id, sa.name, artUrl, sa.trackCount, sa.albumCount)
                 },
                 onAlbumLongPress = { sb ->

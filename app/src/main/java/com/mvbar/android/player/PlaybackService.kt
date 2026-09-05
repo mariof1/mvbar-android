@@ -40,6 +40,7 @@ import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.local.entity.toModel
 import com.mvbar.android.data.model.Podcast
+import com.mvbar.android.data.model.RecommendationPlaybackExtras
 import com.mvbar.android.data.model.SearchResults
 import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.repository.AuthRepository
@@ -69,6 +70,9 @@ class PlaybackService : MediaLibraryService() {
     private var lastRecordedPlayTrackId: Int? = null
     private var previousTrackId: Int? = null
     private var previousTrackDurationMs: Long = 0L
+    private var previousTrackPositionMs: Long = 0L
+    private var previousRecommendationSlateId: String? = null
+    private var previousRecommendationBucketKey: String? = null
     /** Pending resume position for podcast/audiobook episodes */
     private var pendingResumePositionMs: Long = 0L
     /** Job for periodic episode progress saving */
@@ -797,12 +801,24 @@ class PlaybackService : MediaLibraryService() {
                 if (prevId != null && prevId > 0 &&
                     reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK
                 ) {
-                    val posMs = p.currentPosition
+                    val posMs = previousTrackPositionMs
                     val durMs = previousTrackDurationMs
-                    val pct = if (durMs > 0) (posMs.toDouble() / durMs * 100).toInt() else 0
+                    val completion = if (durMs > 0) {
+                        (posMs.toDouble() / durMs.toDouble()).coerceIn(0.0, 1.0)
+                    } else 0.0
                     ActivityQueue.enqueue(
                         ActivityQueue.ACTION_SKIP, prevId,
-                        """{"pct":$pct}"""
+                        JSONObject()
+                            .put("pct", completion)
+                            .put("currentMs", posMs)
+                            .put("durationMs", durMs)
+                            .put("listenedMs", posMs)
+                            .put("completionPct", completion)
+                            .apply {
+                                previousRecommendationSlateId?.let { put("slateId", it) }
+                                previousRecommendationBucketKey?.let { put("bucketKey", it) }
+                            }
+                            .toString()
                     )
                 }
 
@@ -818,6 +834,12 @@ class PlaybackService : MediaLibraryService() {
                 previousTrackId = newTrackId
                 previousTrackDurationMs = item?.mediaMetadata?.extras?.getLong("duration_ms", 0L)
                     ?: p.duration.takeIf { it > 0 } ?: 0L
+                previousTrackPositionMs = 0L
+                previousRecommendationSlateId = item?.mediaMetadata?.extras
+                    ?.getString(RecommendationPlaybackExtras.SLATE_ID)
+                previousRecommendationBucketKey = item?.mediaMetadata?.extras
+                    ?.getString(RecommendationPlaybackExtras.BUCKET_KEY)
+                lastRecordedPlayTrackId = null
 
                 // --- Episode resume: set pending seek position ---
                 val resumeMs = item?.mediaMetadata?.extras?.getLong("resume_position_ms", 0L) ?: 0L
@@ -1750,10 +1772,21 @@ class PlaybackService : MediaLibraryService() {
             buckets.mapIndexed { index, bucket ->
                 val artUri = if (bucket.artPaths.size > 1) {
                     // Composite 2×2 grid from up to 4 artworks
-                    val fullUrls = bucket.artPaths.take(4).map { ApiClient.artPathUrl(it) }
+                    val fullUrls = bucket.artPaths.take(4).mapIndexed { artIndex, path ->
+                        val base = ApiClient.artPathUrl(path)
+                        bucket.artHashes.getOrNull(artIndex)?.takeIf { it.isNotBlank() }
+                            ?.let { "$base?h=$it" }
+                            ?: base
+                    }
                     ArtworkProvider.buildGridUri(fullUrls)
                 } else {
-                    bucket.artPaths.firstOrNull()?.let { ArtworkProvider.buildUri(ApiClient.artPathUrl(it)) }
+                    bucket.artPaths.firstOrNull()?.let { path ->
+                        val base = ApiClient.artPathUrl(path)
+                        val url = bucket.artHashes.firstOrNull()?.takeIf { it.isNotBlank() }
+                            ?.let { "$base?h=$it" }
+                            ?: base
+                        ArtworkProvider.buildUri(url)
+                    }
                 }
                 MediaItem.Builder()
                     .setMediaId("bucket:$index")
@@ -1773,7 +1806,7 @@ class PlaybackService : MediaLibraryService() {
         return apiOrCache("For You",
             apiCall = {
                 val response = ApiClient.api.getRecommendations()
-                buildBucketItems(response.buckets)
+                buildBucketItems(response.buckets.map { it.withPlaybackContext(response.slateId) })
             },
             cacheCall = {
                 val cached = db.recommendationDao().getAll().map { it.toModel() }
@@ -1791,8 +1824,8 @@ class PlaybackService : MediaLibraryService() {
         return try {
             kotlinx.coroutines.withTimeout(5_000) {
                 val response = ApiClient.api.getRecommendations()
-                cachedBuckets = response.buckets
-                response.buckets.getOrNull(index)?.tracks?.map { trackToMediaItem(it) } ?: emptyList()
+                cachedBuckets = response.buckets.map { it.withPlaybackContext(response.slateId) }
+                cachedBuckets.getOrNull(index)?.tracks?.map { trackToMediaItem(it) } ?: emptyList()
             }
         } catch (e: Exception) {
             DebugLog.w("Auto", "Bucket tracks failed (${e.message})")
@@ -2456,6 +2489,12 @@ class PlaybackService : MediaLibraryService() {
         val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) }
             ?: ApiClient.trackArtUrl(track.id)
         val streamUrl = ApiClient.streamUrl(track.id)
+        val extras = Bundle().apply {
+            track.durationMs?.toLong()?.takeIf { it > 0 }?.let { putLong("duration_ms", it) }
+            track.recommendationSlateId?.let { putString(RecommendationPlaybackExtras.SLATE_ID, it) }
+            track.recommendationBucketKey?.let { putString(RecommendationPlaybackExtras.BUCKET_KEY, it) }
+            track.recommendationPosition?.let { putInt(RecommendationPlaybackExtras.POSITION, it) }
+        }
         return MediaItem.Builder()
             .setMediaId(track.id.toString())
             .setUri(streamUrl)
@@ -2468,6 +2507,7 @@ class PlaybackService : MediaLibraryService() {
                     .setIsBrowsable(false)
                     .setIsPlayable(true)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    .setExtras(extras)
                     .build()
             )
             .build()
@@ -2486,16 +2526,34 @@ class PlaybackService : MediaLibraryService() {
 
     private fun maybeRecordCurrentTrackAsPlayed(player: Player) {
         val trackId = player.currentMediaItem?.mediaId?.toIntOrNull() ?: return
-        if (trackId <= 0 || lastRecordedPlayTrackId == trackId) return
+        if (trackId <= 0) return
+
+        val positionMs = player.currentPosition.coerceAtLeast(0L)
+        if (previousTrackId == trackId) previousTrackPositionMs = positionMs
+        if (lastRecordedPlayTrackId == trackId) return
 
         val durationMs = player.duration.takeIf { it > 0 }
             ?: player.currentMediaItem?.mediaMetadata?.extras?.getLong("duration_ms", 0L)?.takeIf { it > 0 }
             ?: return
-        val positionMs = player.currentPosition.coerceAtLeast(0L)
 
         if (positionMs.toDouble() / durationMs.toDouble() >= PLAYED_THRESHOLD_PCT) {
             lastRecordedPlayTrackId = trackId
-            ActivityQueue.enqueue(ActivityQueue.ACTION_PLAY, trackId)
+            val completion = (positionMs.toDouble() / durationMs.toDouble()).coerceIn(0.0, 1.0)
+            val extras = player.currentMediaItem?.mediaMetadata?.extras
+            ActivityQueue.enqueue(
+                ActivityQueue.ACTION_PLAY,
+                trackId,
+                JSONObject()
+                    .put("currentMs", positionMs)
+                    .put("durationMs", durationMs)
+                    .put("listenedMs", positionMs)
+                    .put("completionPct", completion)
+                    .apply {
+                        extras?.getString(RecommendationPlaybackExtras.SLATE_ID)?.let { put("slateId", it) }
+                        extras?.getString(RecommendationPlaybackExtras.BUCKET_KEY)?.let { put("bucketKey", it) }
+                    }
+                    .toString()
+            )
         }
     }
 

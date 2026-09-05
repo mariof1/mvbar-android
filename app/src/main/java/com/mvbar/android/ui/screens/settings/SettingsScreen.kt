@@ -33,6 +33,7 @@ import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.data.sync.SyncManager
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
+import com.mvbar.android.ui.LocalIsOnline
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.update.AppUpdateInfo
 import com.mvbar.android.update.AppUpdateManager
@@ -57,8 +58,16 @@ private const val UPDATE_AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
+fun SettingsScreen(
+    onLogout: () -> Unit,
+    onBrowseCache: () -> Unit = {},
+    recommendationTuningCount: Int = 0,
+    recommendationFeedbackBusy: Boolean = false,
+    onLoadRecommendationTuning: () -> Unit = {},
+    onResetRecommendationTuning: () -> Unit = {}
+) {
     val context = LocalContext.current
+    val isOnline = LocalIsOnline.current
     val scope = rememberCoroutineScope()
     val authRepository = remember(context) { AuthRepository(context.applicationContext) }
     var currentUser by remember { mutableStateOf<User?>(null) }
@@ -72,6 +81,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showSignOutDialog by remember { mutableStateOf(false) }
+    var showResetRecommendationDialog by remember { mutableStateOf(false) }
 
     // Cache settings
     var cacheSizeMb by remember { mutableLongStateOf(AudioCacheManager.getCacheSizeMb()) }
@@ -111,6 +121,7 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
     }
 
     LaunchedEffect(Unit) {
+        onLoadRecommendationTuning()
         autoResume = AaPreferences.getAutoResume(context)
         categories = AaPreferences.getCategoryOrder(context)
         try {
@@ -289,6 +300,20 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
         )
     }
 
+    if (showResetRecommendationDialog) {
+        SettingsConfirmationDialog(
+            title = "Reset recommendation tuning?",
+            message = "This removes your More like this, Less from this artist, hidden mix, and Don’t recommend choices. Listening history and favorites are not changed.",
+            confirmLabel = "Reset tuning",
+            destructive = true,
+            onConfirm = {
+                showResetRecommendationDialog = false
+                onResetRecommendationTuning()
+            },
+            onDismiss = { showResetRecommendationDialog = false }
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier
@@ -375,6 +400,33 @@ fun SettingsScreen(onLogout: () -> Unit, onBrowseCache: () -> Unit = {}) {
                         onValueChangeFinished = { AudioCacheManager.setPrefetchCount(prefetchCount) },
                         valueRange = 0f..5f,
                         steps = 4
+                    )
+                    SettingsDivider()
+                    SettingsInfoRow(
+                        icon = Icons.Filled.Tune,
+                        title = "Recommendation tuning",
+                        subtitle = if (recommendationTuningCount == 0) {
+                            "No manual tuning saved"
+                        } else {
+                            "$recommendationTuningCount saved ${if (recommendationTuningCount == 1) "choice" else "choices"}"
+                        },
+                        trailing = {
+                            OutlinedButton(
+                                onClick = { showResetRecommendationDialog = true },
+                                enabled = isOnline && recommendationTuningCount > 0 && !recommendationFeedbackBusy,
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                if (recommendationFeedbackBusy) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Text("Reset")
+                                }
+                            }
+                        }
                     )
                 }
             }

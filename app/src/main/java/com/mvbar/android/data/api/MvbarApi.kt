@@ -121,13 +121,16 @@ interface MvbarApi {
     ): HistoryResponse
 
     @POST("api/history/{trackId}")
-    suspend fun recordPlay(@Path("trackId") trackId: Int): Response<Unit>
+    suspend fun recordPlay(
+        @Path("trackId") trackId: Int,
+        @Body signal: PlaybackSignalRequest = PlaybackSignalRequest()
+    ): Response<Unit>
 
     // Stats
     @POST("api/stats/skip/{trackId}")
     suspend fun recordSkip(
         @Path("trackId") trackId: Int,
-        @Body body: Map<String, Int>? = null
+        @Body signal: PlaybackSignalRequest = PlaybackSignalRequest()
     ): Response<Unit>
 
     // Playlists
@@ -210,9 +213,38 @@ interface MvbarApi {
         @Query("offset") offset: Int = 0
     ): SearchResults
 
+    @GET("api/search/recent")
+    suspend fun getRecentSearches(@Query("limit") limit: Int = 10): RecentSearchesResponse
+
+    @POST("api/search/recent")
+    suspend fun saveRecentSearch(@Body request: RecentSearchRequest): RecentSearchItem
+
+    @DELETE("api/search/recent")
+    suspend fun removeRecentSearch(
+        @Query("type") itemType: String,
+        @Query("key") itemKey: String
+    ): RecentSearchActionResponse
+
+    @DELETE("api/search/recent")
+    suspend fun clearRecentSearches(): RecentSearchActionResponse
+
     // Recommendations
     @GET("api/recommendations")
     suspend fun getRecommendations(): RecommendationsResponse
+
+    @POST("api/recommendations/feedback")
+    suspend fun sendRecommendationFeedback(
+        @Body request: RecommendationFeedbackRequest
+    ): RecommendationFeedbackResponse
+
+    @GET("api/recommendations/feedback")
+    suspend fun getRecommendationFeedback(): RecommendationPreferencesResponse
+
+    @DELETE("api/recommendations/feedback/all")
+    suspend fun clearAllRecommendationFeedback(): RecommendationResetResponse
+
+    @DELETE("api/recommendations/feedback/hidden-buckets")
+    suspend fun clearHiddenRecommendationBuckets(): RecommendationResetResponse
 
     // Similar tracks (Last.fm-based auto-continue)
     @GET("api/similar-tracks/{trackId}")

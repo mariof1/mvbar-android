@@ -7,6 +7,7 @@ import com.mvbar.android.data.local.entity.FavoriteTrackEntity
 import com.mvbar.android.data.model.AudiobookProgressRequest
 import com.mvbar.android.data.model.EpisodePlayedRequest
 import com.mvbar.android.data.model.EpisodeProgressRequest
+import com.mvbar.android.data.model.PlaybackSignalRequest
 import com.mvbar.android.data.model.PodcastSubscribeRequest
 import com.mvbar.android.data.local.entity.PendingActionEntity
 import com.mvbar.android.debug.DebugLog
@@ -156,6 +157,26 @@ object ActivityQueue {
     private fun payloadJson(payload: String?): JSONObject? =
         payload?.let { runCatching { JSONObject(it) }.getOrNull() }
 
+    private fun playbackSignal(payload: JSONObject?): PlaybackSignalRequest {
+        if (payload == null) return PlaybackSignalRequest()
+        fun optionalLong(key: String): Long? =
+            if (payload.has(key) && !payload.isNull(key)) payload.optLong(key) else null
+        fun optionalDouble(key: String): Double? =
+            if (payload.has(key) && !payload.isNull(key)) payload.optDouble(key) else null
+        fun optionalString(key: String): String? = payload.optString(key)
+            .trim()
+            .takeIf { it.isNotEmpty() }
+        return PlaybackSignalRequest(
+            pct = optionalDouble("pct"),
+            currentMs = optionalLong("currentMs"),
+            durationMs = optionalLong("durationMs"),
+            listenedMs = optionalLong("listenedMs"),
+            completionPct = optionalDouble("completionPct"),
+            slateId = optionalString("slateId"),
+            bucketKey = optionalString("bucketKey")
+        )
+    }
+
     /** Drain the queue, sending each action to the server in order. */
     suspend fun flush() {
         val database = db ?: return
@@ -173,11 +194,10 @@ object ActivityQueue {
                     val payloadJson = payloadJson(action.payload)
                     when (action.actionType) {
                         ACTION_PLAY -> {
-                            ApiClient.api.recordPlay(action.trackId)
+                            ApiClient.api.recordPlay(action.trackId, playbackSignal(payloadJson))
                         }
                         ACTION_SKIP -> {
-                            val body = payloadJson?.let { mapOf("pct" to it.optInt("pct", 0)) }
-                            ApiClient.api.recordSkip(action.trackId, body)
+                            ApiClient.api.recordSkip(action.trackId, playbackSignal(payloadJson))
                         }
                         ACTION_ADD_FAVORITE -> {
                             ApiClient.api.addFavorite(action.trackId)

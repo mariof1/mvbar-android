@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.ActivityQueue
 import com.mvbar.android.data.NetworkMonitor
+import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
@@ -26,6 +27,10 @@ data class HomeState(
     val buckets: List<RecBucket> = emptyList(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
+    val serverRefreshing: Boolean = false,
+    val hiddenMixCount: Int = 0,
+    val recommendationProfile: String = RecommendationProfile.NEW,
+    val slateId: String? = null,
     val error: String? = null
 )
 
@@ -39,6 +44,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _homeState = MutableStateFlow(HomeState())
     val homeState: StateFlow<HomeState> = _homeState.asStateFlow()
+
+    private val _recommendationFeedbackBusy = MutableStateFlow(false)
+    val recommendationFeedbackBusy: StateFlow<Boolean> = _recommendationFeedbackBusy.asStateFlow()
+
+    private val _recommendationTuningCount = MutableStateFlow(0)
+    val recommendationTuningCount: StateFlow<Int> = _recommendationTuningCount.asStateFlow()
 
     private val _favorites = MutableStateFlow<List<Track>>(emptyList())
     val favorites: StateFlow<List<Track>> = _favorites.asStateFlow()
@@ -74,6 +85,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val searchLoading: StateFlow<Boolean> = _searchLoading.asStateFlow()
 
     private var searchJob: kotlinx.coroutines.Job? = null
+
+    private val _recentSearches = MutableStateFlow<List<RecentSearchItem>>(emptyList())
+    val recentSearches: StateFlow<List<RecentSearchItem>> = _recentSearches.asStateFlow()
+
+    private val _recentSearchesLoading = MutableStateFlow(false)
+    val recentSearchesLoading: StateFlow<Boolean> = _recentSearchesLoading.asStateFlow()
+
+    private var recentSearchJob: kotlinx.coroutines.Job? = null
+    private var recentSearchSessionToken: String? = null
 
     private companion object {
         const val PAGE_SIZE = 50
@@ -230,42 +250,200 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     cachedRecentBucket?.let { add(it) }
                 }
                 if (displayBuckets.isNotEmpty()) {
-                    _homeState.value = HomeState(buckets = displayBuckets)
+                    _homeState.value = _homeState.value.copy(
+                        buckets = displayBuckets,
+                        isLoading = false
+                    )
                 }
             }
             if (!NetworkMonitor.isOnline.value) {
-                _homeState.value = _homeState.value.copy(isLoading = false, isRefreshing = false)
+                _homeState.value = _homeState.value.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    serverRefreshing = false
+                )
                 homeLoadedOnce = true
                 return@launch
             }
-            // Then fetch recommendation buckets from API.
+            // Then fetch recommendation buckets from API. A stale response means the
+            // server is rebuilding in the background, so retry briefly without making
+            // the user pull to refresh repeatedly.
             try {
                 DebugLog.i("Home", "Loading recommendations...")
-                try {
+                var staleRetries = 0
+                do {
                     val resp = repo.getRecommendations()
+                    val buckets = resp.buckets
+                        .map { it.withPlaybackContext(resp.slateId) }
+                        .withCompleteRecommendationPayloads()
                     try {
-                        repo.cacheRecommendations(resp.buckets)
+                        repo.cacheRecommendations(buckets)
                     } catch (e: Exception) {
                         DebugLog.e("Home", "Failed to cache recommendations", e)
                     }
-                    val buckets = resp.buckets.withCompleteRecommendationPayloads()
-                    DebugLog.i("Home", "Got ${buckets.size} buckets")
-                    _homeState.value = HomeState(buckets = buckets)
-                } catch (e: Exception) {
-                    DebugLog.e("Home", "Failed to load recommendations", e)
-                    _homeState.value = _homeState.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        error = if (_homeState.value.buckets.isEmpty()) "Failed to load: ${e.message}" else null
+                    val rebuilding = resp.stale && resp.refreshing
+                    DebugLog.i("Home", "Got ${buckets.size} buckets; stale=$rebuilding")
+                    _homeState.value = HomeState(
+                        buckets = buckets,
+                        serverRefreshing = rebuilding,
+                        hiddenMixCount = resp.hiddenMixCount,
+                        recommendationProfile = resp.recommendationProfile,
+                        slateId = resp.slateId
                     )
-                }
+                    if (rebuilding && staleRetries < 3) {
+                        staleRetries += 1
+                        delay(5_000)
+                    } else {
+                        break
+                    }
+                } while (true)
                 homeLoadedOnce = true
             } catch (e: Exception) {
                 DebugLog.e("Home", "loadHome failed", e)
                 _homeState.value = _homeState.value.copy(
-                    isLoading = false, isRefreshing = false,
+                    isLoading = false, isRefreshing = false, serverRefreshing = false,
                     error = if (_homeState.value.buckets.isEmpty()) "Failed to load: ${e.message}" else null
                 )
+            }
+        }
+    }
+
+    fun hideRecommendationBucket(bucket: RecBucket) {
+        if (_recommendationFeedbackBusy.value || !NetworkMonitor.isOnline.value) return
+        _recommendationFeedbackBusy.value = true
+        val previous = _homeState.value
+        _homeState.value = previous.copy(
+            buckets = previous.buckets.filterNot { it.key == bucket.key },
+            hiddenMixCount = previous.hiddenMixCount + 1
+        )
+        viewModelScope.launch {
+            try {
+                val result = repo.sendRecommendationFeedback(
+                    RecommendationFeedbackRequest(
+                        action = RecommendationFeedbackAction.HIDE_BUCKET,
+                        bucketKey = bucket.key
+                    )
+                )
+                _homeState.value = _homeState.value.copy(
+                    hiddenMixCount = result.hiddenMixCount ?: _homeState.value.hiddenMixCount
+                )
+                try {
+                    repo.cacheRecommendations(_homeState.value.buckets)
+                } catch (cacheError: Exception) {
+                    DebugLog.e("Recommendations", "Failed to update recommendation cache", cacheError)
+                }
+                com.mvbar.android.ui.components.ToastManager.show(
+                    "Hidden “${bucket.name}”",
+                    com.mvbar.android.ui.components.ToastIcon.SUCCESS
+                )
+            } catch (e: Exception) {
+                DebugLog.e("Recommendations", "Failed to hide ${bucket.key}", e)
+                _homeState.value = previous
+                com.mvbar.android.ui.components.ToastManager.show(
+                    "Could not hide this mix",
+                    com.mvbar.android.ui.components.ToastIcon.ERROR
+                )
+            } finally {
+                _recommendationFeedbackBusy.value = false
+            }
+        }
+    }
+
+    fun restoreHiddenRecommendationBuckets() {
+        if (_recommendationFeedbackBusy.value || !NetworkMonitor.isOnline.value) return
+        _recommendationFeedbackBusy.value = true
+        viewModelScope.launch {
+            try {
+                repo.clearHiddenRecommendationBuckets()
+                _homeState.value = _homeState.value.copy(hiddenMixCount = 0, serverRefreshing = true)
+                com.mvbar.android.ui.components.ToastManager.show(
+                    "Restoring your recommendation mixes",
+                    com.mvbar.android.ui.components.ToastIcon.SUCCESS
+                )
+                loadHome(isRefresh = true)
+            } catch (e: Exception) {
+                DebugLog.e("Recommendations", "Failed to restore hidden mixes", e)
+                _homeState.value = _homeState.value.copy(serverRefreshing = false)
+                com.mvbar.android.ui.components.ToastManager.show(
+                    "Could not restore recommendation mixes",
+                    com.mvbar.android.ui.components.ToastIcon.ERROR
+                )
+            } finally {
+                _recommendationFeedbackBusy.value = false
+            }
+        }
+    }
+
+    fun submitRecommendationFeedback(action: String, track: Track? = playerManager.state.value.currentTrack) {
+        val current = track ?: return
+        val bucketKey = current.recommendationBucketKey ?: return
+        if (_recommendationFeedbackBusy.value || !NetworkMonitor.isOnline.value) return
+        _recommendationFeedbackBusy.value = true
+        viewModelScope.launch {
+            try {
+                repo.sendRecommendationFeedback(
+                    RecommendationFeedbackRequest(
+                        action = action,
+                        trackId = current.id,
+                        artist = current.displayArtist,
+                        bucketKey = bucketKey
+                    )
+                )
+                val message = when (action) {
+                    RecommendationFeedbackAction.MORE_LIKE_THIS -> "We’ll use more music like this"
+                    RecommendationFeedbackAction.LESS_LIKE_ARTIST -> "We’ll play less from ${current.displayArtist}"
+                    RecommendationFeedbackAction.NOT_FOR_ME -> "This track will not be recommended again"
+                    else -> "Recommendation preferences updated"
+                }
+                com.mvbar.android.ui.components.ToastManager.show(
+                    message,
+                    com.mvbar.android.ui.components.ToastIcon.SUCCESS
+                )
+                if (action == RecommendationFeedbackAction.NOT_FOR_ME) playerManager.next()
+                loadRecommendationFeedback()
+            } catch (e: Exception) {
+                DebugLog.e("Recommendations", "Failed to save $action", e)
+                com.mvbar.android.ui.components.ToastManager.show(
+                    "Could not save recommendation feedback",
+                    com.mvbar.android.ui.components.ToastIcon.ERROR
+                )
+            } finally {
+                _recommendationFeedbackBusy.value = false
+            }
+        }
+    }
+
+    fun loadRecommendationFeedback() {
+        if (!NetworkMonitor.isOnline.value) return
+        viewModelScope.launch {
+            try {
+                _recommendationTuningCount.value = repo.getRecommendationFeedback().preferences.size
+            } catch (e: Exception) {
+                DebugLog.e("Recommendations", "Failed to load recommendation tuning", e)
+            }
+        }
+    }
+
+    fun resetRecommendationFeedback() {
+        if (_recommendationFeedbackBusy.value || !NetworkMonitor.isOnline.value) return
+        _recommendationFeedbackBusy.value = true
+        viewModelScope.launch {
+            try {
+                repo.clearAllRecommendationFeedback()
+                _recommendationTuningCount.value = 0
+                com.mvbar.android.ui.components.ToastManager.show(
+                    "Recommendation tuning reset",
+                    com.mvbar.android.ui.components.ToastIcon.SUCCESS
+                )
+                loadHome(isRefresh = true)
+            } catch (e: Exception) {
+                DebugLog.e("Recommendations", "Failed to reset tuning", e)
+                com.mvbar.android.ui.components.ToastManager.show(
+                    "Could not reset recommendation tuning",
+                    com.mvbar.android.ui.components.ToastIcon.ERROR
+                )
+            } finally {
+                _recommendationFeedbackBusy.value = false
             }
         }
     }
@@ -879,6 +1057,85 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 LyricLine(min * 60_000 + sec * 1000 + ms, lyricText)
             }
         }.sortedBy { it.timeMs }
+    }
+
+    private fun putRecentSearchFirst(item: RecentSearchItem) {
+        _recentSearches.value = buildList {
+            add(item)
+            addAll(_recentSearches.value.filterNot { it.stableKey == item.stableKey })
+        }.take(10)
+    }
+
+    private fun ensureRecentSearchSession() {
+        val activeToken = ApiClient.getToken()
+        if (activeToken == recentSearchSessionToken) return
+        recentSearchJob?.cancel()
+        recentSearchSessionToken = activeToken
+        _recentSearches.value = emptyList()
+        _recentSearchesLoading.value = false
+    }
+
+    fun loadRecentSearches() {
+        ensureRecentSearchSession()
+        recentSearchJob?.cancel()
+        if (!NetworkMonitor.isOnline.value) {
+            _recentSearchesLoading.value = false
+            return
+        }
+        recentSearchJob = viewModelScope.launch {
+            _recentSearchesLoading.value = true
+            try {
+                val remote = repo.getRecentSearches(10).searches
+                // The server is authoritative here. In particular, do not merge entries
+                // retained by this Activity after a logout into another user's history.
+                _recentSearches.value = remote.distinctBy { it.stableKey }.take(10)
+            } catch (e: Exception) {
+                // Search remains usable against older servers; optimistic items stay available.
+                DebugLog.e("Search", "Failed to load recent selections", e)
+            } finally {
+                _recentSearchesLoading.value = false
+            }
+        }
+    }
+
+    fun rememberRecentSearch(request: RecentSearchRequest) {
+        ensureRecentSearchSession()
+        putRecentSearchFirst(request.optimisticItem())
+        if (!NetworkMonitor.isOnline.value) return
+        viewModelScope.launch {
+            try {
+                putRecentSearchFirst(repo.saveRecentSearch(request))
+            } catch (e: Exception) {
+                // Keep the optimistic item so recent selections still work during outages.
+                DebugLog.e("Search", "Failed to sync recent selection", e)
+            }
+        }
+    }
+
+    fun removeRecentSearch(item: RecentSearchItem) {
+        ensureRecentSearchSession()
+        _recentSearches.value = _recentSearches.value.filterNot { it.stableKey == item.stableKey }
+        if (!NetworkMonitor.isOnline.value) return
+        viewModelScope.launch {
+            try {
+                repo.removeRecentSearch(item)
+            } catch (e: Exception) {
+                DebugLog.e("Search", "Failed to remove recent selection from server", e)
+            }
+        }
+    }
+
+    fun clearRecentSearches() {
+        ensureRecentSearchSession()
+        _recentSearches.value = emptyList()
+        if (!NetworkMonitor.isOnline.value) return
+        viewModelScope.launch {
+            try {
+                repo.clearRecentSearches()
+            } catch (e: Exception) {
+                DebugLog.e("Search", "Failed to clear recent selections on server", e)
+            }
+        }
     }
 
     fun search(query: String) {

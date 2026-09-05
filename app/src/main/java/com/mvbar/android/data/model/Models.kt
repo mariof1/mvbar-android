@@ -90,7 +90,10 @@ data class Track(
     @SerialName("library_id") val libraryId: Int? = null,
     @SerialName("is_favorite") val isFavorite: Boolean = false,
     @SerialName("play_count") val playCount: Int = 0,
-    @SerialName("created_at") val createdAt: String? = null
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("recommendation_slate_id") val recommendationSlateId: String? = null,
+    @SerialName("recommendation_bucket_key") val recommendationBucketKey: String? = null,
+    @SerialName("recommendation_position") val recommendationPosition: Int? = null
 ) {
     val displayTitle: String get() = title ?: "Untitled"
     val displayArtist: String get() = formatArtistDisplay(
@@ -360,6 +363,7 @@ data class SearchArtist(
     val name: String = "",
     @SerialName("art_path") val artPath: String? = null,
     @SerialName("art_hash") val artHash: String? = null,
+    @SerialName("art_track_id") val artTrackId: Int? = null,
     @SerialName("track_count") val trackCount: Int = 0,
     @SerialName("album_count") val albumCount: Int = 0
 )
@@ -399,7 +403,85 @@ data class FavoritesResponse(val ok: Boolean = false, val tracks: List<Track> = 
 @Serializable
 data class HistoryResponse(val ok: Boolean = false, val tracks: List<Track> = emptyList())
 @Serializable
-data class RecommendationsResponse(val ok: Boolean = false, val buckets: List<RecBucket> = emptyList())
+data class RecommendationsResponse(
+    val ok: Boolean = false,
+    val generatedAt: String? = null,
+    val slateId: String? = null,
+    @SerialName("_cached") val cached: Boolean = false,
+    @SerialName("_stale") val stale: Boolean = false,
+    @SerialName("_refreshing") val refreshing: Boolean = false,
+    val hiddenMixCount: Int = 0,
+    val recommendationProfile: String = RecommendationProfile.NEW,
+    val buckets: List<RecBucket> = emptyList()
+)
+
+object RecommendationProfile {
+    const val NEW = "new"
+    const val LEARNING = "learning"
+    const val PERSONALIZED = "personalized"
+}
+
+object RecommendationFeedbackAction {
+    const val MORE_LIKE_THIS = "more_like_this"
+    const val NOT_FOR_ME = "not_for_me"
+    const val LESS_LIKE_ARTIST = "less_like_artist"
+    const val HIDE_BUCKET = "hide_bucket"
+}
+
+object RecommendationPlaybackExtras {
+    const val SLATE_ID = "recommendation_slate_id"
+    const val BUCKET_KEY = "recommendation_bucket_key"
+    const val POSITION = "recommendation_position"
+}
+
+@Serializable
+data class RecommendationFeedbackRequest(
+    val action: String,
+    val trackId: Int? = null,
+    val artist: String? = null,
+    val bucketKey: String? = null
+)
+
+@Serializable
+data class RecommendationFeedbackResponse(
+    val ok: Boolean = false,
+    val action: String = "",
+    val subjectType: String = "",
+    val subjectKey: String = "",
+    val preference: Int = 0,
+    val hiddenMixCount: Int? = null
+)
+
+@Serializable
+data class RecommendationPreference(
+    @SerialName("subject_type") val subjectType: String = "",
+    @SerialName("subject_key") val subjectKey: String = "",
+    val preference: Int = 0,
+    @SerialName("updated_at") val updatedAt: String = ""
+)
+
+@Serializable
+data class RecommendationPreferencesResponse(
+    val ok: Boolean = false,
+    val preferences: List<RecommendationPreference> = emptyList()
+)
+
+@Serializable
+data class RecommendationResetResponse(
+    val ok: Boolean = false,
+    val removed: Int = 0
+)
+
+@Serializable
+data class PlaybackSignalRequest(
+    val pct: Double? = null,
+    val currentMs: Long? = null,
+    val durationMs: Long? = null,
+    val listenedMs: Long? = null,
+    val completionPct: Double? = null,
+    val slateId: String? = null,
+    val bucketKey: String? = null
+)
 @Serializable
 data class SimilarTracksResponse(val ok: Boolean = false, val tracks: List<Track> = emptyList(), val message: String? = null)
 @Serializable
@@ -412,7 +494,17 @@ data class RecBucket(
     val tracks: List<Track> = emptyList(),
     @SerialName("art_paths") val artPaths: List<String> = emptyList(),
     @SerialName("art_hashes") val artHashes: List<String> = emptyList()
-)
+) {
+    fun withPlaybackContext(slateId: String?): RecBucket = copy(
+        tracks = tracks.mapIndexed { index, track ->
+            track.copy(
+                recommendationSlateId = slateId,
+                recommendationBucketKey = key,
+                recommendationPosition = index
+            )
+        }
+    )
+}
 @Serializable
 data class TracksListWrapper(val ok: Boolean = false, val artists: List<Artist> = emptyList(), val total: Int = 0)
 @Serializable

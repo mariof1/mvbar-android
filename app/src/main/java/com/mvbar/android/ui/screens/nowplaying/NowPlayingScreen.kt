@@ -46,6 +46,7 @@ import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Playlist
 import com.mvbar.android.data.model.Episode
+import com.mvbar.android.data.model.RecommendationFeedbackAction
 import com.mvbar.android.data.model.SmartPlaylist
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.player.PlayMode
@@ -99,7 +100,9 @@ fun NowPlayingScreen(
     initialQueueOpen: Boolean = false,
     onQueueOpenChanged: (Boolean) -> Unit = {},
     onSearch: () -> Unit = {},
-    onAddToPlaylist: (() -> Unit)? = null
+    onAddToPlaylist: (() -> Unit)? = null,
+    onRecommendationFeedback: ((String) -> Unit)? = null,
+    recommendationFeedbackBusy: Boolean = false
 ) {
     val track = state.currentTrack ?: return
     var showLyrics by remember { mutableStateOf(false) }
@@ -275,6 +278,9 @@ fun NowPlayingScreen(
                                     IconButton(onClick = onSearch) {
                                         Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim, modifier = Modifier.size(28.dp))
                                     }
+                                    onRecommendationFeedback?.let {
+                                        RecommendationFeedbackMenu(it, !recommendationFeedbackBusy)
+                                    }
                                     if (!state.isPodcastMode && !state.isAudiobookMode) {
                                         onAddToPlaylist?.let {
                                             IconButton(onClick = it) {
@@ -378,6 +384,9 @@ fun NowPlayingScreen(
                                     }
                                     IconButton(onClick = onSearch) {
                                         Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
+                                    }
+                                    onRecommendationFeedback?.let {
+                                        RecommendationFeedbackMenu(it, !recommendationFeedbackBusy)
                                     }
                                     if (!state.isPodcastMode && !state.isAudiobookMode) {
                                         onAddToPlaylist?.let {
@@ -507,6 +516,9 @@ fun NowPlayingScreen(
                         }
                         IconButton(onClick = onSearch) {
                             Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
+                        }
+                        onRecommendationFeedback?.let {
+                            RecommendationFeedbackMenu(it, !recommendationFeedbackBusy)
                         }
                         if (!state.isPodcastMode && !state.isAudiobookMode) {
                             onAddToPlaylist?.let {
@@ -702,6 +714,59 @@ fun NowPlayingScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RecommendationFeedbackMenu(
+    onFeedback: (String) -> Unit,
+    enabled: Boolean
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }, enabled = enabled) {
+            Icon(
+                Icons.Filled.MoreVert,
+                contentDescription = "Tune recommendations",
+                tint = if (enabled) OnSurfaceDim else OnSurfaceSubtle
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            containerColor = SurfaceElevated
+        ) {
+            Text(
+                "Tune recommendations",
+                style = MaterialTheme.typography.labelSmall,
+                color = OnSurfaceSubtle,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            DropdownMenuItem(
+                text = { Text("More like this", color = Color(0xFF6EE7B7)) },
+                leadingIcon = { Icon(Icons.Filled.ThumbUp, null, tint = Color(0xFF6EE7B7)) },
+                onClick = {
+                    expanded = false
+                    onFeedback(RecommendationFeedbackAction.MORE_LIKE_THIS)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Less from this artist", color = Color(0xFFFDE68A)) },
+                leadingIcon = { Icon(Icons.Filled.RemoveCircleOutline, null, tint = Color(0xFFFDE68A)) },
+                onClick = {
+                    expanded = false
+                    onFeedback(RecommendationFeedbackAction.LESS_LIKE_ARTIST)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Don’t recommend this track", color = Color(0xFFFCA5A5)) },
+                leadingIcon = { Icon(Icons.Filled.ThumbDown, null, tint = Color(0xFFFCA5A5)) },
+                onClick = {
+                    expanded = false
+                    onFeedback(RecommendationFeedbackAction.NOT_FOR_ME)
+                }
+            )
         }
     }
 }

@@ -21,6 +21,7 @@ import com.google.android.gms.common.images.WebImage
 import com.google.android.gms.cast.MediaMetadata as CastMediaMetadata
 import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.model.RecommendationPlaybackExtras
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -522,7 +523,12 @@ class PlayerManager private constructor(private val context: Context) {
             title = meta.title?.toString(),
             artist = meta.artist?.toString(),
             album = meta.albumTitle?.toString(),
-            artPath = null
+            artPath = null,
+            recommendationSlateId = meta.extras?.getString(RecommendationPlaybackExtras.SLATE_ID),
+            recommendationBucketKey = meta.extras?.getString(RecommendationPlaybackExtras.BUCKET_KEY),
+            recommendationPosition = meta.extras
+                ?.takeIf { it.containsKey(RecommendationPlaybackExtras.POSITION) }
+                ?.getInt(RecommendationPlaybackExtras.POSITION)
         )
     }
 
@@ -577,6 +583,12 @@ class PlayerManager private constructor(private val context: Context) {
     private fun musicMediaItem(track: Track): MediaItem {
         val streamUrl = ApiClient.streamUrl(track.id)
         val artUrl = track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
+        val extras = Bundle().apply {
+            track.durationMs?.toLong()?.takeIf { it > 0 }?.let { putLong("duration_ms", it) }
+            track.recommendationSlateId?.let { putString(RecommendationPlaybackExtras.SLATE_ID, it) }
+            track.recommendationBucketKey?.let { putString(RecommendationPlaybackExtras.BUCKET_KEY, it) }
+            track.recommendationPosition?.let { putInt(RecommendationPlaybackExtras.POSITION, it) }
+        }
         return MediaItem.Builder()
             .setUri(streamUrl)
             .setMediaId(track.id.toString())
@@ -585,6 +597,7 @@ class PlayerManager private constructor(private val context: Context) {
                     .setTitle(track.displayTitle)
                     .setArtist(track.displayArtist)
                     .setArtworkUri(ArtworkProvider.buildUri(artUrl))
+                    .setExtras(extras)
                     .build()
             )
             .build()
@@ -629,6 +642,9 @@ class PlayerManager private constructor(private val context: Context) {
             val extras = Bundle().apply {
                 customResumePositions[track.id]?.takeIf { it > 0 }?.let { putLong("resume_position_ms", it) }
                 track.durationMs?.toLong()?.takeIf { it > 0 }?.let { putLong("duration_ms", it) }
+                track.recommendationSlateId?.let { putString(RecommendationPlaybackExtras.SLATE_ID, it) }
+                track.recommendationBucketKey?.let { putString(RecommendationPlaybackExtras.BUCKET_KEY, it) }
+                track.recommendationPosition?.let { putInt(RecommendationPlaybackExtras.POSITION, it) }
             }
             DebugLog.d("Player", "Track ${track.id}: stream=$streamUrl")
             MediaItem.Builder()

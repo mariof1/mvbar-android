@@ -113,7 +113,9 @@ class SyncWorker(
             SyncManager.setSyncStatus("Syncing recommendations...")
             try {
                 val recs = api.getRecommendations()
-                db.recommendationDao().replaceAll(recs.buckets.map { it.toEntity() })
+                db.recommendationDao().replaceAll(
+                    recs.buckets.map { it.withPlaybackContext(recs.slateId).toEntity() }
+                )
                 DebugLog.i("SyncWorker", "Synced ${recs.buckets.size} recommendation buckets")
             } catch (e: Exception) {
                 DebugLog.e("SyncWorker", "Recommendations sync failed", e)

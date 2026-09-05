@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.model.RecommendationFeedbackAction
 import com.mvbar.android.player.PlayerState
 import com.mvbar.android.ui.theme.*
 import kotlin.math.abs
@@ -36,6 +37,8 @@ fun MiniPlayerBar(
     onNext: () -> Unit,
     onPrevious: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
+    onRecommendationFeedback: ((String) -> Unit)? = null,
+    recommendationFeedbackBusy: Boolean = false,
     onTap: () -> Unit,
     onDismiss: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -43,6 +46,7 @@ fun MiniPlayerBar(
     val track = state.currentTrack ?: return
     val progress = if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
     val isPodcast = state.isPodcastMode
+    val hasRecommendationFeedback = !isPodcast && !state.isAudiobookMode && onRecommendationFeedback != null
     val availability = trackAvailability(track.id)
     val artUrl = if (isPodcast) {
         ApiClient.episodeArtUrl(-track.id)
@@ -76,8 +80,14 @@ fun MiniPlayerBar(
     }
 
     // Floating pill design
-    Surface(
+    Box(
         modifier = modifier
+            .fillMaxWidth()
+            .height(if (hasRecommendationFeedback) 94.dp else 72.dp)
+    ) {
+    Surface(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .height(64.dp)
@@ -236,6 +246,47 @@ fun MiniPlayerBar(
                 heightDp = 2,
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+    }
+        if (hasRecommendationFeedback) {
+            val submitFeedback = requireNotNull(onRecommendationFeedback)
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = (-12).dp, y = 2.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = Color.Black.copy(alpha = 0.55f),
+                tonalElevation = 4.dp,
+                shadowElevation = 4.dp
+            ) {
+                Row(modifier = Modifier.padding(horizontal = 3.dp)) {
+                    IconButton(
+                        onClick = { submitFeedback(RecommendationFeedbackAction.MORE_LIKE_THIS) },
+                        enabled = !recommendationFeedbackBusy,
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.ThumbUp,
+                            contentDescription = "More like this",
+                            tint = Color.White.copy(alpha = 0.62f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Box(Modifier.width(1.dp).height(16.dp).align(Alignment.CenterVertically).background(WhiteOverlay10))
+                    IconButton(
+                        onClick = { submitFeedback(RecommendationFeedbackAction.NOT_FOR_ME) },
+                        enabled = !recommendationFeedbackBusy,
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.ThumbDown,
+                            contentDescription = "Don’t recommend this track",
+                            tint = Color.White.copy(alpha = 0.62f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
         }
     }
 }
