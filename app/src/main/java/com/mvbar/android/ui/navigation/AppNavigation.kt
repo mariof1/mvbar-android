@@ -245,7 +245,17 @@ fun MainScreen(
     val audiobookProgress by audiobookVm.detailProgress.collectAsState()
     val audiobookPlayingChapter by audiobookVm.playingChapter.collectAsState()
 
-    val currentTrackId = playerState.currentTrack?.id
+    val connectDevices by SocialRealtimeManager.connectDevices.collectAsState()
+    val selectedConnectDeviceId by SocialRealtimeManager.selectedConnectDeviceId.collectAsState()
+    val selectedConnectDevice = connectDevices.firstOrNull { it.id == selectedConnectDeviceId }
+    val controllingRemote = selectedConnectDevice?.id?.let { it != ApiClient.getClientId() } == true
+    val displayedPlayerState = if (controllingRemote) {
+        selectedConnectDevice?.asRemotePlayerState() ?: playerState
+    } else {
+        playerState
+    }
+
+    val currentTrackId = displayedPlayerState.currentTrack?.id
     val context = LocalContext.current
 
     // Save playback state when app goes to background
@@ -521,7 +531,7 @@ fun MainScreen(
             },
             onAddToQueue = {
                 if (collectionTracks.isNotEmpty()) {
-                    val added = mainVm.playerManager.appendTracks(collectionTracks)
+                    val added = mainVm.appendToQueue(collectionTracks)
                     if (added > 0) {
                         ToastManager.show("Added $added tracks to queue", ToastIcon.QUEUE)
                     } else {
@@ -631,6 +641,13 @@ fun MainScreen(
                             Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                         }
 
+                        MvbarConnectButton(
+                            devices = connectDevices,
+                            selectedDeviceId = selectedConnectDeviceId,
+                            localDeviceId = ApiClient.getClientId(),
+                            onSelect = SocialRealtimeManager::selectConnectDevice
+                        )
+
                         SocialNavigationButton(
                             badgeCount = socialState.badgeCount,
                             selected = currentTab == "social",
@@ -719,6 +736,12 @@ fun MainScreen(
                             )
                         },
                         actions = {
+                            MvbarConnectButton(
+                                devices = connectDevices,
+                                selectedDeviceId = selectedConnectDeviceId,
+                                localDeviceId = ApiClient.getClientId(),
+                                onSelect = SocialRealtimeManager::selectConnectDevice
+                            )
                             IconButton(onClick = { showSearch = true }) {
                                 Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
                             }
@@ -746,24 +769,24 @@ fun MainScreen(
                     Column(Modifier.navigationBarsPadding()) {
                         // Mini player
                         AnimatedVisibility(
-                            visible = playerState.currentTrack != null,
+                            visible = displayedPlayerState.currentTrack != null,
                             enter = slideInVertically { it } + fadeIn(),
                             exit = slideOutVertically { it } + fadeOut()
                         ) {
                             MiniPlayerBar(
-                                state = playerState,
-                                onTogglePlay = { mainVm.playerManager.togglePlay() },
-                                onNext = { mainVm.playerManager.next() },
-                                onPrevious = { mainVm.playerManager.previous() },
+                                state = displayedPlayerState,
+                                onTogglePlay = mainVm::togglePlayback,
+                                onNext = mainVm::nextTrack,
+                                onPrevious = mainVm::previousTrack,
                                 onShare = {
-                                    playerState.currentTrack?.let(openTrackShare)
+                                    displayedPlayerState.currentTrack?.let(openTrackShare)
                                 },
-                                onRecommendationFeedback = if (isOnline && playerState.currentTrack?.recommendationBucketKey != null) {
+                                onRecommendationFeedback = if (isOnline && displayedPlayerState.currentTrack?.recommendationBucketKey != null) {
                                     { action -> mainVm.submitRecommendationFeedback(action) }
                                 } else null,
                                 recommendationFeedbackBusy = recommendationFeedbackBusy,
                                 onTap = { showNowPlaying = true },
-                                onDismiss = { mainVm.playerManager.clearQueue() }
+                                onDismiss = mainVm::clearPlaybackQueue
                             )
                         }
 
@@ -1406,24 +1429,24 @@ fun MainScreen(
                     // Mini player at bottom of content area (tablet only)
                     if (useNavRail) {
                         AnimatedVisibility(
-                            visible = playerState.currentTrack != null,
+                            visible = displayedPlayerState.currentTrack != null,
                             enter = slideInVertically { it } + fadeIn(),
                             exit = slideOutVertically { it } + fadeOut()
                         ) {
                             MiniPlayerBar(
-                                state = playerState,
-                                onTogglePlay = { mainVm.playerManager.togglePlay() },
-                                onNext = { mainVm.playerManager.next() },
-                                onPrevious = { mainVm.playerManager.previous() },
+                                state = displayedPlayerState,
+                                onTogglePlay = mainVm::togglePlayback,
+                                onNext = mainVm::nextTrack,
+                                onPrevious = mainVm::previousTrack,
                                 onShare = {
-                                    playerState.currentTrack?.let(openTrackShare)
+                                    displayedPlayerState.currentTrack?.let(openTrackShare)
                                 },
-                                onRecommendationFeedback = if (isOnline && playerState.currentTrack?.recommendationBucketKey != null) {
+                                onRecommendationFeedback = if (isOnline && displayedPlayerState.currentTrack?.recommendationBucketKey != null) {
                                     { action -> mainVm.submitRecommendationFeedback(action) }
                                 } else null,
                                 recommendationFeedbackBusy = recommendationFeedbackBusy,
                                 onTap = { showNowPlaying = true },
-                                onDismiss = { mainVm.playerManager.clearQueue() }
+                                onDismiss = mainVm::clearPlaybackQueue
                             )
                         }
                     }
@@ -1443,7 +1466,7 @@ fun MainScreen(
 
         // Full-screen Now Playing overlay (slide up/down)
         AnimatedVisibility(
-            visible = showNowPlaying && playerState.currentTrack != null,
+            visible = showNowPlaying && displayedPlayerState.currentTrack != null,
             enter = slideInVertically(
                 initialOffsetY = { it },
                 animationSpec = tween(350)
@@ -1454,21 +1477,21 @@ fun MainScreen(
             ) + fadeOut(animationSpec = tween(200))
         ) {
             NowPlayingScreen(
-                state = playerState,
+                state = displayedPlayerState,
                 lyrics = lyrics,
                 lyricsLoading = lyricsLoading,
                 onBack = { showNowPlaying = false },
-                onTogglePlay = { mainVm.playerManager.togglePlay() },
-                onNext = { mainVm.playerManager.next() },
-                onPrevious = { mainVm.playerManager.previous() },
-                onSeek = { mainVm.playerManager.seekTo(it) },
+                onTogglePlay = mainVm::togglePlayback,
+                onNext = mainVm::nextTrack,
+                onPrevious = mainVm::previousTrack,
+                onSeek = mainVm::seekTo,
                 onCyclePlayMode = { mainVm.playerManager.cyclePlayMode() },
                 onToggleFavorite = {
-                    playerState.currentTrack?.let { mainVm.toggleFavorite(it.id) }
+                    displayedPlayerState.currentTrack?.let { mainVm.toggleFavorite(it.id) }
                 },
-                onPlayQueueItem = { mainVm.playerManager.playQueueIndex(it) },
-                onRemoveFromQueue = { mainVm.playerManager.removeFromQueue(it) },
-                onClearQueue = { mainVm.playerManager.clearQueue() },
+                onPlayQueueItem = mainVm::playQueueIndex,
+                onRemoveFromQueue = mainVm::removeQueueIndex,
+                onClearQueue = mainVm::clearPlaybackQueue,
                 onLoadLyrics = { mainVm.loadLyrics(it) },
                 playlists = playlists,
                 smartPlaylists = smartPlaylists,
@@ -1494,8 +1517,8 @@ fun MainScreen(
                 initialQueueOpen = mainVm.queuePanelOpen,
                 onQueueOpenChanged = { mainVm.queuePanelOpen = it },
                 onSearch = { showNowPlaying = false; showSearch = true },
-                onAddToPlaylist = playerState.currentTrack?.let { t -> { showAddToPlaylist = t } },
-                onRecommendationFeedback = if (isOnline && playerState.currentTrack?.recommendationBucketKey != null) {
+                onAddToPlaylist = displayedPlayerState.currentTrack?.let { t -> { showAddToPlaylist = t } },
+                onRecommendationFeedback = if (isOnline && displayedPlayerState.currentTrack?.recommendationBucketKey != null) {
                     { action -> mainVm.submitRecommendationFeedback(action) }
                 } else null,
                 recommendationFeedbackBusy = recommendationFeedbackBusy
@@ -1564,7 +1587,7 @@ fun MainScreen(
                         mainVm.clearAiMix()
                     }
                     "queue" -> {
-                        val added = mainVm.playerManager.appendTracks(tracks)
+                        val added = mainVm.appendToQueue(tracks)
                         if (added > 0) {
                             ToastManager.show(
                                 "Added $added AI mix tracks to queue",
@@ -1602,7 +1625,7 @@ fun MainScreen(
                     }
                 },
                 onQueueAiMix = { tracks ->
-                    val added = mainVm.playerManager.appendTracks(tracks)
+                    val added = mainVm.appendToQueue(tracks)
                     if (added > 0) {
                         ToastManager.show("Added $added AI mix tracks to queue", ToastIcon.QUEUE)
                         showSearch = false
@@ -1686,7 +1709,7 @@ fun MainScreen(
         MvbarToastHost(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = if (playerState.currentTrack != null) 180.dp else 100.dp)
+                .padding(bottom = if (displayedPlayerState.currentTrack != null) 180.dp else 100.dp)
         )
     }
     } // CompositionLocalProvider

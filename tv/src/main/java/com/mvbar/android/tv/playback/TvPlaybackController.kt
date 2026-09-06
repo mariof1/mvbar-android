@@ -163,6 +163,15 @@ class TvPlaybackController(
         }
     }
 
+    fun seekTo(positionMs: Long) {
+        controller?.let { activeController ->
+            val duration = activeController.duration.takeIf { it != C.TIME_UNSET && it > 0 }
+            activeController.seekTo(
+                if (duration == null) max(0L, positionMs) else min(duration, max(0L, positionMs))
+            )
+        }
+    }
+
     fun playQueueIndex(index: Int) {
         controller?.takeIf { index in queue.indices }?.seekTo(index, 0L)
     }
@@ -174,6 +183,39 @@ class TvPlaybackController(
         val insertAt = (activeController.currentMediaItemIndex + 1).coerceIn(0, queue.size)
         queue = queue.toMutableList().apply { add(insertAt, item) }
         activeController.addMediaItem(insertAt, item.toMediaItem())
+        notifyState()
+    }
+
+    fun appendTracks(tracks: List<Track>) {
+        val repo = repository ?: return
+        val activeController = controller ?: return
+        if (tracks.isEmpty()) return
+        val items = tracks.map { it.toPlaybackItem(repo) }
+        queue = queue + items
+        activeController.addMediaItems(items.map { it.toMediaItem() })
+        notifyState()
+    }
+
+    fun removeQueueIndex(index: Int) {
+        val activeController = controller ?: return
+        if (index !in queue.indices) return
+        queue = queue.toMutableList().apply { removeAt(index) }
+        activeController.removeMediaItem(index)
+        notifyState()
+    }
+
+    fun moveQueueItem(from: Int, to: Int) {
+        val activeController = controller ?: return
+        if (from !in queue.indices || to !in queue.indices || from == to) return
+        queue = queue.toMutableList().apply { add(to, removeAt(from)) }
+        activeController.moveMediaItem(from, to)
+        notifyState()
+    }
+
+    fun clearQueue() {
+        queue = emptyList()
+        controller?.stop()
+        controller?.clearMediaItems()
         notifyState()
     }
 

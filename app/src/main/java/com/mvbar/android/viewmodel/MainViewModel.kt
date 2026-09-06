@@ -14,6 +14,7 @@ import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.AudioCacheManager
 import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerManager
+import com.mvbar.android.social.SocialRealtimeManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.put
 
 data class HomeState(
     val buckets: List<RecBucket> = emptyList(),
@@ -410,7 +412,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     message,
                     com.mvbar.android.ui.components.ToastIcon.SUCCESS
                 )
-                if (action == RecommendationFeedbackAction.NOT_FOR_ME) playerManager.next()
+                if (action == RecommendationFeedbackAction.NOT_FOR_ME) nextTrack()
                 loadRecommendationFeedback()
             } catch (e: Exception) {
                 DebugLog.e("Recommendations", "Failed to save $action", e)
@@ -923,6 +925,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     tracks.add(0, selectedTrack)
                 }
 
+                if (SocialRealtimeManager.playTracksOnSelected(tracks, 0)) return@launch
                 val started = playerManager.playTracks(tracks, 0)
                 if (!started) return@launch
 
@@ -1278,6 +1281,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun playTrack(track: Track, queue: List<Track>? = null) {
         val tracks = queue ?: listOf(track)
         val idx = tracks.indexOf(track).coerceAtLeast(0)
+        if (SocialRealtimeManager.playTracksOnSelected(tracks, idx)) return
         val started = playerManager.playTracks(tracks, idx)
         if (!started) return
         val activeTrack = playerManager.state.value.currentTrack ?: track
@@ -1350,7 +1354,51 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         playerManager.setFavorite(currentTrack.id in _favoriteIds.value)
     }
 
-    fun addToQueue(track: Track): Boolean = playerManager.addToQueue(track)
+    fun addToQueue(track: Track): Boolean =
+        SocialRealtimeManager.addTracksOnSelected(listOf(track)) || playerManager.addToQueue(track)
+
+    fun appendToQueue(tracks: List<Track>): Int {
+        if (tracks.isEmpty()) return 0
+        return if (SocialRealtimeManager.addTracksOnSelected(tracks)) tracks.count { it.id > 0 }
+        else playerManager.appendTracks(tracks)
+    }
+
+    fun togglePlayback() {
+        if (!SocialRealtimeManager.sendCommandToSelected("toggle")) playerManager.togglePlay()
+    }
+
+    fun nextTrack() {
+        if (!SocialRealtimeManager.sendCommandToSelected("next")) playerManager.next()
+    }
+
+    fun previousTrack() {
+        if (!SocialRealtimeManager.sendCommandToSelected("previous")) playerManager.previous()
+    }
+
+    fun seekTo(positionMs: Long) {
+        if (!SocialRealtimeManager.sendCommandToSelected(
+                "seek",
+                kotlinx.serialization.json.buildJsonObject { put("positionMs", positionMs) }
+            )) playerManager.seekTo(positionMs)
+    }
+
+    fun playQueueIndex(index: Int) {
+        if (!SocialRealtimeManager.sendCommandToSelected(
+                "play_index",
+                kotlinx.serialization.json.buildJsonObject { put("index", index) }
+            )) playerManager.playQueueIndex(index)
+    }
+
+    fun removeQueueIndex(index: Int) {
+        if (!SocialRealtimeManager.sendCommandToSelected(
+                "remove_index",
+                kotlinx.serialization.json.buildJsonObject { put("index", index) }
+            )) playerManager.removeFromQueue(index)
+    }
+
+    fun clearPlaybackQueue() {
+        if (!SocialRealtimeManager.sendCommandToSelected("clear_queue")) playerManager.clearQueue()
+    }
 
     /** Save current playback state for auto-resume */
     fun savePlaybackState() {

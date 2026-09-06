@@ -48,6 +48,7 @@ object ApiClient {
 
     fun getBaseUrl(): String = baseUrl
     fun getToken(): String? = authToken
+    fun getClientId(): String = clientId
 
     fun absoluteUrl(path: String?): String? {
         val value = path?.trim()?.takeIf { it.isNotEmpty() } ?: return null

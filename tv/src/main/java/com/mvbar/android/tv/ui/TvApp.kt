@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Home
@@ -530,7 +531,7 @@ private fun TvShell(state: TvUiState, viewModel: TvViewModel) {
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(
-                        bottom = if (state.playback.item != null && !state.nowPlayingVisible) PlayerHeight else 6.dp
+                        bottom = if (state.displayedPlayback.item != null && !state.nowPlayingVisible) PlayerHeight else 6.dp
                     )
             ) {
                 TvContent(
@@ -550,9 +551,9 @@ private fun TvShell(state: TvUiState, viewModel: TvViewModel) {
             }
         }
 
-        if (state.playback.item != null && !state.nowPlayingVisible) {
+        if (state.displayedPlayback.item != null && !state.nowPlayingVisible) {
             NowPlayingBar(
-                playback = state.playback,
+                playback = state.displayedPlayback,
                 authToken = state.authToken,
                 onPrevious = viewModel::previous,
                 onSeekBackward = viewModel::seekBackward,
@@ -641,7 +642,7 @@ private fun TrackActionOverlay(state: TvUiState, viewModel: TvViewModel) {
                         Icons.Default.SkipNext,
                         "Play next",
                         { viewModel.queueTrackNext(track) },
-                        enabled = !state.actionLoading && state.playback.item != null
+                        enabled = !state.actionLoading && state.playback.item != null && !state.controllingRemote
                     )
                     ActionRow(Icons.Default.Share, "Share with a friend", viewModel::showShareTargets, enabled = !state.actionLoading)
                     ActionRow(Icons.Default.MusicNote, "Start radio", { viewModel.startRadio(track) }, enabled = !state.actionLoading)
@@ -737,6 +738,53 @@ private fun TrackActionOverlay(state: TvUiState, viewModel: TvViewModel) {
                         )
                     }
                 }
+                TvActionPane.CONNECT -> {
+                    Text("MVBar Connect", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Choose where playback happens",
+                        color = Muted,
+                        fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    if (state.connectDevices.isEmpty()) {
+                        Text("Looking for signed-in players…", color = Muted, modifier = Modifier.padding(vertical = 24.dp))
+                        ActionRow(
+                            Icons.Default.Close,
+                            "Close",
+                            viewModel::closeActions,
+                            Modifier.focusRequester(firstFocus)
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.height(300.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            itemsIndexed(state.connectDevices, key = { _, device -> device.id }) { index, device ->
+                                val isLocal = device.id == state.localConnectDeviceId
+                                val isSelected = device.id == state.selectedConnectDeviceId
+                                val status = device.state.track?.let { track ->
+                                    "${if (device.state.isPlaying) "Playing" else "Paused"} · ${track.title ?: "Untitled"}"
+                                } ?: listOfNotNull(device.type.uppercase(), device.platform).joinToString(" · ")
+                                ActionRow(
+                                    Icons.Default.Devices,
+                                    buildString {
+                                        append(if (isSelected) "✓ " else "")
+                                        append(device.name)
+                                        if (isLocal) append(" · This TV")
+                                        if (status.isNotBlank()) append(" — $status")
+                                    },
+                                    { viewModel.selectConnectDevice(device.id) },
+                                    Modifier.then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                                )
+                            }
+                        }
+                        Text(
+                            "Only players signed in to this MVBar account are visible.",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
                 TvActionPane.NONE -> Unit
             }
         }
@@ -805,6 +853,12 @@ private fun TopBar(
                 modifier = Modifier.width(106.dp).height(52.dp)
             )
             Spacer(Modifier.weight(1f))
+            SmallButton(
+                Icons.Default.Devices,
+                state.selectedConnectDevice?.name ?: "Connect",
+                viewModel::openConnectPlayers
+            )
+            Spacer(Modifier.width(8.dp))
             if (state.searchVisible) {
                 Box(Modifier.width(490.dp)) {
                     TvTextField(
@@ -2104,7 +2158,7 @@ private fun SearchContent(
 
 @Composable
 private fun NowPlayingScreen(state: TvUiState, viewModel: TvViewModel) {
-    val playback = state.playback
+    val playback = state.displayedPlayback
     val item = playback.item ?: return
     val playFocus = remember { FocusRequester() }
     RequestInitialFocus(playFocus, true)
@@ -2123,7 +2177,9 @@ private fun NowPlayingScreen(state: TvUiState, viewModel: TvViewModel) {
             Text("Now Playing", fontSize = 25.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             Text(
-                if (playback.currentIndex >= 0) {
+                if (state.controllingRemote) {
+                    "On ${state.selectedConnectDevice?.name} · ${state.selectedConnectDevice?.state?.queueLength ?: 0} queued"
+                } else if (playback.currentIndex >= 0) {
                     "${playback.currentIndex + 1} of ${playback.queue.size}"
                 } else {
                     "${playback.queue.size} queued"
@@ -2179,17 +2235,19 @@ private fun NowPlayingScreen(state: TvUiState, viewModel: TvViewModel) {
                     PlayerButton(Icons.Default.SkipNext, "Next", viewModel::next, enabled = playback.hasNext)
                 }
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SmallButton(
-                        Icons.Default.Shuffle,
-                        if (playback.shuffleEnabled) "Shuffle on" else "Shuffle off",
-                        viewModel::toggleShuffle
-                    )
-                    SmallButton(
-                        if (playback.repeatMode == Player.REPEAT_MODE_ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
-                        repeatModeLabel(playback.repeatMode),
-                        viewModel::cycleRepeatMode
-                    )
+                if (!state.controllingRemote) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        SmallButton(
+                            Icons.Default.Shuffle,
+                            if (playback.shuffleEnabled) "Shuffle on" else "Shuffle off",
+                            viewModel::toggleShuffle
+                        )
+                        SmallButton(
+                            if (playback.repeatMode == Player.REPEAT_MODE_ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                            repeatModeLabel(playback.repeatMode),
+                            viewModel::cycleRepeatMode
+                        )
+                    }
                 }
                 if (item.kind == PlaybackKind.MUSIC) {
                     Spacer(Modifier.height(9.dp))
@@ -2199,7 +2257,14 @@ private fun NowPlayingScreen(state: TvUiState, viewModel: TvViewModel) {
             Column(Modifier.width(260.dp).fillMaxHeight()) {
                 Text("Queue", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(7.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                if (state.controllingRemote) {
+                    Text(
+                        "The queue stays on ${state.selectedConnectDevice?.name}. Use Previous and Next to move through it.",
+                        color = Muted,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                } else LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     itemsIndexed(playback.queue, key = { index, queued -> "$index:${queued.mediaId}" }) { index, queued ->
                         Card(
                             onClick = { viewModel.playQueueIndex(index) },

@@ -17,6 +17,7 @@ import com.mvbar.android.tv.data.PlaylistCollaborationResponse
 import com.mvbar.android.tv.data.SocialUser
 import com.mvbar.android.tv.data.Track
 import com.mvbar.android.tv.data.TvApiException
+import com.mvbar.android.tv.data.TvConnectDevice
 import com.mvbar.android.tv.data.TvPlaylist
 import com.mvbar.android.tv.data.TvRealtimeClient
 import com.mvbar.android.tv.data.TvRealtimeRefresh
@@ -26,6 +27,7 @@ import com.mvbar.android.tv.data.TvSessionStore
 import com.mvbar.android.tv.data.realtimeRefreshForEvent
 import com.mvbar.android.tv.playback.PlaybackSnapshot
 import com.mvbar.android.tv.playback.PlaybackKind
+import com.mvbar.android.tv.playback.PlaybackItem
 import com.mvbar.android.tv.playback.TvPlaybackController
 import com.mvbar.android.tv.home.TvHomePublisher
 import kotlinx.coroutines.CancellationException
@@ -39,6 +41,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
 
 enum class TvSection(val label: String) {
     FOR_YOU("For You"),
@@ -64,7 +78,7 @@ data class ArtistScreen(
     val tracks: List<Track>
 )
 
-enum class TvActionPane { NONE, TRACK, PLAYLISTS, SHARE, CREATE_PLAYLIST }
+enum class TvActionPane { NONE, TRACK, PLAYLISTS, SHARE, CREATE_PLAYLIST, CONNECT }
 
 data class TvUiState(
     val checkingSession: Boolean = true,
@@ -107,12 +121,53 @@ data class TvUiState(
     val loading: Boolean = false,
     val refreshing: Boolean = false,
     val error: String? = null,
-    val playback: PlaybackSnapshot = PlaybackSnapshot()
-)
+    val playback: PlaybackSnapshot = PlaybackSnapshot(),
+    val connectDevices: List<TvConnectDevice> = emptyList(),
+    val selectedConnectDeviceId: String? = null,
+    val localConnectDeviceId: String = ""
+) {
+    val selectedConnectDevice: TvConnectDevice?
+        get() = connectDevices.firstOrNull { it.id == selectedConnectDeviceId }
+    val controllingRemote: Boolean
+        get() = selectedConnectDevice?.id?.let { it != localConnectDeviceId } == true
+    val displayedPlayback: PlaybackSnapshot
+        get() = selectedConnectDevice?.takeIf { controllingRemote }?.asPlaybackSnapshot(serverUrl) ?: playback
+}
+
+private fun TvConnectDevice.asPlaybackSnapshot(serverUrl: String): PlaybackSnapshot {
+    val current = state.track ?: return PlaybackSnapshot()
+    val base = serverUrl.trimEnd('/')
+    val item = PlaybackItem(
+        mediaId = "connect:${id}:${current.id}",
+        title = current.title ?: "Track #${current.id}",
+        artist = current.artist ?: "Unknown artist",
+        album = current.album.orEmpty(),
+        streamUrl = "",
+        artworkUrl = "$base/api/library/tracks/${current.id}/art",
+        kind = PlaybackKind.MUSIC,
+        durationMs = current.durationMs ?: state.durationMs,
+        trackId = current.id
+    )
+    return PlaybackSnapshot(
+        item = item,
+        queue = listOf(item),
+        currentIndex = 0,
+        isPlaying = state.isPlaying,
+        hasPrevious = state.queueIndex > 0,
+        hasNext = state.queueLength > 0 && state.queueIndex < state.queueLength - 1,
+        positionMs = state.positionMs,
+        durationMs = state.durationMs.takeIf { it > 0 } ?: current.durationMs ?: 0L
+    )
+}
 
 class TvViewModel(application: Application) : AndroidViewModel(application) {
     private val sessionStore = TvSessionStore(application)
-    private val _state = MutableStateFlow(TvUiState(serverUrl = sessionStore.lastServerUrl()))
+    private val _state = MutableStateFlow(
+        TvUiState(
+            serverUrl = sessionStore.lastServerUrl(),
+            localConnectDeviceId = sessionStore.clientId
+        )
+    )
     val state: StateFlow<TvUiState> = _state.asStateFlow()
     private var repository: TvRepository? = null
     private var lastRecordedTrackId: Int? = null
@@ -129,14 +184,30 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     private var lastProgressSyncElapsed = 0L
     private var previousPlayback = PlaybackSnapshot()
     private val homePublisher = TvHomePublisher(application)
-    private val realtime = TvRealtimeClient(viewModelScope) { event ->
-        viewModelScope.launch { handleRealtimeEvent(event) }
-    }
+    private val realtime = TvRealtimeClient(
+        scope = viewModelScope,
+        onEvent = { event -> viewModelScope.launch { handleRealtimeEvent(event) } },
+        onConnectCommand = { command, payload ->
+            viewModelScope.launch { handleConnectCommand(command, payload) }
+        },
+        onConnectDevices = { devices ->
+            _state.update { state ->
+                val available = devices.mapTo(mutableSetOf()) { it.id }
+                val selected = state.selectedConnectDeviceId?.takeIf(available::contains)
+                    ?: state.localConnectDeviceId.takeIf(available::contains)
+                    ?: devices.firstOrNull { it.state.isPlaying }?.id
+                    ?: devices.firstOrNull()?.id
+                state.copy(connectDevices = devices, selectedConnectDeviceId = selected)
+            }
+        },
+        onConnectError = ::showNotice
+    )
 
     private val playback = TvPlaybackController(application) { snapshot ->
         val previous = previousPlayback
         previousPlayback = snapshot
         _state.update { it.copy(playback = snapshot) }
+        realtime.publishPlayback(snapshot)
 
         snapshot.item?.trackId?.takeIf { it != lastRecordedTrackId }?.let { trackId ->
             lastRecordedTrackId = trackId
@@ -327,7 +398,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
                         _state.update { it.copy(loading = false) }
                         showNotice("No music found for “$normalized”")
                     } else {
-                        playback.playTracks(results.hits, 0)
+                        playMusic(results.hits, 0)
                         _state.update { it.copy(loading = false) }
                         showNotice("Playing ${first.displayTitle}")
                     }
@@ -460,7 +531,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
 
     fun play(tracks: List<Track>, track: Track) {
         val index = tracks.indexOfFirst { it.id == track.id }
-        if (index >= 0) playback.playTracks(tracks, index)
+        if (index >= 0) playMusic(tracks, index)
     }
 
     fun playBucket(bucket: RecommendationBucket) {
@@ -478,16 +549,104 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         if (index >= 0) playback.playChapters(audiobook, chapters, index)
     }
 
-    fun togglePlayPause() = playback.togglePlayPause()
-    fun playPlayback() = playback.play()
-    fun pausePlayback() = playback.pause()
-    fun next() = playback.next()
-    fun previous() = playback.previous()
-    fun seekBackward() = playback.seekBy(-10_000L)
-    fun seekForward() = playback.seekBy(10_000L)
-    fun playQueueIndex(index: Int) = playback.playQueueIndex(index)
+    fun togglePlayPause() {
+        if (!sendRemoteCommand("toggle")) playback.togglePlayPause()
+    }
+
+    fun playPlayback() {
+        if (!sendRemoteCommand("play")) playback.play()
+    }
+
+    fun pausePlayback() {
+        if (!sendRemoteCommand("pause")) playback.pause()
+    }
+
+    fun next() {
+        if (!sendRemoteCommand("next")) playback.next()
+    }
+
+    fun previous() {
+        if (!sendRemoteCommand("previous")) playback.previous()
+    }
+
+    fun seekBackward() = seekDisplayedBy(-10_000L)
+    fun seekForward() = seekDisplayedBy(10_000L)
+
+    fun playQueueIndex(index: Int) {
+        if (!sendRemoteCommand("play_index", buildJsonObject { put("index", index) })) {
+            playback.playQueueIndex(index)
+        }
+    }
     fun toggleShuffle() = playback.toggleShuffle()
     fun cycleRepeatMode() = playback.cycleRepeatMode()
+
+    fun openConnectPlayers() {
+        _state.update { it.copy(actionPane = TvActionPane.CONNECT, error = null) }
+    }
+
+    fun selectConnectDevice(deviceId: String) {
+        val state = _state.value
+        val target = state.connectDevices.firstOrNull { it.id == deviceId } ?: return
+        val current = state.selectedConnectDevice
+        val local = state.connectDevices.firstOrNull { it.id == state.localConnectDeviceId }
+        val source = current?.takeIf { it.state.track != null }
+            ?: local?.takeIf { it.state.track != null }
+            ?: state.connectDevices.firstOrNull { it.state.isPlaying }
+        if (source != null && source.id != target.id) {
+            realtime.transferPlayback(source.id, target.id)
+        }
+        _state.update {
+            it.copy(selectedConnectDeviceId = target.id, actionPane = TvActionPane.NONE)
+        }
+        showNotice("Controlling ${target.name}")
+    }
+
+    private fun selectedRemoteDevice(): TvConnectDevice? = _state.value.selectedConnectDevice
+        ?.takeIf { it.id != _state.value.localConnectDeviceId }
+
+    private fun sendRemoteCommand(command: String, payload: JsonObject = JsonObject(emptyMap())): Boolean {
+        val target = selectedRemoteDevice() ?: return false
+        return realtime.sendCommand(target.id, command, payload)
+    }
+
+    private fun seekDisplayedBy(deltaMs: Long) {
+        val remote = selectedRemoteDevice()
+        if (remote == null) {
+            playback.seekBy(deltaMs)
+            return
+        }
+        val duration = remote.state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
+        val position = (remote.state.positionMs + deltaMs).coerceIn(0L, duration)
+        sendRemoteCommand("seek", buildJsonObject { put("positionMs", position) })
+    }
+
+    private fun playMusic(tracks: List<Track>, selectedIndex: Int) {
+        val playable = tracks.filter { it.id > 0 }.take(500)
+        if (playable.isEmpty()) return
+        val originalId = tracks.getOrNull(selectedIndex)?.id
+        val safeIndex = playable.indexOfFirst { it.id == originalId }.coerceAtLeast(0)
+        if (selectedRemoteDevice() != null) {
+            sendRemoteCommand("play_tracks", buildJsonObject {
+                put("tracks", buildJsonArray {
+                    playable.forEach { track -> add(connectTrackJson(track)) }
+                })
+                put("queueIndex", safeIndex)
+                put("positionMs", 0)
+                put("isPlaying", true)
+            })
+        } else {
+            playback.playTracks(playable, safeIndex)
+        }
+    }
+
+    private fun connectTrackJson(track: Track) = buildJsonObject {
+        put("id", track.id)
+        put("title", track.title)
+        put("artist", track.displayArtist)
+        put("album", track.album)
+        put("artPath", track.artPath)
+        put("durationMs", track.durationMs)
+    }
 
     fun openTrackActions(track: Track) {
         _state.update {
@@ -527,6 +686,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
                     error = null
                 )
                 TvActionPane.TRACK,
+                TvActionPane.CONNECT,
                 TvActionPane.NONE -> state.copy(
                     actionPane = TvActionPane.NONE,
                     actionTrack = null,
@@ -650,14 +810,14 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         val repo = repository ?: return
         viewModelScope.launch {
             _state.update { it.copy(actionLoading = true, error = null) }
-            val exclude = _state.value.playback.queue.mapNotNull { it.trackId }
+            val exclude = _state.value.displayedPlayback.queue.mapNotNull { it.trackId }
             runCatching { repo.similarTracks(track.id, exclude) }
                 .onSuccess { similar ->
                     if (similar.isEmpty()) {
                         _state.update { it.copy(actionLoading = false) }
                         showNotice("No similar songs are available")
                     } else {
-                        playback.playTracks(listOf(track) + similar.filter { it.id != track.id }, 0)
+                        playMusic(listOf(track) + similar.filter { it.id != track.id }, 0)
                         closeActions()
                         showNotice("Started radio with ${similar.size} recommendations")
                     }
@@ -683,7 +843,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openNowPlaying() {
-        if (_state.value.playback.item != null) {
+        if (_state.value.displayedPlayback.item != null) {
             _state.update { it.copy(nowPlayingVisible = true) }
         }
     }
@@ -755,7 +915,11 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         pendingDeepLink = null
         pendingVoiceSearch = null
         sessionStore.clear()
-        _state.value = TvUiState(checkingSession = false, serverUrl = sessionStore.lastServerUrl())
+        _state.value = TvUiState(
+            checkingSession = false,
+            serverUrl = sessionStore.lastServerUrl(),
+            localConnectDeviceId = sessionStore.clientId
+        )
     }
 
     override fun onCleared() {
@@ -959,6 +1123,49 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun handleConnectCommand(command: String, payload: JsonObject) {
+        when (command) {
+            "play" -> playback.play()
+            "pause" -> playback.pause()
+            "toggle" -> playback.togglePlayPause()
+            "next" -> playback.next()
+            "previous" -> playback.previous()
+            "seek" -> playback.seekTo(payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L)
+            "stop", "clear_queue" -> playback.clearQueue()
+            "play_index" -> playback.playQueueIndex(payload["index"]?.jsonPrimitive?.intOrNull ?: 0)
+            "remove_index" -> playback.removeQueueIndex(payload["index"]?.jsonPrimitive?.intOrNull ?: 0)
+            "reorder" -> playback.moveQueueItem(
+                payload["from"]?.jsonPrimitive?.intOrNull ?: 0,
+                payload["to"]?.jsonPrimitive?.intOrNull ?: 0
+            )
+            "play_tracks", "add_tracks" -> {
+                val tracks = payload["tracks"]?.jsonArray?.mapNotNull { element ->
+                    val item = runCatching { element.jsonObject }.getOrNull() ?: return@mapNotNull null
+                    val id = item["id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+                    if (id <= 0) return@mapNotNull null
+                    Track(
+                        id = id,
+                        title = item["title"]?.jsonPrimitive?.contentOrNull,
+                        artist = item["artist"]?.jsonPrimitive?.contentOrNull,
+                        album = item["album"]?.jsonPrimitive?.contentOrNull,
+                        artPath = item["artPath"]?.jsonPrimitive?.contentOrNull,
+                        durationMs = item["durationMs"]?.jsonPrimitive?.doubleOrNull
+                    )
+                }.orEmpty()
+                if (command == "add_tracks") {
+                    playback.appendTracks(tracks)
+                } else if (tracks.isNotEmpty()) {
+                    val index = (payload["queueIndex"]?.jsonPrimitive?.intOrNull ?: 0)
+                        .coerceIn(0, tracks.lastIndex)
+                    playback.playTracks(tracks, index)
+                    val position = payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L
+                    if (position > 0) playback.seekTo(position)
+                    if (payload["isPlaying"]?.jsonPrimitive?.booleanOrNull == false) playback.pause()
+                }
+            }
+        }
+    }
+
     private fun scheduleRealtimeRefresh(delayMs: Long, action: () -> Unit) {
         realtimeRefreshJob?.cancel()
         realtimeRefreshJob = viewModelScope.launch {
@@ -1034,7 +1241,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun currentMusicTrack(): Track? {
-        val item = _state.value.playback.item?.takeIf { it.kind == PlaybackKind.MUSIC } ?: return null
+        val item = _state.value.displayedPlayback.item?.takeIf { it.kind == PlaybackKind.MUSIC } ?: return null
         val trackId = item.trackId ?: return null
         val state = _state.value
         return sequenceOf(

@@ -827,6 +827,12 @@ class PlayerManager private constructor(private val context: Context) {
         }
         controller?.let { if (it.isPlaying) it.pause() else it.play() }
     }
+    fun play() {
+        if (_state.value.isCasting) castRemoteClient?.play() else controller?.play()
+    }
+    fun pause() {
+        if (_state.value.isCasting) castRemoteClient?.pause() else controller?.pause()
+    }
     fun next() {
         if (_state.value.isCasting) {
             val nextIndex = (_state.value.queueIndex + 1).takeIf { it in _queue.indices } ?: return
