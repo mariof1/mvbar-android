@@ -35,6 +35,7 @@ fun Track.toConnectTrack(): ConnectTrack = ConnectTrack(
 @Serializable
 data class ConnectDevicePlaybackState(
     val track: ConnectTrack? = null,
+    val queue: List<ConnectTrack> = emptyList(),
     val queueIndex: Int = -1,
     val queueLength: Int = 0,
     val isPlaying: Boolean = false,
@@ -42,7 +43,9 @@ data class ConnectDevicePlaybackState(
     val durationMs: Long = 0,
     val volume: Double? = null,
     val updatedAt: Long = 0
-)
+) {
+    val hasNext: Boolean get() = queueIndex >= 0 && queueIndex < queueLength - 1
+}
 
 @Serializable
 data class ConnectDevice(
@@ -54,14 +57,24 @@ data class ConnectDevice(
     val capabilities: List<String> = emptyList(),
     val state: ConnectDevicePlaybackState = ConnectDevicePlaybackState()
 ) {
-    fun asRemotePlayerState(): PlayerState = PlayerState(
-        currentTrack = state.track?.toTrack(),
-        isPlaying = state.isPlaying,
-        position = state.positionMs,
-        duration = state.durationMs,
-        queue = state.track?.let { listOf(it.toTrack()) }.orEmpty(),
-        queueIndex = if (state.track == null) -1 else 0
-    )
+    fun asRemotePlayerState(): PlayerState {
+        val remoteQueue = state.queue.map { it.toTrack() }.ifEmpty {
+            state.track?.let { listOf(it.toTrack()) }.orEmpty()
+        }
+        val remoteIndex = when {
+            remoteQueue.isEmpty() -> -1
+            state.queueIndex in remoteQueue.indices -> state.queueIndex
+            else -> remoteQueue.indexOfFirst { it.id == state.track?.id }.coerceAtLeast(0)
+        }
+        return PlayerState(
+            currentTrack = state.track?.toTrack() ?: remoteQueue.getOrNull(remoteIndex),
+            isPlaying = state.isPlaying,
+            position = state.positionMs,
+            duration = state.durationMs,
+            queue = remoteQueue,
+            queueIndex = remoteIndex
+        )
+    }
 }
 
 @Serializable

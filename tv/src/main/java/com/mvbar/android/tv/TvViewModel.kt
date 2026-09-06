@@ -18,6 +18,7 @@ import com.mvbar.android.tv.data.SocialUser
 import com.mvbar.android.tv.data.Track
 import com.mvbar.android.tv.data.TvApiException
 import com.mvbar.android.tv.data.TvConnectDevice
+import com.mvbar.android.tv.data.TvConnectTrack
 import com.mvbar.android.tv.data.TvPlaylist
 import com.mvbar.android.tv.data.TvRealtimeClient
 import com.mvbar.android.tv.data.TvRealtimeRefresh
@@ -137,21 +138,25 @@ data class TvUiState(
 private fun TvConnectDevice.asPlaybackSnapshot(serverUrl: String): PlaybackSnapshot {
     val current = state.track ?: return PlaybackSnapshot()
     val base = serverUrl.trimEnd('/')
-    val item = PlaybackItem(
-        mediaId = "connect:${id}:${current.id}",
-        title = current.title ?: "Track #${current.id}",
-        artist = current.artist ?: "Unknown artist",
-        album = current.album.orEmpty(),
+    fun TvConnectTrack.toPlaybackItem() = PlaybackItem(
+        mediaId = "connect:${id}:${this.id}",
+        title = title ?: "Track #${this.id}",
+        artist = artist ?: "Unknown artist",
+        album = album.orEmpty(),
         streamUrl = "",
-        artworkUrl = "$base/api/library/tracks/${current.id}/art",
+        artworkUrl = "$base/api/library/tracks/${this.id}/art",
         kind = PlaybackKind.MUSIC,
-        durationMs = current.durationMs ?: state.durationMs,
-        trackId = current.id
+        durationMs = durationMs ?: if (this.id == current.id) state.durationMs else 0L,
+        trackId = this.id
     )
+    val remoteQueue = state.queue.map { it.toPlaybackItem() }.ifEmpty { listOf(current.toPlaybackItem()) }
+    val remoteIndex = state.queueIndex.takeIf { it in remoteQueue.indices }
+        ?: remoteQueue.indexOfFirst { it.trackId == current.id }.coerceAtLeast(0)
+    val item = remoteQueue[remoteIndex]
     return PlaybackSnapshot(
         item = item,
-        queue = listOf(item),
-        currentIndex = 0,
+        queue = remoteQueue,
+        currentIndex = remoteIndex,
         isPlaying = state.isPlaying,
         hasPrevious = state.queueIndex > 0,
         hasNext = state.queueLength > 0 && state.queueIndex < state.queueLength - 1,
@@ -187,9 +192,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     private val realtime = TvRealtimeClient(
         scope = viewModelScope,
         onEvent = { event -> viewModelScope.launch { handleRealtimeEvent(event) } },
-        onConnectCommand = { command, payload ->
-            viewModelScope.launch { handleConnectCommand(command, payload) }
-        },
+        onConnectCommand = ::handleConnectCommand,
         onConnectDevices = { devices ->
             _state.update { state ->
                 val available = devices.mapTo(mutableSetOf()) { it.id }
@@ -200,7 +203,8 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
                 state.copy(connectDevices = devices, selectedConnectDeviceId = selected)
             }
         },
-        onConnectError = ::showNotice
+        onConnectError = ::showNotice,
+        onSessionInvalidated = ::handleSessionInvalidated
     )
 
     private val playback = TvPlaybackController(application) { snapshot ->
@@ -922,6 +926,15 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private fun handleSessionInvalidated(reason: String) {
+        viewModelScope.launch {
+            signOut()
+            _state.update {
+                it.copy(error = reason.ifBlank { "Your session expired. Sign in again." })
+            }
+        }
+    }
+
     override fun onCleared() {
         syncLongFormProgress(previousPlayback, force = true)
         realtime.stop()
@@ -1123,22 +1136,34 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun handleConnectCommand(command: String, payload: JsonObject) {
-        when (command) {
-            "play" -> playback.play()
-            "pause" -> playback.pause()
-            "toggle" -> playback.togglePlayPause()
-            "next" -> playback.next()
-            "previous" -> playback.previous()
-            "seek" -> playback.seekTo(payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L)
-            "stop", "clear_queue" -> playback.clearQueue()
-            "play_index" -> playback.playQueueIndex(payload["index"]?.jsonPrimitive?.intOrNull ?: 0)
-            "remove_index" -> playback.removeQueueIndex(payload["index"]?.jsonPrimitive?.intOrNull ?: 0)
-            "reorder" -> playback.moveQueueItem(
-                payload["from"]?.jsonPrimitive?.intOrNull ?: 0,
-                payload["to"]?.jsonPrimitive?.intOrNull ?: 0
-            )
-            "play_tracks", "add_tracks" -> {
+    private fun handleConnectCommand(command: String, payload: JsonObject): Boolean {
+        val snapshot = _state.value.playback
+        return when (command) {
+            "play" -> (snapshot.item != null).also { if (it) playback.play() }
+            "pause" -> (snapshot.item != null).also { if (it) playback.pause() }
+            "toggle" -> (snapshot.item != null).also { if (it) playback.togglePlayPause() }
+            "next" -> snapshot.hasNext.also { if (it) playback.next() }
+            "previous" -> snapshot.hasPrevious.also { if (it) playback.previous() }
+            "seek" -> (snapshot.item != null).also {
+                if (it) playback.seekTo(payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L)
+            }
+            "stop", "clear_queue" -> true.also { playback.clearQueue() }
+            "play_index" -> {
+                val index = payload["index"]?.jsonPrimitive?.intOrNull ?: 0
+                (index in snapshot.queue.indices).also { if (it) playback.playQueueIndex(index) }
+            }
+            "remove_index" -> {
+                val index = payload["index"]?.jsonPrimitive?.intOrNull ?: 0
+                (index in snapshot.queue.indices).also { if (it) playback.removeQueueIndex(index) }
+            }
+            "reorder" -> {
+                val from = payload["from"]?.jsonPrimitive?.intOrNull ?: 0
+                val to = payload["to"]?.jsonPrimitive?.intOrNull ?: 0
+                (from in snapshot.queue.indices && to in snapshot.queue.indices).also {
+                    if (it) playback.moveQueueItem(from, to)
+                }
+            }
+            "play_tracks", "add_tracks", "play_next" -> {
                 val tracks = payload["tracks"]?.jsonArray?.mapNotNull { element ->
                     val item = runCatching { element.jsonObject }.getOrNull() ?: return@mapNotNull null
                     val id = item["id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
@@ -1152,17 +1177,24 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
                         durationMs = item["durationMs"]?.jsonPrimitive?.doubleOrNull
                     )
                 }.orEmpty()
-                if (command == "add_tracks") {
-                    playback.appendTracks(tracks)
-                } else if (tracks.isNotEmpty()) {
-                    val index = (payload["queueIndex"]?.jsonPrimitive?.intOrNull ?: 0)
-                        .coerceIn(0, tracks.lastIndex)
-                    playback.playTracks(tracks, index)
-                    val position = payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L
-                    if (position > 0) playback.seekTo(position)
-                    if (payload["isPlaying"]?.jsonPrimitive?.booleanOrNull == false) playback.pause()
+                when {
+                    tracks.isEmpty() -> false
+                    command == "add_tracks" -> playback.appendTracks(tracks) > 0
+                    command == "play_next" -> playback.playNextMany(tracks) > 0
+                    else -> {
+                        val index = (payload["queueIndex"]?.jsonPrimitive?.intOrNull ?: 0)
+                            .coerceIn(0, tracks.lastIndex)
+                        playback.playTracksIfReady(tracks, index).also { accepted ->
+                            if (accepted) {
+                                val position = payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L
+                                if (position > 0) playback.seekTo(position)
+                                if (payload["isPlaying"]?.jsonPrimitive?.booleanOrNull == false) playback.pause()
+                            }
+                        }
+                    }
                 }
             }
+            else -> false
         }
     }
 

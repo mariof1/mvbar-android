@@ -61,6 +61,9 @@ object SocialRealtimeManager {
     private val _selectedConnectDeviceId = MutableStateFlow<String?>(null)
     val selectedConnectDeviceId: StateFlow<String?> = _selectedConnectDeviceId.asStateFlow()
 
+    private val _sessionInvalidated = MutableStateFlow(0L)
+    val sessionInvalidated: StateFlow<Long> = _sessionInvalidated.asStateFlow()
+
     private var appContext: Context? = null
     private var socket: WebSocket? = null
     private var reconnectJob: Job? = null
@@ -73,6 +76,7 @@ object SocialRealtimeManager {
     @Synchronized
     fun start(context: Context) {
         appContext = context.applicationContext
+        _sessionInvalidated.value = 0L
         stopped = false
         if (socket != null || ApiClient.getToken().isNullOrBlank()) return
         startConnectStatePublisher(context.applicationContext)
@@ -142,6 +146,20 @@ object SocialRealtimeManager {
         }
     }
 
+    @Synchronized
+    private fun invalidateSession(webSocket: WebSocket, reason: String) {
+        if (socket !== webSocket) return
+        stopped = true
+        socket = null
+        reconnectJob?.cancel()
+        reconnectJob = null
+        _connectDevices.value = emptyList()
+        _selectedConnectDeviceId.value = null
+        _sessionInvalidated.value = System.currentTimeMillis()
+        DebugLog.i("SocialWS", "Session invalidated: $reason")
+        webSocket.close(4001, reason.take(120))
+    }
+
     private class Listener : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             attempts = 0
@@ -157,6 +175,12 @@ object SocialRealtimeManager {
                 val type = root["type"]?.jsonPrimitive?.contentOrNull ?: return
                 if (type == "ping") {
                     webSocket.send("{\"type\":\"pong\"}")
+                    return
+                }
+                if (type == "auth:session_invalid") {
+                    val reason = root["data"]?.jsonObject?.get("error")?.jsonPrimitive?.contentOrNull
+                        ?: "Session invalidated"
+                    invalidateSession(webSocket, reason)
                     return
                 }
                 if (type == "connect:devices") {
@@ -198,7 +222,7 @@ object SocialRealtimeManager {
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            disconnected(webSocket)
+            if (code == 4001) invalidateSession(webSocket, reason) else disconnected(webSocket)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -254,6 +278,8 @@ object SocialRealtimeManager {
                 add(kotlinx.serialization.json.JsonPrimitive("music"))
                 add(kotlinx.serialization.json.JsonPrimitive("remote-control"))
                 add(kotlinx.serialization.json.JsonPrimitive("transfer"))
+                add(kotlinx.serialization.json.JsonPrimitive("command-results-v1"))
+                add(kotlinx.serialization.json.JsonPrimitive("play-next"))
             })
             put("state", connectStateJson(state))
         }
@@ -280,40 +306,68 @@ object SocialRealtimeManager {
     private fun handleConnectCommand(command: ConnectCommandPayload) {
         val context = appContext ?: return
         scope.launch(Dispatchers.Main) {
-            val player = PlayerManager.getInstance(context)
-            val payload = command.payload
-            when (command.command) {
-                "play" -> player.play()
-                "pause" -> player.pause()
-                "toggle" -> player.togglePlay()
-                "next" -> player.next()
-                "previous" -> player.previous()
-                "seek" -> player.seekTo(payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L)
-                "stop" -> player.clearQueue()
-                "play_index" -> player.playQueueIndex(payload["index"]?.jsonPrimitive?.intOrNull ?: 0)
-                "remove_index" -> player.removeFromQueue(payload["index"]?.jsonPrimitive?.intOrNull ?: 0)
-                "reorder" -> player.moveInQueue(
-                    payload["from"]?.jsonPrimitive?.intOrNull ?: 0,
-                    payload["to"]?.jsonPrimitive?.intOrNull ?: 0
-                )
-                "clear_queue" -> player.clearQueue()
-                "play_tracks", "add_tracks" -> {
-                    val tracks = payload["tracks"]?.jsonArray?.mapNotNull { element ->
-                        runCatching { json.decodeFromJsonElement<ConnectTrack>(element).toTrack() }.getOrNull()
-                    }.orEmpty()
-                    if (command.command == "add_tracks") {
-                        player.appendTracks(tracks)
-                    } else if (tracks.isNotEmpty()) {
+            val result = runCatching { applyConnectCommand(PlayerManager.getInstance(context), command) }
+            val success = result.getOrDefault(false)
+            sendJson("connect:command_result", buildJsonObject {
+                put("commandId", command.commandId)
+                put("success", success)
+                if (!success) {
+                    put("error", result.exceptionOrNull()?.message?.take(300) ?: "This player could not apply that command.")
+                }
+            })
+        }
+    }
+
+    private fun applyConnectCommand(player: PlayerManager, command: ConnectCommandPayload): Boolean {
+        val payload = command.payload
+        val state = player.state.value
+        return when (command.command) {
+            "play" -> (state.currentTrack != null).also { if (it) player.play() }
+            "pause" -> (state.currentTrack != null).also { if (it) player.pause() }
+            "toggle" -> (state.currentTrack != null).also { if (it) player.togglePlay() }
+            "next" -> (state.queueIndex in 0 until state.queue.lastIndex).also { if (it) player.next() }
+            "previous" -> (state.queueIndex > 0).also { if (it) player.previous() }
+            "seek" -> (state.currentTrack != null).also {
+                if (it) player.seekTo(payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L)
+            }
+            "stop", "clear_queue" -> true.also { player.clearQueue() }
+            "play_index" -> {
+                val index = payload["index"]?.jsonPrimitive?.intOrNull ?: 0
+                (index in state.queue.indices).also { if (it) player.playQueueIndex(index) }
+            }
+            "remove_index" -> {
+                val index = payload["index"]?.jsonPrimitive?.intOrNull ?: 0
+                (index in state.queue.indices).also { if (it) player.removeFromQueue(index) }
+            }
+            "reorder" -> {
+                val from = payload["from"]?.jsonPrimitive?.intOrNull ?: 0
+                val to = payload["to"]?.jsonPrimitive?.intOrNull ?: 0
+                (from in state.queue.indices && to in state.queue.indices).also {
+                    if (it) player.moveInQueue(from, to)
+                }
+            }
+            "play_tracks", "add_tracks", "play_next" -> {
+                val tracks = payload["tracks"]?.jsonArray?.mapNotNull { element ->
+                    runCatching { json.decodeFromJsonElement<ConnectTrack>(element).toTrack() }.getOrNull()
+                }.orEmpty()
+                when {
+                    tracks.isEmpty() -> false
+                    command.command == "add_tracks" -> player.appendTracks(tracks) > 0
+                    command.command == "play_next" -> player.playNextMany(tracks) > 0
+                    else -> {
                         val index = (payload["queueIndex"]?.jsonPrimitive?.intOrNull ?: 0)
                             .coerceIn(0, tracks.lastIndex)
-                        if (player.playTracks(tracks, index)) {
-                            val position = payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L
-                            if (position > 0) player.seekTo(position)
-                            if (payload["isPlaying"]?.jsonPrimitive?.booleanOrNull == false) player.pause()
+                        player.playTracks(tracks, index).also { started ->
+                            if (started) {
+                                val position = payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L
+                                if (position > 0) player.seekTo(position)
+                                if (payload["isPlaying"]?.jsonPrimitive?.booleanOrNull == false) player.pause()
+                            }
                         }
                     }
                 }
             }
+            else -> false
         }
     }
 

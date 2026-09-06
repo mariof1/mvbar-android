@@ -786,7 +786,8 @@ fun MainScreen(
                                 } else null,
                                 recommendationFeedbackBusy = recommendationFeedbackBusy,
                                 onTap = { showNowPlaying = true },
-                                onDismiss = mainVm::clearPlaybackQueue
+                                onDismiss = mainVm::clearPlaybackQueue,
+                                canSkipNext = if (controllingRemote) selectedConnectDevice?.state?.hasNext else null
                             )
                         }
 
@@ -1446,7 +1447,8 @@ fun MainScreen(
                                 } else null,
                                 recommendationFeedbackBusy = recommendationFeedbackBusy,
                                 onTap = { showNowPlaying = true },
-                                onDismiss = mainVm::clearPlaybackQueue
+                                onDismiss = mainVm::clearPlaybackQueue,
+                                canSkipNext = if (controllingRemote) selectedConnectDevice?.state?.hasNext else null
                             )
                         }
                     }
@@ -1485,7 +1487,7 @@ fun MainScreen(
                 onNext = mainVm::nextTrack,
                 onPrevious = mainVm::previousTrack,
                 onSeek = mainVm::seekTo,
-                onCyclePlayMode = { mainVm.playerManager.cyclePlayMode() },
+                onCyclePlayMode = if (controllingRemote) null else ({ mainVm.playerManager.cyclePlayMode() }),
                 onToggleFavorite = {
                     displayedPlayerState.currentTrack?.let { mainVm.toggleFavorite(it.id) }
                 },

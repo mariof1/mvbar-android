@@ -1281,7 +1281,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun playTrack(track: Track, queue: List<Track>? = null) {
         val tracks = queue ?: listOf(track)
         val idx = tracks.indexOf(track).coerceAtLeast(0)
-        if (SocialRealtimeManager.playTracksOnSelected(tracks, idx)) return
+        if (SocialRealtimeManager.playTracksOnSelected(tracks, idx)) {
+            if (tracks.size == 1) appendSimilarTracksWhenReady(track, remote = true)
+            return
+        }
         val started = playerManager.playTracks(tracks, idx)
         if (!started) return
         val activeTrack = playerManager.state.value.currentTrack ?: track
@@ -1291,22 +1294,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Prefetch lyrics for the track
         if (activeTrack.id > 0) prefetchLyrics(activeTrack.id)
         // If playing a single track (e.g. from search), fetch similar tracks as radio queue
-        if (tracks.size == 1 && activeTrack.id > 0 && NetworkMonitor.isOnline.value) {
-            viewModelScope.launch {
-                try {
-                    val preferences = repo.getPreferences()
-                    if (!preferences.preferences.autoContinue) {
-                        DebugLog.i("Radio", "Auto-continue disabled; not appending similar tracks")
-                        return@launch
-                    }
-                    val resp = repo.getSimilarTracks(activeTrack.id)
-                    if (resp.tracks.isNotEmpty()) {
-                        playerManager.appendTracks(resp.tracks)
-                        DebugLog.i("Radio", "Appended ${resp.tracks.size} similar tracks for ${activeTrack.displayTitle}")
-                    }
-                } catch (e: Exception) {
-                    DebugLog.e("Radio", "Failed to fetch similar tracks", e)
+        if (tracks.size == 1) appendSimilarTracksWhenReady(activeTrack, remote = false)
+    }
+
+    private fun appendSimilarTracksWhenReady(track: Track, remote: Boolean) {
+        if (track.id <= 0 || !NetworkMonitor.isOnline.value) return
+        viewModelScope.launch {
+            try {
+                val preferences = repo.getPreferences()
+                if (!preferences.preferences.autoContinue) {
+                    DebugLog.i("Radio", "Auto-continue disabled; not appending similar tracks")
+                    return@launch
                 }
+                val resp = repo.getSimilarTracks(track.id)
+                if (resp.tracks.isNotEmpty()) {
+                    val added = if (remote) {
+                        if (SocialRealtimeManager.addTracksOnSelected(resp.tracks)) resp.tracks.size else 0
+                    } else {
+                        playerManager.appendTracks(resp.tracks)
+                    }
+                    DebugLog.i("Radio", "Appended $added similar tracks for ${track.displayTitle}${if (remote) " remotely" else ""}")
+                }
+            } catch (e: Exception) {
+                DebugLog.e("Radio", "Failed to fetch similar tracks", e)
             }
         }
     }

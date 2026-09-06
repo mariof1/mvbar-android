@@ -41,6 +41,7 @@ fun MiniPlayerBar(
     recommendationFeedbackBusy: Boolean = false,
     onTap: () -> Unit,
     onDismiss: (() -> Unit)? = null,
+    canSkipNext: Boolean? = null,
     modifier: Modifier = Modifier
 ) {
     val track = state.currentTrack ?: return
@@ -226,7 +227,7 @@ fun MiniPlayerBar(
                         Text("+15", color = OnSurfaceDim, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
                 } else {
-                    val hasNext = state.queueIndex < state.queue.size - 1
+                    val hasNext = canSkipNext ?: (state.queueIndex < state.queue.size - 1)
                     IconButton(onClick = onNext, enabled = hasNext) {
                         Icon(
                             Icons.Filled.SkipNext,

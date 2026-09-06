@@ -2257,14 +2257,7 @@ private fun NowPlayingScreen(state: TvUiState, viewModel: TvViewModel) {
             Column(Modifier.width(260.dp).fillMaxHeight()) {
                 Text("Queue", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(7.dp))
-                if (state.controllingRemote) {
-                    Text(
-                        "The queue stays on ${state.selectedConnectDevice?.name}. Use Previous and Next to move through it.",
-                        color = Muted,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
-                } else LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     itemsIndexed(playback.queue, key = { index, queued -> "$index:${queued.mediaId}" }) { index, queued ->
                         Card(
                             onClick = { viewModel.playQueueIndex(index) },

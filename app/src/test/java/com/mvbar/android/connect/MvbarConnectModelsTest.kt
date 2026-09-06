@@ -28,8 +28,13 @@ class MvbarConnectModelsTest {
                     "album": "The Album",
                     "durationMs": 201000
                   },
-                  "queueIndex": 3,
-                  "queueLength": 12,
+                  "queue": [
+                    { "id": 7, "title": "Before" },
+                    { "id": 42, "title": "The Song", "artist": "The Artist", "album": "The Album", "durationMs": 201000 },
+                    { "id": 99, "title": "After" }
+                  ],
+                  "queueIndex": 1,
+                  "queueLength": 3,
                   "isPlaying": true,
                   "positionMs": 5000,
                   "durationMs": 201000,
@@ -43,12 +48,15 @@ class MvbarConnectModelsTest {
         val device = payload.devices.single()
         assertEquals("web-1", device.id)
         assertTrue(device.state.isPlaying)
-        assertEquals(12, device.state.queueLength)
+        assertTrue(device.state.hasNext)
+        assertEquals(3, device.state.queueLength)
 
         val player = device.asRemotePlayerState()
         assertEquals(42, player.currentTrack?.id)
         assertEquals("The Artist", player.currentTrack?.displayArtist)
         assertEquals(5000L, player.position)
+        assertEquals(3, player.queue.size)
+        assertEquals(1, player.queueIndex)
         assertTrue(player.isPlaying)
         assertFalse(player.isPodcastMode)
     }

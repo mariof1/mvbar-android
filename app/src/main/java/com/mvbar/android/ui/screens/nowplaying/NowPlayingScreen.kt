@@ -71,7 +71,7 @@ fun NowPlayingScreen(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
-    onCyclePlayMode: () -> Unit,
+    onCyclePlayMode: (() -> Unit)?,
     onToggleFavorite: () -> Unit,
     onPlayQueueItem: (Int) -> Unit = {},
     onRemoveFromQueue: (Int) -> Unit = {},
@@ -345,7 +345,7 @@ fun NowPlayingScreen(
 
                             // Media buttons — larger
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                                if (state.isPodcastMode || state.isAudiobookMode) Spacer(Modifier.size(48.dp))
+                                if (state.isPodcastMode || state.isAudiobookMode || onCyclePlayMode == null) Spacer(Modifier.size(48.dp))
                                 else IconButton(onClick = onCyclePlayMode, modifier = Modifier.size(48.dp)) {
                                     Icon(when (state.playMode) { PlayMode.SHUFFLE -> Icons.Filled.Shuffle; PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne; else -> Icons.Filled.Repeat },
                                         "Play Mode", tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim, modifier = Modifier.size(28.dp))
@@ -452,7 +452,7 @@ fun NowPlayingScreen(
                                     Spacer(Modifier.height(4.dp))
 
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                                        if (state.isPodcastMode || state.isAudiobookMode) Spacer(Modifier.size(36.dp))
+                                        if (state.isPodcastMode || state.isAudiobookMode || onCyclePlayMode == null) Spacer(Modifier.size(36.dp))
                                         else IconButton(onClick = onCyclePlayMode, modifier = Modifier.size(36.dp)) {
                                             Icon(when (state.playMode) { PlayMode.SHUFFLE -> Icons.Filled.Shuffle; PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne; else -> Icons.Filled.Repeat },
                                                 "Play Mode", tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim, modifier = Modifier.size(20.dp))
@@ -581,7 +581,7 @@ fun NowPlayingScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (state.isPodcastMode || state.isAudiobookMode) Spacer(Modifier.size(36.dp))
+                        if (state.isPodcastMode || state.isAudiobookMode || onCyclePlayMode == null) Spacer(Modifier.size(36.dp))
                         else IconButton(onClick = onCyclePlayMode, modifier = Modifier.size(36.dp)) {
                             Icon(when (state.playMode) { PlayMode.SHUFFLE -> Icons.Filled.Shuffle; PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne; else -> Icons.Filled.Repeat },
                                 "Play Mode", tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim, modifier = Modifier.size(20.dp))
@@ -675,7 +675,7 @@ fun NowPlayingScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (state.isPodcastMode || state.isAudiobookMode) Spacer(Modifier.size(48.dp))
+                        if (state.isPodcastMode || state.isAudiobookMode || onCyclePlayMode == null) Spacer(Modifier.size(48.dp))
                         else IconButton(onClick = onCyclePlayMode) {
                             Icon(when (state.playMode) { PlayMode.SHUFFLE -> Icons.Filled.Shuffle; PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne; else -> Icons.Filled.Repeat },
                                 "Play Mode", tint = if (state.playMode != PlayMode.NORMAL) Cyan500 else OnSurfaceDim, modifier = Modifier.size(24.dp))

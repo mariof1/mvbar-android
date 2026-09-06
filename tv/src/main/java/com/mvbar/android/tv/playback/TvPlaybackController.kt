@@ -82,9 +82,19 @@ class TvPlaybackController(
         if (controller == null && controllerFuture == null) connect()
     }
 
-    fun playTracks(tracks: List<Track>, selectedIndex: Int) {
-        val repo = repository ?: return
-        playItems(tracks.map { track -> track.toPlaybackItem(repo) }, selectedIndex)
+    fun playTracks(tracks: List<Track>, selectedIndex: Int): Boolean {
+        val repo = repository ?: return false
+        return playItems(tracks.map { track -> track.toPlaybackItem(repo) }, selectedIndex)
+    }
+
+    /** Remote commands must not report success while the media session is still unavailable. */
+    fun playTracksIfReady(tracks: List<Track>, selectedIndex: Int): Boolean {
+        val repo = repository ?: return false
+        val activeController = controller ?: return false
+        val items = tracks.map { track -> track.toPlaybackItem(repo) }
+        if (items.isEmpty() || selectedIndex !in items.indices) return false
+        playNow(activeController, items, selectedIndex)
+        return true
     }
 
     fun playEpisodes(episodes: List<Episode>, selectedIndex: Int, podcast: Podcast?) {
@@ -186,14 +196,27 @@ class TvPlaybackController(
         notifyState()
     }
 
-    fun appendTracks(tracks: List<Track>) {
-        val repo = repository ?: return
-        val activeController = controller ?: return
-        if (tracks.isEmpty()) return
+    fun playNextMany(tracks: List<Track>): Int {
+        val repo = repository ?: return 0
+        val activeController = controller ?: return 0
+        if (tracks.isEmpty()) return 0
+        val items = tracks.map { it.toPlaybackItem(repo) }
+        val insertAt = (activeController.currentMediaItemIndex + 1).coerceIn(0, queue.size)
+        queue = queue.toMutableList().apply { addAll(insertAt, items) }
+        activeController.addMediaItems(insertAt, items.map { it.toMediaItem() })
+        notifyState()
+        return items.size
+    }
+
+    fun appendTracks(tracks: List<Track>): Int {
+        val repo = repository ?: return 0
+        val activeController = controller ?: return 0
+        if (tracks.isEmpty()) return 0
         val items = tracks.map { it.toPlaybackItem(repo) }
         queue = queue + items
         activeController.addMediaItems(items.map { it.toMediaItem() })
         notifyState()
+        return items.size
     }
 
     fun removeQueueIndex(index: Int) {
@@ -249,15 +272,16 @@ class TvPlaybackController(
         onChanged(PlaybackSnapshot())
     }
 
-    private fun playItems(items: List<PlaybackItem>, selectedIndex: Int) {
-        if (items.isEmpty() || selectedIndex !in items.indices) return
+    private fun playItems(items: List<PlaybackItem>, selectedIndex: Int): Boolean {
+        if (items.isEmpty() || selectedIndex !in items.indices) return false
         val activeController = controller
         if (activeController == null) {
             pendingPlay = items to selectedIndex
             if (controllerFuture == null) connect()
-            return
+            return true
         }
         playNow(activeController, items, selectedIndex)
+        return true
     }
 
     @SuppressLint("UnsafeOptInUsageError")

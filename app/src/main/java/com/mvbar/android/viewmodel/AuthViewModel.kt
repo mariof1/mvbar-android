@@ -5,9 +5,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mvbar.android.data.repository.AuthRepository
 import com.mvbar.android.debug.DebugLog
+import com.mvbar.android.social.SocialRealtimeManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 data class AuthState(
@@ -29,6 +32,19 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
             val restored = repo.restoreSession()
             DebugLog.i("Auth", "Session restore: $restored")
             _state.value = AuthState(isLoggedIn = restored, isLoading = false)
+        }
+        viewModelScope.launch {
+            combine(state, SocialRealtimeManager.sessionInvalidated) { auth, invalidatedAt ->
+                auth to invalidatedAt
+            }.collectLatest { (auth, invalidatedAt) ->
+                if (invalidatedAt <= 0 || !auth.isLoggedIn) return@collectLatest
+                repo.logout()
+                _state.value = AuthState(
+                    isLoggedIn = false,
+                    isLoading = false,
+                    error = "Your session expired. Please sign in again."
+                )
+            }
         }
     }
 

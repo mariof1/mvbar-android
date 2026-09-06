@@ -44,6 +44,7 @@ data class TvConnectTrack(
 @Serializable
 data class TvConnectPlaybackState(
     val track: TvConnectTrack? = null,
+    val queue: List<TvConnectTrack> = emptyList(),
     val queueIndex: Int = -1,
     val queueLength: Int = 0,
     val isPlaying: Boolean = false,
@@ -85,9 +86,10 @@ internal fun tvWebSocketUrl(baseUrl: String): HttpUrl? = baseUrl.toHttpUrlOrNull
 class TvRealtimeClient(
     private val scope: CoroutineScope,
     private val onEvent: (String) -> Unit,
-    private val onConnectCommand: (String, JsonObject) -> Unit,
+    private val onConnectCommand: suspend (String, JsonObject) -> Boolean,
     private val onConnectDevices: (List<TvConnectDevice>) -> Unit,
-    private val onConnectError: (String) -> Unit
+    private val onConnectError: (String) -> Unit,
+    private val onSessionInvalidated: (String) -> Unit
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val client = OkHttpClient.Builder()
@@ -165,6 +167,18 @@ class TvRealtimeClient(
         }
     }
 
+    @Synchronized
+    private fun invalidateSession(webSocket: WebSocket, reason: String) {
+        if (socket !== webSocket) return
+        stopped = true
+        socket = null
+        reconnectJob?.cancel()
+        reconnectJob = null
+        onConnectDevices(emptyList())
+        onSessionInvalidated(reason)
+        webSocket.close(4001, reason.take(120))
+    }
+
     private inner class Listener : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             attempts = 0
@@ -179,6 +193,8 @@ class TvRealtimeClient(
                     add(JsonPrimitive("music"))
                     add(JsonPrimitive("remote-control"))
                     add(JsonPrimitive("transfer"))
+                    add(JsonPrimitive("command-results-v1"))
+                    add(JsonPrimitive("play-next"))
                 })
                 put("state", latestPlaybackState)
             })
@@ -193,10 +209,23 @@ class TvRealtimeClient(
                     ?: return
                 if (type == "ping") {
                     webSocket.send("{\"type\":\"pong\"}")
+                } else if (type == "auth:session_invalid") {
+                    val reason = root["data"]?.jsonObject?.get("error")?.jsonPrimitive?.contentOrNull
+                        ?: "Session invalidated"
+                    invalidateSession(webSocket, reason)
                 } else if (type == "connect:command") {
                     val data = root["data"]?.jsonObject ?: return
+                    val commandId = data["commandId"]?.jsonPrimitive?.contentOrNull ?: return
                     val command = data["command"]?.jsonPrimitive?.contentOrNull ?: return
-                    onConnectCommand(command, data["payload"]?.jsonObject ?: JsonObject(emptyMap()))
+                    val payload = data["payload"]?.jsonObject ?: JsonObject(emptyMap())
+                    scope.launch {
+                        val result = runCatching { onConnectCommand(command, payload) }
+                        sendCommandResult(
+                            commandId,
+                            result.getOrDefault(false),
+                            result.exceptionOrNull()?.message
+                        )
+                    }
                 } else if (type == "connect:devices") {
                     val devices = root["data"]?.let {
                         json.decodeFromJsonElement<TvConnectDevicesPayload>(it)
@@ -224,7 +253,7 @@ class TvRealtimeClient(
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            disconnected(webSocket)
+            if (code == 4001) invalidateSession(webSocket, reason) else disconnected(webSocket)
         }
 
         override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) {
@@ -258,6 +287,15 @@ class TvRealtimeClient(
             put("payload", payload)
         })
         return true
+    }
+
+    fun sendCommandResult(commandId: String, success: Boolean, error: String? = null) {
+        val active = socket ?: return
+        send(active, "connect:command_result", buildJsonObject {
+            put("commandId", commandId)
+            put("success", success)
+            if (!success) put("error", error?.take(300) ?: "This player could not apply that command.")
+        })
     }
 
     fun transferPlayback(sourceDeviceId: String, targetDeviceId: String): Boolean {
