@@ -24,7 +24,7 @@ fun CollectionBottomSheet(
     title: String,
     subtitle: String?,
     artworkUrl: String?,
-    placeholderIcon: ImageVector = Icons.Filled.Album,
+    placeholderIcon: ImageVector = ArtworkIcons.Album,
     trackCount: Int,
     onDismiss: () -> Unit,
     onPlayNext: () -> Unit,

@@ -51,7 +51,7 @@ fun AlbumCard(
             ArtworkImage(
                 model = album.artPath?.let { ApiClient.artPathUrl(it) },
                 contentDescription = album.displayName,
-                placeholderIcon = Icons.Filled.Album,
+                placeholderIcon = ArtworkIcons.Album,
                 iconSize = 32.dp,
                 modifier = Modifier.fillMaxSize()
             )

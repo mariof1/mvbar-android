@@ -34,6 +34,7 @@ import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Album
 import com.mvbar.android.data.model.Artist
 import com.mvbar.android.data.model.Track
+import com.mvbar.android.ui.components.ArtworkIcons
 import com.mvbar.android.ui.components.ArtworkImage
 import com.mvbar.android.ui.components.TrackListItem
 import com.mvbar.android.ui.theme.*
@@ -88,7 +89,7 @@ fun ArtistDetailScreen(
                     ArtworkImage(
                         model = ApiClient.artistArtUrl(id),
                         contentDescription = null,
-                        placeholderIcon = Icons.Filled.Person,
+                        placeholderIcon = ArtworkIcons.Artist,
                         iconSize = 28.dp,
                         modifier = Modifier
                             .size(64.dp)
@@ -227,7 +228,7 @@ private fun AlbumRow(
                     ArtworkImage(
                         model = artUrl,
                         contentDescription = null,
-                        placeholderIcon = Icons.Filled.Album,
+                        placeholderIcon = ArtworkIcons.Album,
                         iconSize = 28.dp,
                         modifier = Modifier
                             .fillMaxWidth()

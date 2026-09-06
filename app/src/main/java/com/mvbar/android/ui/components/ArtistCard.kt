@@ -52,13 +52,13 @@ fun ArtistCard(
                 ArtworkImage(
                     model = ApiClient.artistArtUrl(id),
                     contentDescription = artist.name,
-                    placeholderIcon = Icons.Filled.Person,
+                    placeholderIcon = ArtworkIcons.Artist,
                     iconSize = 32.dp,
                     modifier = Modifier.fillMaxSize()
                 )
             } ?: run {
                 ArtworkPlaceholder(
-                    icon = Icons.Filled.Person,
+                    icon = ArtworkIcons.Artist,
                     iconSize = 32.dp,
                     modifier = Modifier.fillMaxSize()
                 )
