@@ -358,6 +358,49 @@ data class SearchResults(
 )
 
 @Serializable
+data class AiIntentRequest(val query: String)
+
+@Serializable
+data class AiIntentTrack(
+    val id: Int = 0,
+    val title: String? = null,
+    val artist: String? = null,
+    val albumArtist: String? = null,
+    val displayArtist: String? = null,
+    val album: String? = null,
+    val path: String? = null,
+    val ext: String? = null,
+    val durationMs: Double? = null
+) {
+    fun toTrack(): Track = Track(
+        id = id,
+        title = title,
+        artist = artist,
+        album = album,
+        albumArtist = albumArtist,
+        displayArtistName = displayArtist,
+        durationMs = durationMs,
+        path = path
+    )
+}
+
+@Serializable
+data class AiIntentResponse(
+    val ok: Boolean = false,
+    val model: String = "",
+    val requestedModel: String = "",
+    val usedFreeFallback: Boolean = false,
+    val originalQuery: String = "",
+    val action: String = "search",
+    val requestedTrackCount: Int = 0,
+    val searchQuery: String = "",
+    val explanation: String = "",
+    val tracks: List<AiIntentTrack> = emptyList()
+) {
+    val playableTracks: List<Track> get() = tracks.map(AiIntentTrack::toTrack)
+}
+
+@Serializable
 data class SearchArtist(
     val id: Int = 0,
     val name: String = "",

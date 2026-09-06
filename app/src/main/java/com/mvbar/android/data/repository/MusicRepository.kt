@@ -430,6 +430,7 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun saveRecentSearch(request: RecentSearchRequest) = api.saveRecentSearch(request)
     suspend fun removeRecentSearch(item: RecentSearchItem) = api.removeRecentSearch(item.itemType, item.itemKey)
     suspend fun clearRecentSearches() = api.clearRecentSearches()
+    suspend fun createAiMix(query: String) = api.createAiMix(AiIntentRequest(query))
     suspend fun getPreferences() = api.getPreferences()
     suspend fun getRecommendations() = api.getRecommendations()
     suspend fun sendRecommendationFeedback(request: RecommendationFeedbackRequest) = api.sendRecommendationFeedback(request)

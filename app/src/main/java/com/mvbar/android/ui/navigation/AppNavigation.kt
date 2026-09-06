@@ -186,6 +186,7 @@ fun MainScreen(
     val smartPlaylists by mainVm.smartPlaylists.collectAsState()
     val searchResults by mainVm.searchResults.collectAsState()
     val searchLoading by mainVm.searchLoading.collectAsState()
+    val aiMixState by mainVm.aiMixState.collectAsState()
     val recentSearches by mainVm.recentSearches.collectAsState()
     val recentSearchesLoading by mainVm.recentSearchesLoading.collectAsState()
     val hasMoreSearch by mainVm.hasMoreSearch.collectAsState()
@@ -1547,13 +1548,70 @@ fun MainScreen(
                     launchSingleTop = true
                 }
             }
+
+            LaunchedEffect(aiMixState.result) {
+                val result = aiMixState.result ?: return@LaunchedEffect
+                val tracks = result.playableTracks
+                when (result.action.lowercase()) {
+                    "play" -> {
+                        mainVm.playTrack(tracks.first(), tracks)
+                        ToastManager.show(
+                            "Playing ${tracks.size}-track AI mix",
+                            ToastIcon.SUCCESS
+                        )
+                        showSearch = false
+                        mainVm.clearSearch()
+                        mainVm.clearAiMix()
+                    }
+                    "queue" -> {
+                        val added = mainVm.playerManager.appendTracks(tracks)
+                        if (added > 0) {
+                            ToastManager.show(
+                                "Added $added AI mix tracks to queue",
+                                ToastIcon.QUEUE
+                            )
+                            showSearch = false
+                            mainVm.clearSearch()
+                            mainVm.clearAiMix()
+                        } else {
+                            ToastManager.show("Could not add the AI mix to the queue", ToastIcon.ERROR)
+                        }
+                    }
+                }
+            }
+
             SearchScreen(
                 results = searchResults,
                 isLoading = searchLoading,
+                aiResult = aiMixState.result,
+                aiLoading = aiMixState.isLoading,
+                aiError = aiMixState.error,
                 currentTrackId = currentTrackId,
                 recentSearches = recentSearches,
                 recentSearchesLoading = recentSearchesLoading,
                 onSearch = { mainVm.search(it) },
+                onCreateAiMix = { mainVm.createAiMix(it) },
+                onClearAiMix = { mainVm.clearAiMix() },
+                onPlayAiMix = { tracks ->
+                    if (tracks.isNotEmpty()) {
+                        mainVm.playTrack(tracks.first(), tracks)
+                        ToastManager.show("Playing ${tracks.size}-track AI mix", ToastIcon.SUCCESS)
+                        showSearch = false
+                        mainVm.clearSearch()
+                        mainVm.clearAiMix()
+                    }
+                },
+                onQueueAiMix = { tracks ->
+                    val added = mainVm.playerManager.appendTracks(tracks)
+                    if (added > 0) {
+                        ToastManager.show("Added $added AI mix tracks to queue", ToastIcon.QUEUE)
+                        showSearch = false
+                        mainVm.clearSearch()
+                        mainVm.clearAiMix()
+                    } else {
+                        ToastManager.show("Could not add the AI mix to the queue", ToastIcon.ERROR)
+                    }
+                },
                 onLoadRecentSearches = { mainVm.loadRecentSearches() },
                 onRecentSearchClick = { recent ->
                     mainVm.rememberRecentSearch(recent.asRequest())
@@ -1617,7 +1675,7 @@ fun MainScreen(
                 },
                 favoriteIds = favoriteIds,
                 onToggleFavorite = { mainVm.toggleFavorite(it) },
-                onClose = { showSearch = false; mainVm.clearSearch() },
+                onClose = { showSearch = false; mainVm.clearSearch(); mainVm.clearAiMix() },
                 hasMore = hasMoreSearch,
                 isLoadingMore = isLoadingMoreSearch,
                 onLoadMore = { mainVm.loadMoreSearchResults() }

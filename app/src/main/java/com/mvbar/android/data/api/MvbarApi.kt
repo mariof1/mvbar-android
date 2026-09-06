@@ -228,6 +228,9 @@ interface MvbarApi {
     @DELETE("api/search/recent")
     suspend fun clearRecentSearches(): RecentSearchActionResponse
 
+    @POST("api/ai/intent")
+    suspend fun createAiMix(@Body request: AiIntentRequest): AiIntentResponse
+
     // Recommendations
     @GET("api/recommendations")
     suspend fun getRecommendations(): RecommendationsResponse

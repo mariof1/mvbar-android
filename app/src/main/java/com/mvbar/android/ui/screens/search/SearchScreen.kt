@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,8 +13,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
@@ -26,12 +30,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.model.AiIntentResponse
 import com.mvbar.android.data.model.SearchAlbum
 import com.mvbar.android.data.model.SearchArtist
 import com.mvbar.android.data.model.SearchPlaylist
@@ -49,10 +57,17 @@ import com.mvbar.android.ui.theme.*
 fun SearchScreen(
     results: SearchResults?,
     isLoading: Boolean,
+    aiResult: AiIntentResponse?,
+    aiLoading: Boolean,
+    aiError: String?,
     currentTrackId: Int?,
     recentSearches: List<RecentSearchItem>,
     recentSearchesLoading: Boolean,
     onSearch: (String) -> Unit,
+    onCreateAiMix: (String) -> Unit,
+    onClearAiMix: () -> Unit,
+    onPlayAiMix: (List<Track>) -> Unit,
+    onQueueAiMix: (List<Track>) -> Unit,
     onLoadRecentSearches: () -> Unit,
     onRecentSearchClick: (RecentSearchItem) -> Unit,
     onRemoveRecentSearch: (RecentSearchItem) -> Unit,
@@ -75,9 +90,22 @@ fun SearchScreen(
     onLoadMore: () -> Unit = {}
 ) {
     var query by remember { mutableStateOf("") }
+    var aiPrompt by remember { mutableStateOf("") }
+    var mode by remember { mutableStateOf(SearchMode.LIBRARY) }
     val focusRequester = remember { FocusRequester() }
+    val aiMode = mode == SearchMode.AI
+    val inputValue = if (aiMode) aiPrompt else query
+    val activeLoading = if (aiMode) aiLoading else isLoading
 
-    BackHandler(onBack = onClose)
+    fun leaveAiMode() {
+        mode = SearchMode.LIBRARY
+        onClearAiMix()
+        onSearch(query)
+    }
+
+    BackHandler {
+        if (aiMode) leaveAiMode() else onClose()
+    }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -90,47 +118,125 @@ fun SearchScreen(
             .background(BackgroundDark)
             .statusBarsPadding()
     ) {
-        // Search input
-        OutlinedTextField(
-            value = query,
-            onValueChange = {
-                query = it
-                onSearch(it)
-            },
-            placeholder = { Text("Search songs, artists, albums, podcasts...") },
-            leadingIcon = { Icon(Icons.Filled.Search, null, tint = Cyan500) },
-            trailingIcon = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = Cyan500,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(Modifier.width(8.dp))
-                    }
-                    if (query.isNotEmpty() && !isLoading) {
-                        IconButton(onClick = {
-                            query = ""
-                            onSearch("")
-                        }) {
-                            Icon(Icons.Filled.Close, "Clear", tint = OnSurfaceDim)
-                        }
-                    }
-                    if (query.isEmpty()) {
-                        IconButton(onClick = onClose) {
-                            Icon(Icons.Filled.Close, "Close", tint = OnSurfaceDim)
-                        }
-                    }
-                }
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .focusRequester(focusRequester)
-        )
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = inputValue,
+                onValueChange = { value ->
+                    if (aiMode) {
+                        aiPrompt = value.take(500)
+                        onClearAiMix()
+                    } else {
+                        query = value.take(200)
+                        onSearch(query)
+                    }
+                },
+                placeholder = if (aiMode) {
+                    { Text("Describe a mix...") }
+                } else {
+                    null
+                },
+                leadingIcon = {
+                    if (aiMode) {
+                        IconButton(onClick = ::leaveAiMode) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to library search", tint = Cyan500)
+                        }
+                    } else {
+                        Icon(Icons.Filled.Search, null, tint = Cyan500)
+                    }
+                },
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (activeLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Cyan500,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        if (inputValue.isNotEmpty() && !activeLoading) {
+                            IconButton(onClick = {
+                                if (aiMode) {
+                                    aiPrompt = ""
+                                    onClearAiMix()
+                                } else {
+                                    query = ""
+                                    onSearch("")
+                                }
+                            }) {
+                                Icon(Icons.Filled.Close, "Clear", tint = OnSurfaceDim)
+                            }
+                        }
+                        if (inputValue.isEmpty()) {
+                            IconButton(onClick = onClose) {
+                                Icon(Icons.Filled.Close, "Close", tint = OnSurfaceDim)
+                            }
+                        }
+                    }
+                },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                    onSearch = {
+                        if (aiMode && aiPrompt.isNotBlank() && !aiLoading) {
+                            onCreateAiMix(aiPrompt)
+                        }
+                    }
+                ),
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics {
+                        contentDescription = if (aiMode) "Ask AI for music" else "Search library"
+                    }
+                    .focusRequester(focusRequester)
+            )
+
+            Spacer(Modifier.width(8.dp))
+            FilledTonalButton(
+                onClick = {
+                    if (aiMode) {
+                        onCreateAiMix(aiPrompt)
+                    } else {
+                        aiPrompt = query
+                        onSearch("")
+                        onClearAiMix()
+                        mode = SearchMode.AI
+                    }
+                },
+                enabled = !aiMode || (aiPrompt.isNotBlank() && !aiLoading),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Icon(
+                    if (aiMode) Icons.Filled.PlayArrow else Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(if (aiMode) "Go" else "AI")
+            }
+        }
+
+        if (aiMode) {
+            AiMixContent(
+                result = aiResult,
+                isLoading = aiLoading,
+                error = aiError,
+                currentTrackId = currentTrackId,
+                favoriteIds = favoriteIds,
+                onPlayTrack = onPlayTrack,
+                onToggleFavorite = onToggleFavorite,
+                onPlayMix = onPlayAiMix,
+                onQueueMix = onQueueAiMix
+            )
+            return@Column
+        }
 
         val hasQuery = query.trim().isNotEmpty()
         val hasResults = results != null && (
@@ -322,6 +428,157 @@ fun SearchScreen(
                     Text("Search your library", style = MaterialTheme.typography.titleMedium, color = OnSurfaceDim)
                     Spacer(Modifier.height(4.dp))
                     Text("Items you open from search will appear here", style = MaterialTheme.typography.bodySmall, color = OnSurfaceSubtle)
+                }
+            }
+        }
+    }
+}
+
+private enum class SearchMode { LIBRARY, AI }
+
+@Composable
+private fun AiMixContent(
+    result: AiIntentResponse?,
+    isLoading: Boolean,
+    error: String?,
+    currentTrackId: Int?,
+    favoriteIds: Set<Int>,
+    onPlayTrack: (Track, List<Track>) -> Unit,
+    onToggleFavorite: ((Int) -> Unit)?,
+    onPlayMix: (List<Track>) -> Unit,
+    onQueueMix: (List<Track>) -> Unit
+) {
+    when {
+        isLoading -> {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Cyan500, modifier = Modifier.size(32.dp))
+            }
+        }
+
+        error != null -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    color = Pink500.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(
+                        text = error,
+                        color = Pink500,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(18.dp)
+                    )
+                }
+            }
+        }
+
+        result != null -> {
+            val tracks = result.playableTracks
+            LazyColumn(contentPadding = PaddingValues(bottom = 140.dp)) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            Surface(
+                                color = Cyan500.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = Cyan400,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Your AI mix",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = OnSurface
+                                )
+                                result.explanation.takeIf { it.isNotBlank() }?.let { explanation ->
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        explanation,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = OnSurfaceDim
+                                    )
+                                }
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    buildString {
+                                        append(tracks.size)
+                                        if (result.requestedTrackCount > tracks.size) {
+                                            append(" of ${result.requestedTrackCount}")
+                                        }
+                                        append(" matching tracks")
+                                        if (result.model.isNotBlank()) append(" · ${result.model}")
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = OnSurfaceSubtle
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { onPlayMix(tracks) },
+                                modifier = Modifier.weight(1f),
+                                enabled = tracks.isNotEmpty()
+                            ) {
+                                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Play mix")
+                            }
+                            OutlinedButton(
+                                onClick = { onQueueMix(tracks) },
+                                modifier = Modifier.weight(1f),
+                                enabled = tracks.isNotEmpty()
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.QueueMusic,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Add to queue", maxLines = 1)
+                            }
+                        }
+                    }
+                }
+
+                items(tracks.take(10), key = { it.id }) { track ->
+                    val trackWithFavorite = track.copy(isFavorite = track.id in favoriteIds)
+                    TrackListItem(
+                        track = trackWithFavorite,
+                        isPlaying = track.id == currentTrackId,
+                        onPlay = { onPlayTrack(track, tracks) },
+                        onFavorite = onToggleFavorite?.let { { it(track.id) } },
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
+
+                if (tracks.size > 10) {
+                    item {
+                        Text(
+                            "and ${tracks.size - 10} more in the mix",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = OnSurfaceSubtle,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
                 }
             }
         }

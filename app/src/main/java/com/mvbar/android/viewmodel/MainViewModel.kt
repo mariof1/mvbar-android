@@ -34,6 +34,12 @@ data class HomeState(
     val error: String? = null
 )
 
+data class AiMixState(
+    val isLoading: Boolean = false,
+    val result: AiIntentResponse? = null,
+    val error: String? = null
+)
+
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val db = MvbarDatabase.getInstance(app)
     private val repo = MusicRepository.getInstance(db)
@@ -85,6 +91,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val searchLoading: StateFlow<Boolean> = _searchLoading.asStateFlow()
 
     private var searchJob: kotlinx.coroutines.Job? = null
+
+    private val _aiMixState = MutableStateFlow(AiMixState())
+    val aiMixState: StateFlow<AiMixState> = _aiMixState.asStateFlow()
+
+    private var aiMixJob: Job? = null
 
     private val _recentSearches = MutableStateFlow<List<RecentSearchItem>>(emptyList())
     val recentSearches: StateFlow<List<RecentSearchItem>> = _recentSearches.asStateFlow()
@@ -1203,6 +1214,65 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchLoading.value = false
         _hasMoreSearch.value = false
         currentSearchQuery = ""
+    }
+
+    fun createAiMix(prompt: String) {
+        val request = prompt.trim()
+        aiMixJob?.cancel()
+        if (request.isEmpty()) {
+            _aiMixState.value = AiMixState()
+            return
+        }
+        if (!NetworkMonitor.isOnline.value) {
+            _aiMixState.value = AiMixState(error = "AI mixes need an internet connection.")
+            return
+        }
+
+        _aiMixState.value = AiMixState(isLoading = true)
+        aiMixJob = viewModelScope.launch {
+            try {
+                val result = repo.createAiMix(request)
+                _aiMixState.value = if (result.tracks.isEmpty()) {
+                    val detail = result.explanation.trim()
+                    AiMixState(
+                        error = buildString {
+                            append("No matching tracks were found in your library.")
+                            if (detail.isNotEmpty()) append(" $detail")
+                        }
+                    )
+                } else {
+                    AiMixState(result = result)
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                DebugLog.e("AI", "AI mix request failed", e)
+                _aiMixState.value = AiMixState(error = aiMixErrorMessage(e))
+            }
+        }
+    }
+
+    fun clearAiMix() {
+        aiMixJob?.cancel()
+        aiMixJob = null
+        _aiMixState.value = AiMixState()
+    }
+
+    private fun aiMixErrorMessage(error: Exception): String {
+        if (error is retrofit2.HttpException) {
+            val responseMessage = runCatching {
+                val raw = error.response()?.errorBody()?.string().orEmpty()
+                org.json.JSONObject(raw).optString("error")
+            }.getOrNull().orEmpty()
+            if (responseMessage.isNotBlank()) return responseMessage
+            return when (error.code()) {
+                401 -> "Your session has expired. Please sign in again."
+                429 -> "Too many AI requests. Please wait a minute and try again."
+                504 -> "The AI music request timed out."
+                else -> "The AI music service could not be reached."
+            }
+        }
+        return error.message?.takeIf { it.isNotBlank() }
+            ?: "The AI music service could not be reached."
     }
 
     fun playTrack(track: Track, queue: List<Track>? = null) {
