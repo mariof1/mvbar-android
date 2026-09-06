@@ -377,8 +377,20 @@ object SocialRealtimeManager {
 
     fun isControllingRemote(): Boolean = selectedConnectDevice()?.id?.let { it != ApiClient.getClientId() } == true
 
+    fun selectLocalLongFormPlayback() {
+        if (isControllingRemote()) sendCommandToSelected("pause")
+        // Do not transfer the music queue back when starting a local episode/chapter.
+        _selectedConnectDeviceId.value = ApiClient.getClientId()
+    }
+
     fun selectConnectDevice(deviceId: String) {
         val target = _connectDevices.value.firstOrNull { it.id == deviceId } ?: return
+        if (target.id != ApiClient.getClientId()) {
+            appContext?.let { context ->
+                val player = PlayerManager.getInstance(context)
+                if (player.state.value.isPodcastMode || player.state.value.isAudiobookMode) player.pause()
+            }
+        }
         val current = selectedConnectDevice()
         val local = _connectDevices.value.firstOrNull { it.id == ApiClient.getClientId() }
         val source = current?.takeIf { it.state.track != null }

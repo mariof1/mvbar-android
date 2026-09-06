@@ -545,12 +545,23 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playEpisode(episodes: List<Episode>, episode: Episode, podcast: Podcast? = null) {
         val index = episodes.indexOfFirst { it.id == episode.id }
-        if (index >= 0) playback.playEpisodes(episodes, index, podcast)
+        if (index >= 0) {
+            selectLocalLongFormPlayback()
+            playback.playEpisodes(episodes, index, podcast)
+        }
     }
 
     fun playChapter(audiobook: Audiobook, chapters: List<AudiobookChapter>, chapter: AudiobookChapter) {
         val index = chapters.indexOfFirst { it.id == chapter.id }
-        if (index >= 0) playback.playChapters(audiobook, chapters, index)
+        if (index >= 0) {
+            selectLocalLongFormPlayback()
+            playback.playChapters(audiobook, chapters, index)
+        }
+    }
+
+    private fun selectLocalLongFormPlayback() {
+        sendRemoteCommand("pause")
+        _state.update { it.copy(selectedConnectDeviceId = it.localConnectDeviceId) }
     }
 
     fun togglePlayPause() {
@@ -591,6 +602,9 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     fun selectConnectDevice(deviceId: String) {
         val state = _state.value
         val target = state.connectDevices.firstOrNull { it.id == deviceId } ?: return
+        if (target.id != state.localConnectDeviceId && state.playback.item?.kind != PlaybackKind.MUSIC) {
+            playback.pause()
+        }
         val current = state.selectedConnectDevice
         val local = state.connectDevices.firstOrNull { it.id == state.localConnectDeviceId }
         val source = current?.takeIf { it.state.track != null }

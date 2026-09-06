@@ -141,6 +141,7 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
 
         val startIndex = chapters.indexOfFirst { it.id == chapter.id }.coerceAtLeast(0)
 
+        com.mvbar.android.social.SocialRealtimeManager.selectLocalLongFormPlayback()
         playerManager.playTracks(allPseudoTracks, startIndex, allStreamUrls, allArtUrls)
 
         _playingChapter.value = chapter

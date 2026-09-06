@@ -319,6 +319,7 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
                 DebugLog.i("Podcast", "Queued ${queueEpisodes.size - 1} follow-up episodes")
             }
 
+            com.mvbar.android.social.SocialRealtimeManager.selectLocalLongFormPlayback()
             playerManager.playTracks(
                 tracks = tracks,
                 startIndex = startIndex,
@@ -413,6 +414,5 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
         _error.value = null
     }
 }
-
 
 
