@@ -32,6 +32,7 @@ import androidx.navigation.navArgument
 import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.model.Audiobook
 import com.mvbar.android.data.model.Artist
 import com.mvbar.android.data.model.Playlist
 import com.mvbar.android.data.model.RecentSearchSelection
@@ -1240,15 +1241,15 @@ fun MainScreen(
                     CreateSmartPlaylistScreen(
                         genres = browseState.genres,
                         onBack = { navController.popBackStack() },
-                        onCreate = { _, _, _ -> },
+                        onCreate = { _, _, _, done -> done("Creation unavailable") },
                         onSuggest = { kind, query -> mainVm.suggest(kind, query) },
                         editId = spId,
                         initialName = sp?.name ?: "",
                         initialSort = sp?.sort ?: "random",
                         initialFilters = sp?.filters ?: SmartPlaylistFilters(),
                         initialArtistNames = artistNames,
-                        onUpdate = { id, name, sort, filters ->
-                            mainVm.updateSmartPlaylist(id, name, sort, filters)
+                        onUpdate = { id, name, sort, filters, done ->
+                            mainVm.updateSmartPlaylist(id, name, sort, filters, done)
                         },
                         bottomPadding = innerPadding.calculateBottomPadding()
                     )
@@ -1258,8 +1259,8 @@ fun MainScreen(
                     CreateSmartPlaylistScreen(
                         genres = browseState.genres,
                         onBack = { navController.popBackStack() },
-                        onCreate = { name, sort, filters ->
-                            mainVm.createSmartPlaylist(name, sort, filters)
+                        onCreate = { name, sort, filters, done ->
+                            mainVm.createSmartPlaylist(name, sort, filters, done)
                         },
                         onSuggest = { kind, query -> mainVm.suggest(kind, query) },
                         bottomPadding = innerPadding.calculateBottomPadding()
@@ -1565,6 +1566,11 @@ fun MainScreen(
                     navController.navigate("playlist/${playlist.id}")
                 }
             }
+            val openSearchAudiobook: (Audiobook) -> Unit = { book ->
+                showSearch = false
+                mainVm.clearSearch()
+                navController.navigate("audiobook/${book.id}") { launchSingleTop = true }
+            }
             val openSearchPodcast: (Podcast) -> Unit = { podcast ->
                 showSearch = false
                 mainVm.clearSearch()
@@ -1641,6 +1647,7 @@ fun MainScreen(
                 onRecentSearchClick = { recent ->
                     mainVm.rememberRecentSearch(recent.asRequest())
                     when (recent.itemType) {
+                        RecentSearchType.AUDIOBOOK -> recent.asAudiobook()?.let(openSearchAudiobook)
                         RecentSearchType.TRACK -> recent.asTrack()?.let { track ->
                             showSearch = false
                             mainVm.clearSearch()
@@ -1675,6 +1682,10 @@ fun MainScreen(
                 onPlaylistClick = { playlist ->
                     mainVm.rememberRecentSearch(RecentSearchSelection.playlist(playlist))
                     openSearchPlaylist(playlist)
+                },
+                onAudiobookClick = { book ->
+                    mainVm.rememberRecentSearch(RecentSearchSelection.audiobook(book))
+                    openSearchAudiobook(book)
                 },
                 onPodcastClick = { podcast ->
                     mainVm.rememberRecentSearch(RecentSearchSelection.podcast(podcast))

@@ -2035,17 +2035,47 @@ private fun SearchContent(
     val podcasts = results?.podcasts.orEmpty()
     val episodes = results?.podcastEpisodes.orEmpty()
     val playlists = results?.playlists.orEmpty()
-    val hasResults = tracks.isNotEmpty() || podcasts.isNotEmpty() || episodes.isNotEmpty() || playlists.isNotEmpty()
+    val books = results?.audiobooks.orEmpty()
+    val hasResults = books.isNotEmpty() || tracks.isNotEmpty() || podcasts.isNotEmpty() || episodes.isNotEmpty() || playlists.isNotEmpty()
     var firstAssigned = false
 
     when {
-        state.searchQuery.isBlank() -> EmptyState("Search songs, playlists, podcasts, and episodes from the top bar")
-        !state.loading && state.searchedQuery == state.searchQuery.trim() && !hasResults -> EmptyState("No matching results")
+        state.searchQuery.isBlank() -> EmptyState("Search songs, playlists, podcasts, episodes, and audiobooks from the top bar")
+        !state.loading && state.searchedQuery == state.searchQuery.trim() && !hasResults -> EmptyState(if (results?.indexing == true) "Library updating - results will refresh automatically" else "No matching results")
         else -> LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (results?.indexing == true) {
+                item("indexing") { Text("Library updating - search results may be incomplete", modifier = Modifier.padding(horizontal = ScreenPadding), color = Muted) }
+            }
+            if (books.isNotEmpty()) {
+                val assign = !firstAssigned
+                firstAssigned = true
+                item("search_audiobooks") {
+                    Column {
+                        Text("Audiobooks", modifier = Modifier.padding(horizontal = ScreenPadding), fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(6.dp))
+                        LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding, vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            itemsIndexed(books, key = { _, book -> book.id }) { index, book ->
+                                Button(
+                                    onClick = { viewModel.openAudiobook(book) },
+                                    modifier = Modifier.width(240.dp)
+                                        .then(if (assign && index == 0) Modifier.focusRequester(firstResultFocus) else Modifier)
+                                        .then(if (index == 0) Modifier.dpadEdges(onLeft = onOpenSidebar, onUp = { searchFocus.requestFocus() }) else Modifier),
+                                    colors = secondaryButtonColors(), contentPadding = PaddingValues(14.dp)
+                                ) {
+                                    Column {
+                                        Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        book.author?.let { Text(it, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             if (tracks.isNotEmpty()) {
                 val assign = !firstAssigned
                 firstAssigned = true
@@ -2122,13 +2152,7 @@ private fun SearchContent(
                             itemsIndexed(playlists, key = { _, playlist -> "${playlist.kind}:${playlist.id}" }) { index, playlist ->
                                 Button(
                                     onClick = {
-                                        val known = state.playlists.firstOrNull { it.id == playlist.id }
-                                            ?: TvPlaylist(
-                                                playlist.id,
-                                                playlist.name,
-                                                0,
-                                                if (playlist.kind == "smart") TvPlaylist.Kind.SMART else TvPlaylist.Kind.STANDARD
-                                            )
+                                        val known = playlist.resolve(state.playlists)
                                         viewModel.openPlaylist(known)
                                     },
                                     modifier = Modifier
@@ -2535,7 +2559,7 @@ private fun Modifier.dpadEdges(
 }
 
 private fun hasSearchResults(state: TvUiState): Boolean = state.searchResults?.let {
-    it.hits.isNotEmpty() || it.playlists.isNotEmpty() || it.podcasts.isNotEmpty() || it.podcastEpisodes.isNotEmpty()
+    it.audiobooks.isNotEmpty() || it.hits.isNotEmpty() || it.playlists.isNotEmpty() || it.podcasts.isNotEmpty() || it.podcastEpisodes.isNotEmpty()
 } == true
 
 private fun trackArtworkUrl(serverUrl: String, track: Track): String =

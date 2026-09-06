@@ -8,6 +8,9 @@ import retrofit2.http.Query
 
 interface MvbarWearApi {
 
+    @GET("api/audiobooks/{id}")
+    suspend fun audiobook(@Path("id") id: Int): AudiobookDetailResponse
+
     // Music
     @GET("api/library/tracks")
     suspend fun recentTracks(
@@ -22,6 +25,9 @@ interface MvbarWearApi {
 
     @GET("api/playlists/{id}/items")
     suspend fun playlistTracks(@Path("id") id: Int): TracksResponse
+
+    @GET("api/scan/progress")
+    suspend fun scanProgress(): ScanProgress
 
     @GET("api/search")
     suspend fun search(@Query("q") query: String): SearchResults

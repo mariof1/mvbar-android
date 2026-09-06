@@ -85,14 +85,14 @@ private fun utcMillisToDateString(value: Long): String =
 fun CreateSmartPlaylistScreen(
     genres: List<Genre>,
     onBack: () -> Unit,
-    onCreate: (name: String, sort: String, filters: SmartPlaylistFilters) -> Unit,
+    onCreate: (name: String, sort: String, filters: SmartPlaylistFilters, onDone: (String?) -> Unit) -> Unit,
     onSuggest: (suspend (kind: String, query: String) -> SuggestResponse)? = null,
     editId: Int? = null,
     initialName: String = "",
     initialSort: String = "random",
     initialFilters: SmartPlaylistFilters = SmartPlaylistFilters(),
     initialArtistNames: List<Pair<Int, String>> = emptyList(),
-    onUpdate: ((id: Int, name: String, sort: String, filters: SmartPlaylistFilters) -> Unit)? = null,
+    onUpdate: ((id: Int, name: String, sort: String, filters: SmartPlaylistFilters, onDone: (String?) -> Unit) -> Unit)? = null,
     bottomPadding: Dp = 0.dp
 ) {
     val isEdit = editId != null
@@ -105,7 +105,7 @@ fun CreateSmartPlaylistScreen(
     }
     var sortExpanded by remember { mutableStateOf(false) }
 
-    val includeArtists = remember { mutableStateListOf<Pair<Int, String>>().apply { addAll(initialArtistNames.filter { it.first in initialFilters.include.artists.toSet() }) } }
+    val includeArtists = remember { mutableStateListOf<Pair<Int, String>>().apply { addAll(initialFilters.include.artists.map { id -> id to (initialArtistNames.firstOrNull { it.first == id }?.second ?: "Artist #$id") }) } }
     var includeArtistsMode by remember { mutableStateOf(initialFilters.include.artistsMode) }
     val includeAlbums = remember { mutableStateListOf<String>().apply { addAll(initialFilters.include.albums) } }
     val includeGenres = remember { mutableStateListOf<String>().apply { addAll(initialFilters.include.genres) } }
@@ -114,12 +114,21 @@ fun CreateSmartPlaylistScreen(
     val includeCountries = remember { mutableStateListOf<String>().apply { addAll(initialFilters.include.countries) } }
     val includeLanguages = remember { mutableStateListOf<String>().apply { addAll(initialFilters.include.languages) } }
 
-    val excludeArtists = remember { mutableStateListOf<Pair<Int, String>>().apply { addAll(initialArtistNames.filter { it.first in initialFilters.exclude.artists.toSet() }) } }
+    val excludeArtists = remember { mutableStateListOf<Pair<Int, String>>().apply { addAll(initialFilters.exclude.artists.map { id -> id to (initialArtistNames.firstOrNull { it.first == id }?.second ?: "Artist #$id") }) } }
     val excludeAlbums = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.albums) } }
     val excludeGenres = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.genres) } }
     val excludeYears = remember { mutableStateListOf<Int>().apply { addAll(initialFilters.exclude.years) } }
     val excludeCountries = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.countries) } }
     val excludeLanguages = remember { mutableStateListOf<String>().apply { addAll(initialFilters.exclude.languages) } }
+
+    LaunchedEffect(initialArtistNames.toList()) {
+        val names = initialArtistNames.toMap()
+        for (artists in listOf(includeArtists, excludeArtists)) {
+            artists.indices.forEach { index ->
+                names[artists[index].first]?.let { artists[index] = artists[index].first to it }
+            }
+        }
+    }
 
     var durationMin by remember { mutableStateOf(initialFilters.duration?.min?.toString() ?: "") }
     var durationMax by remember { mutableStateOf(initialFilters.duration?.max?.toString() ?: "") }
@@ -157,15 +166,27 @@ fun CreateSmartPlaylistScreen(
         maxResults = SLIDER_STEPS[maxResultsIndex]
     )
 
+    var saveError by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    var attached by remember { mutableStateOf(true) }
+    DisposableEffect(Unit) { onDispose { attached = false } }
+
     fun submit() {
-        if (name.isBlank()) return
-        val filters = buildFilters()
-        if (isEdit && editId != null) {
-            onUpdate?.invoke(editId, name.trim(), selectedSort, filters)
-        } else {
-            onCreate(name.trim(), selectedSort, filters)
+        if (name.isBlank() || saving) return
+        saveError = validateSmartPlaylistInput(durationMin, durationMax, bpmMin, bpmMax, dateAddedFrom, dateAddedTo)
+        if (saveError != null) return
+        saving = true
+        val onDone: (String?) -> Unit = { error ->
+            saving = false
+            saveError = error
+            if (error == null && attached) onBack()
         }
-        onBack()
+        val filters = buildFilters()
+        if (editId != null) {
+            onUpdate?.invoke(editId, name.trim(), selectedSort, filters, onDone) ?: onDone("Saving is unavailable")
+        } else {
+            onCreate(name.trim(), selectedSort, filters, onDone)
+        }
     }
 
     Column(
@@ -336,6 +357,7 @@ fun CreateSmartPlaylistScreen(
             ) {
                 SearchableChipSection("Artists", includeArtists.map { it.second },
                     onRemove = { idx -> includeArtists.removeAt(idx) },
+                    selectedArtistIds = includeArtists.map { it.first }.toSet(),
                     kind = "artist", onSuggest = onSuggest,
                     onAddArtist = { id, n -> includeArtists.add(id to n) },
                     accent = EmeraldAccent)
@@ -386,6 +408,7 @@ fun CreateSmartPlaylistScreen(
             ) {
                 SearchableChipSection("Artists", excludeArtists.map { it.second },
                     onRemove = { idx -> excludeArtists.removeAt(idx) },
+                    selectedArtistIds = excludeArtists.map { it.first }.toSet(),
                     kind = "artist", onSuggest = onSuggest,
                     onAddArtist = { id, n -> excludeArtists.add(id to n) },
                     accent = RedAccent)
@@ -419,6 +442,7 @@ fun CreateSmartPlaylistScreen(
             Spacer(Modifier.height(8.dp))
         }
 
+        saveError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
         // Sticky bottom action bar
         Row(
             modifier = Modifier
@@ -429,7 +453,7 @@ fun CreateSmartPlaylistScreen(
         ) {
             Button(
                 onClick = ::submit,
-                enabled = name.isNotBlank(),
+                enabled = name.isNotBlank() && !saving,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Cyan500,
                     contentColor = OnSurface,
@@ -439,7 +463,7 @@ fun CreateSmartPlaylistScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
-                    if (isEdit) "Save Changes" else "Create Playlist",
+                    if (saving) "Saving..." else if (isEdit) "Save Changes" else "Create Playlist",
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -585,7 +609,8 @@ private fun SearchableChipSection(
     onAddString: ((String) -> Unit)? = null,
     onAddArtist: ((Int, String) -> Unit)? = null,
     onAddYear: ((Int) -> Unit)? = null,
-    accent: Color = Cyan400
+    accent: Color = Cyan400,
+    selectedArtistIds: Set<Int> = emptySet()
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var suggestions by remember { mutableStateOf<List<Any>>(emptyList()) }
@@ -680,7 +705,12 @@ private fun SearchableChipSection(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                if (suggestions.isNotEmpty()) {
+                val availableSuggestions = suggestions.filter { suggestion ->
+                    val label = if (suggestion is Pair<*, *>) suggestion.second.toString() else suggestion.toString()
+                    if (kind == "artist" && suggestion is Pair<*, *>) suggestion.first !in selectedArtistIds
+                    else isSmartSuggestionAvailable(label, items)
+                }
+                if (availableSuggestions.isNotEmpty()) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                         shape = RoundedCornerShape(8.dp),
@@ -691,7 +721,7 @@ private fun SearchableChipSection(
                                 .heightIn(max = 250.dp)
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            suggestions.forEach { suggestion ->
+                            availableSuggestions.forEach { suggestion ->
                                 val displayText = when (suggestion) {
                                     is Pair<*, *> -> suggestion.second as String
                                     is Int -> suggestion.toString()

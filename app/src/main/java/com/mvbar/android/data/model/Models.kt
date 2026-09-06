@@ -348,6 +348,8 @@ data class SocialActionResponse(
 
 @Serializable
 data class SearchResults(
+    val audiobooks: List<Audiobook> = emptyList(),
+    @kotlinx.serialization.Transient val indexing: Boolean = false,
     val ok: Boolean = false,
     val hits: List<Track> = emptyList(),
     val artists: List<SearchArtist> = emptyList(),
@@ -876,3 +878,8 @@ data class AudiobookProgressRequest(
     @SerialName("position_ms") val positionMs: Long,
     val finished: Boolean? = null
 )
+
+@Serializable
+data class ScanProgress(val status: String = "unknown") {
+    val active: Boolean get() = status == "scanning" || status == "indexing"
+}

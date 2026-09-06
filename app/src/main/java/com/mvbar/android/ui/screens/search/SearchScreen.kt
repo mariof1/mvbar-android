@@ -49,6 +49,8 @@ import com.mvbar.android.data.model.RecentSearchType
 import com.mvbar.android.data.model.Episode
 import com.mvbar.android.data.model.Podcast
 import com.mvbar.android.ui.components.ArtworkImage
+import com.mvbar.android.data.model.Audiobook
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.ui.components.TrackListItem
 import com.mvbar.android.ui.theme.*
@@ -77,6 +79,7 @@ fun SearchScreen(
     onAlbumsSectionClick: ((SearchArtist) -> Unit)? = null,
     onAlbumClick: (SearchAlbum) -> Unit,
     onPlaylistClick: (SearchPlaylist) -> Unit,
+    onAudiobookClick: (Audiobook) -> Unit,
     onPodcastClick: (Podcast) -> Unit,
     onPodcastEpisodeClick: (Episode) -> Unit,
     onTrackLongPress: ((Track) -> Unit)? = null,
@@ -238,8 +241,18 @@ fun SearchScreen(
             return@Column
         }
 
+        LaunchedEffect(query, results?.indexing) {
+            while (query.trim().length >= 2 && results?.indexing == true) {
+                kotlinx.coroutines.delay(5000)
+                onSearch(query)
+            }
+        }
+        if (results?.indexing == true) {
+            Text("Library updating - search results may be incomplete", modifier = Modifier.padding(16.dp), color = OnSurfaceDim)
+        }
         val hasQuery = query.trim().isNotEmpty()
         val hasResults = results != null && (
+            results.audiobooks.isNotEmpty() ||
             results.hits.isNotEmpty() ||
             results.artists.isNotEmpty() ||
             results.albums.isNotEmpty() ||
@@ -250,7 +263,7 @@ fun SearchScreen(
 
         if (hasResults) {
             val listState = rememberLazyListState()
-            val totalItems = (results!!.artists.take(4).size +
+            val totalItems = (results!!.audiobooks.size + (if (results.audiobooks.isNotEmpty()) 1 else 0) + results.artists.take(4).size +
                 results.albums.take(4).size +
                 results.playlists.take(4).size +
                 results.podcasts.size +
@@ -318,6 +331,18 @@ fun SearchScreen(
                     }
                 }
 
+                if (results.audiobooks.isNotEmpty()) {
+                    item { SectionHeader("Audiobooks") }
+                    items(results.audiobooks, key = { "audiobook:${it.id}" }) { book ->
+                        ListItem(
+                            headlineContent = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = { Text(book.author ?: "Audiobook") },
+                            leadingContent = { Icon(Icons.AutoMirrored.Filled.MenuBook, null) },
+                            modifier = Modifier.clickable { onAudiobookClick(book) }
+                        )
+                    }
+                }
+
                 // Podcasts section
                 val podcasts = results.podcasts
                 if (podcasts.isNotEmpty()) {
@@ -377,9 +402,9 @@ fun SearchScreen(
                         modifier = Modifier.size(64.dp)
                     )
                     Spacer(Modifier.height(16.dp))
-                    Text("No results found", style = MaterialTheme.typography.titleMedium, color = OnSurfaceDim)
+                    Text(if (results?.indexing == true) "No matches yet" else "No results found", style = MaterialTheme.typography.titleMedium, color = OnSurfaceDim)
                     Spacer(Modifier.height(4.dp))
-                    Text("Try a different search term", style = MaterialTheme.typography.bodySmall, color = OnSurfaceSubtle)
+                    Text(if (results?.indexing == true) "Results will refresh as the library updates" else "Try a different search term", style = MaterialTheme.typography.bodySmall, color = OnSurfaceSubtle)
                 }
             }
         } else if (!hasQuery && recentSearchesLoading && recentSearches.isEmpty()) {
@@ -616,6 +641,7 @@ private fun RecentSearchRow(
             } else {
                 val icon = when (item.itemType) {
                     RecentSearchType.PODCAST, RecentSearchType.PODCAST_EPISODE -> Icons.Filled.Podcasts
+                    RecentSearchType.AUDIOBOOK -> Icons.AutoMirrored.Filled.MenuBook
                     RecentSearchType.PLAYLIST -> Icons.AutoMirrored.Filled.QueueMusic
                     else -> Icons.Filled.MusicNote
                 }

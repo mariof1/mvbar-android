@@ -376,10 +376,18 @@ data class AudiobookProgressRequest(
 )
 
 @Serializable
-data class SearchPlaylist(val id: Int = 0, val name: String = "", val kind: String? = null)
+data class SearchPlaylist(val id: Int = 0, val name: String = "", val kind: String? = null) {
+    fun resolve(known: List<TvPlaylist>): TvPlaylist {
+        val targetKind = if (kind == "smart") TvPlaylist.Kind.SMART else TvPlaylist.Kind.STANDARD
+        return known.firstOrNull { it.id == id && it.kind == targetKind }
+            ?: TvPlaylist(id, name, 0, targetKind)
+    }
+}
 
 @Serializable
 data class SearchResponse(
+    val audiobooks: List<Audiobook> = emptyList(),
+    @kotlinx.serialization.Transient val indexing: Boolean = false,
     val ok: Boolean = false,
     val hits: List<Track> = emptyList(),
     val playlists: List<SearchPlaylist> = emptyList(),
@@ -396,3 +404,8 @@ data class TvSession(
     val token: String,
     val email: String
 )
+
+@Serializable
+data class ScanProgress(val status: String = "unknown") {
+    val active: Boolean get() = status == "scanning" || status == "indexing"
+}

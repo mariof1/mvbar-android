@@ -191,7 +191,7 @@ object WearPlayerHolder {
         val url = streamUrl(base, this) ?: return null
         return MediaItem.Builder()
             .setUri(url)
-            .setMediaId("${if (isPodcast) "ep" else "tr"}-${id}")
+            .setMediaId(mediaKey)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(title)
@@ -205,6 +205,7 @@ object WearPlayerHolder {
     private fun streamUrl(base: String, item: PlayableItem): String? {
         val b = if (base.endsWith("/")) base else "$base/"
         return when (item) {
+            is PlayableItem.BookChapter -> "${b}api/audiobooks/${item.book.id}/chapters/${item.id}/stream"
             is PlayableItem.Music -> "${b}api/library/tracks/${item.id}/stream"
             is PlayableItem.PodcastEp -> "${b}api/podcasts/episodes/${item.id}/stream"
         }

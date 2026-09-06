@@ -206,6 +206,9 @@ interface MvbarApi {
     suspend fun prefetchLyrics(@Path("id") trackId: Int): Response<Unit>
 
     // Search
+    @GET("api/scan/progress")
+    suspend fun scanProgress(): ScanProgress
+
     @GET("api/search")
     suspend fun search(
         @Query("q") query: String,

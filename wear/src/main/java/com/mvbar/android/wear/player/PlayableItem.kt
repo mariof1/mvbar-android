@@ -11,6 +11,24 @@ sealed interface PlayableItem {
     val durationMs: Long?
     val isPodcast: Boolean
 
+    data class BookChapter(
+        val book: com.mvbar.android.wear.net.Audiobook,
+        val chapter: com.mvbar.android.wear.net.AudiobookChapter
+    ) : PlayableItem {
+        override val id get() = chapter.id
+        override val title get() = chapter.title
+        override val subtitle get() = book.title
+        override val artUrl get() = "/api/audiobook-art/${book.id}"
+        override val durationMs get() = chapter.durationMs
+        override val isPodcast get() = false
+    }
+
+    val mediaKey: String get() = when (this) {
+        is Music -> "tr-$id"
+        is PodcastEp -> "ep-$id"
+        is BookChapter -> "ab-${book.id}-$id"
+    }
+
     data class Music(val track: Track) : PlayableItem {
         override val id get() = track.id
         override val title get() = track.displayTitle

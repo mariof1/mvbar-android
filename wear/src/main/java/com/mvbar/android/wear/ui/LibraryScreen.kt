@@ -230,6 +230,7 @@ private fun NowPlayingHero(onOpen: () -> Unit) {
             title = item?.title ?: "Watch playback"
             subtitle = "Playing on this watch"
             artUrl = when (item) {
+                is PlayableItem.BookChapter -> backend.artworkUrl(item.artUrl)
                 is PlayableItem.Music -> backend.artworkUrl(item.track.artPath)
                 is PlayableItem.PodcastEp -> backend.artworkUrl(item.episode.imagePath ?: item.episode.podcastImagePath)
                 null -> null

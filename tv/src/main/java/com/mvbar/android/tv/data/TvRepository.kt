@@ -122,6 +122,9 @@ private interface TvApi {
         @Body request: AudiobookProgressRequest
     ): Response<Unit>
 
+    @GET("api/scan/progress")
+    suspend fun scanProgress(): ScanProgress
+
     @GET("api/search")
     suspend fun search(@Query("q") query: String, @Query("limit") limit: Int): Response<SearchResponse>
 
@@ -270,7 +273,13 @@ class TvRepository(
 
     suspend fun audiobook(id: Int): AudiobookDetailResponse = api.audiobook(id).requireBody()
 
-    suspend fun search(query: String): SearchResponse = api.search(query, 60).requireBody()
+    suspend fun search(query: String): SearchResponse {
+        val result = api.search(query, 60).requireBody()
+        val indexing = try { api.scanProgress().active }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { false }
+        return result.copy(indexing = indexing)
+    }
 
     suspend fun similarTracks(trackId: Int, excludeIds: List<Int>): List<Track> =
         api.similarTracks(trackId, excludeIds.distinct().joinToString(",").ifBlank { null })

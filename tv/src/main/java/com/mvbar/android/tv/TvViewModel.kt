@@ -1228,7 +1228,12 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadDetail(block: suspend () -> Unit) {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
-            runCatching { block() }.onFailure(::showError)
+            runCatching { block() }
+                .onSuccess { if (_state.value.searchVisible) closeSearch() }
+                .onFailure { error ->
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    showError(error)
+                }
         }
     }
 
@@ -1249,17 +1254,22 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         searchJob = viewModelScope.launch {
             if (delayMs > 0) delay(delayMs)
             _state.update { it.copy(loading = true, error = null) }
-            runCatching { repo.search(query) }
-                .onSuccess { results ->
-                    if (_state.value.searchQuery.trim() == query) {
-                        _state.update {
-                            it.copy(loading = false, searchResults = results, searchedQuery = query)
+            do {
+                runCatching { repo.search(query) }
+                    .onSuccess { results ->
+                        if (_state.value.searchQuery.trim() == query) {
+                            _state.update {
+                                it.copy(loading = false, searchResults = results, searchedQuery = query)
+                            }
                         }
                     }
-                }
-                .onFailure { error ->
-                    if (_state.value.searchQuery.trim() == query) showError(error)
-                }
+                    .onFailure { error ->
+                        if (error is kotlinx.coroutines.CancellationException) throw error
+                        if (_state.value.searchQuery.trim() == query) showError(error)
+                    }
+                if (_state.value.searchResults?.indexing != true || _state.value.error != null) break
+                delay(5000)
+            } while (_state.value.searchQuery.trim() == query)
         }
     }
 

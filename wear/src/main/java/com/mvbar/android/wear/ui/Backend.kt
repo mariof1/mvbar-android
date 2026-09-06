@@ -26,8 +26,13 @@ class Backend private constructor(val context: Context, val api: MvbarWearApi) {
     suspend fun playlistTracks(id: Int): List<Track> =
         runCatching { api.playlistTracks(id).tracks }.getOrDefault(emptyList())
 
-    suspend fun search(query: String): com.mvbar.android.wear.net.SearchResults =
-        runCatching { api.search(query) }.getOrDefault(com.mvbar.android.wear.net.SearchResults())
+    suspend fun search(query: String): com.mvbar.android.wear.net.SearchResults {
+        val result = api.search(query)
+        val indexing = try { api.scanProgress().active }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { false }
+        return result.copy(indexing = indexing)
+    }
 
     suspend fun favorites(): List<Track> =
         runCatching { api.favorites().tracks }.getOrDefault(emptyList())

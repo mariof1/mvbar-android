@@ -39,6 +39,9 @@ fun SearchScreen(
     var loading by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf(SearchResults()) }
 
+    var error by remember { mutableStateOf<String?>(null) }
+    var selectedBook by remember { mutableStateOf<com.mvbar.android.wear.net.Audiobook?>(null) }
+
     val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -57,8 +60,24 @@ fun SearchScreen(
             return@LaunchedEffect
         }
         loading = true
-        results = backend.search(query)
-        loading = false
+        error = null
+        results = SearchResults()
+        try {
+            kotlinx.coroutines.delay(250)
+            do {
+                results = backend.search(query)
+                loading = false
+                if (!results.indexing) break
+                kotlinx.coroutines.delay(5000)
+            } while (true)
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { error = "Search failed. Please try again." }
+        finally { loading = false }
+    }
+
+    selectedBook?.let { book ->
+        AudiobookSearchScreen(backend, book, { selectedBook = null }, onOpenNowPlaying)
+        return
     }
 
     WearList {
@@ -96,9 +115,20 @@ fun SearchScreen(
         when {
             query.isBlank() -> item { EmptyChip("Say a title, artist, or album", "Tap the microphone") }
             loading -> item { LoadingChip("Searching") }
-            results.tracks.isEmpty() -> item { EmptyChip("No track matches", "Try another phrase") }
+            error != null -> item { EmptyChip("Search unavailable", error!!) }
+            results.tracks.isEmpty() && results.audiobooks.isEmpty() -> item {
+                EmptyChip(if (results.indexing) "Library updating" else "No matches", if (results.indexing) "Results will refresh automatically" else "Try another phrase")
+            }
             else -> {
-                item {
+                if (results.indexing) item { EmptyChip("Library updating", "Results may be incomplete") }
+                items(results.audiobooks, key = { "audiobook:${it.id}" }) { book ->
+                    Chip(
+                        onClick = { selectedBook = book }, modifier = Modifier.fillMaxWidth(),
+                        label = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        secondaryLabel = { Text(book.author ?: "Audiobook", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    )
+                }
+                if (results.tracks.isNotEmpty()) item {
                     Chip(
                         onClick = {
                             playTracks(backend, results.tracks, 0)

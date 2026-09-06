@@ -9,6 +9,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RecentSearchModelsTest {
+    @Test
+    fun audiobookRecentsFromWebCanBeOpenedAndNativeSelectionsRoundTrip() {
+        val recent = Json { ignoreUnknownKeys = true }.decodeFromString<RecentSearchItem>(
+            """{"itemType":"audiobook","itemKey":"42","title":"1984","payload":{"id":42}}"""
+        )
+        assertEquals(42, recent.asAudiobook()?.id)
+        assertNull(recent.copy(payload = RecentSearchPayload(id = -1)).asAudiobook())
+        val request = RecentSearchSelection.audiobook(Audiobook(id = 42, title = "1984", author = "George Orwell"))
+        assertEquals("audiobook", request.itemType)
+        assertEquals("/api/audiobook-art/42", request.imageUrl)
+        assertEquals(42, request.optimisticItem().asAudiobook()?.id)
+    }
+
     private val json = Json { ignoreUnknownKeys = true }
 
     @Test

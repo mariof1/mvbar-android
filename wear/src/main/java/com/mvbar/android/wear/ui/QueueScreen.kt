@@ -1,5 +1,6 @@
 package com.mvbar.android.wear.ui
 
+import com.mvbar.android.wear.player.PlayableItem
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,7 +40,7 @@ fun QueueScreen(onBack: () -> Unit) {
         } else {
             itemsIndexed(state.queue) { index, item ->
                 val isCurrent = index == state.index
-                val accent = if (item.isPodcast) WearTheme.Orange else WearTheme.Cyan
+                val accent = if (item.isPodcast || item is PlayableItem.BookChapter) WearTheme.Orange else WearTheme.Cyan
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically

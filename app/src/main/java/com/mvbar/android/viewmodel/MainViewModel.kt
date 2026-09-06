@@ -944,13 +944,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun createSmartPlaylist(name: String, sort: String, filters: SmartPlaylistFilters) {
+    fun createSmartPlaylist(name: String, sort: String, filters: SmartPlaylistFilters, onDone: (String?) -> Unit) {
         viewModelScope.launch {
             try {
-                repo.createSmartPlaylist(name, sort, filters)
+                val response = repo.createSmartPlaylist(name, sort, filters)
+                if (!response.ok) { onDone("Could not save playlist"); return@launch }
                 loadSmartPlaylists()
+                onDone(null)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                DebugLog.e("SmartPlaylist", "Create failed", e)
+                DebugLog.e("SmartPlaylist", "Save failed", e)
+                val message = runCatching {
+                    (e as? retrofit2.HttpException)?.response()?.errorBody()?.string()?.let { body ->
+                        org.json.JSONObject(body).optString("error").takeIf { it.isNotBlank() }
+                    }
+                }.getOrNull()
+                onDone(message ?: "Could not save playlist. Check your connection and try again.")
             }
         }
     }
@@ -997,14 +1007,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun updateSmartPlaylist(id: Int, name: String, sort: String, filters: SmartPlaylistFilters) {
+    fun updateSmartPlaylist(id: Int, name: String, sort: String, filters: SmartPlaylistFilters, onDone: (String?) -> Unit) {
         viewModelScope.launch {
             try {
-                repo.updateSmartPlaylist(id, name, sort, filters)
+                val response = repo.updateSmartPlaylist(id, name, sort, filters)
+                if (!response.ok) { onDone("Could not save playlist"); return@launch }
                 loadSmartPlaylists()
                 loadSmartPlaylistDetail(id)
+                onDone(null)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                DebugLog.e("SmartPlaylist", "Update failed", e)
+                DebugLog.e("SmartPlaylist", "Save failed", e)
+                val message = runCatching {
+                    (e as? retrofit2.HttpException)?.response()?.errorBody()?.string()?.let { body ->
+                        org.json.JSONObject(body).optString("error").takeIf { it.isNotBlank() }
+                    }
+                }.getOrNull()
+                onDone(message ?: "Could not save playlist. Check your connection and try again.")
             }
         }
     }
@@ -1174,6 +1194,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 _searchResults.value = results
                 _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Search", "Search failed, falling back to cache", e)
                 val results = repo.searchCached(query, PAGE_SIZE, 0)

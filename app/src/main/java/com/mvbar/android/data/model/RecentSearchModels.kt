@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 
 object RecentSearchType {
+    const val AUDIOBOOK = "audiobook"
     const val TRACK = "track"
     const val ARTIST = "artist"
     const val ALBUM = "album"
@@ -70,6 +71,12 @@ data class RecentSearchItem(
     val stableKey: String get() = "$itemType:$itemKey"
 
     fun asRequest() = RecentSearchRequest(itemType, itemKey, title, subtitle, imageUrl, payload)
+
+    fun asAudiobook(): Audiobook? {
+        if (itemType != RecentSearchType.AUDIOBOOK) return null
+        val id = payload.id?.takeIf { it > 0 } ?: return null
+        return Audiobook(id = id, title = title)
+    }
 
     fun asTrack(): Track? {
         if (itemType != RecentSearchType.TRACK) return null
@@ -137,6 +144,15 @@ data class RecentSearchActionResponse(
 )
 
 object RecentSearchSelection {
+    fun audiobook(book: Audiobook) = RecentSearchRequest(
+        itemType = RecentSearchType.AUDIOBOOK,
+        itemKey = book.id.toString(),
+        title = book.title,
+        subtitle = listOfNotNull("Audiobook", book.author?.takeIf { it.isNotBlank() }).joinToString(" · "),
+        imageUrl = "/api/audiobook-art/${book.id}",
+        payload = RecentSearchPayload(id = book.id)
+    )
+
     fun track(track: Track) = RecentSearchRequest(
         itemType = RecentSearchType.TRACK,
         itemKey = track.id.toString(),

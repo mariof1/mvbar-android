@@ -38,12 +38,13 @@ object WearDownloads {
         val store = AuthTokenStore.get(app)
         val base = store.serverUrl ?: return
         val url = when (item) {
+            is PlayableItem.BookChapter -> "${base.trimEnd('/')}/api/audiobooks/${item.book.id}/chapters/${item.id}/stream"
             is PlayableItem.Music -> "${base.trimEnd('/')}/api/library/tracks/${item.id}/stream"
             is PlayableItem.PodcastEp -> "${base.trimEnd('/')}/api/podcasts/episodes/${item.id}/stream"
         }
 
         val factory: DataSource.Factory = MediaCache.dataSourceFactory(app)
-        val key = "${if (item.isPodcast) "ep" else "tr"}-${item.id}"
+        val key = item.mediaKey
         scope.launch {
             update(item.id, Status(item.id, 0))
             try {

@@ -163,6 +163,7 @@ class NowPlayingTileService : TileService() {
                 durationMs = local.durationMs,
                 positionMs = local.positionMs,
                 isPlaying = local.isPlaying,
+                isAudiobook = item is com.mvbar.android.wear.player.PlayableItem.BookChapter,
                 isPodcast = item.isPodcast
             )
         }

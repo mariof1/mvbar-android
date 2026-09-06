@@ -108,8 +108,10 @@ data class PodcastNewEpisodesResponse(
 
 @Serializable
 data class SearchResults(
+    val audiobooks: List<Audiobook> = emptyList(),
+    @kotlinx.serialization.Transient val indexing: Boolean = false,
     val ok: Boolean = false,
-    val tracks: List<Track> = emptyList(),
+    @SerialName("hits") val tracks: List<Track> = emptyList(),
     val albums: List<Album> = emptyList(),
     val playlists: List<Playlist> = emptyList()
 )
@@ -146,4 +148,26 @@ data class SmartPlaylistResponse(
 data class HistoryResponse(
     val ok: Boolean = false,
     val tracks: List<Track> = emptyList()
+)
+
+@Serializable
+data class ScanProgress(val status: String = "unknown") {
+    val active: Boolean get() = status == "scanning" || status == "indexing"
+}
+
+@Serializable
+data class Audiobook(val id: Int = 0, val title: String = "", val author: String? = null)
+
+@Serializable
+data class AudiobookChapter(
+    val id: Int = 0,
+    val title: String = "",
+    val position: Int = 0,
+    @SerialName("duration_ms") val durationMs: Long? = null
+)
+
+@Serializable
+data class AudiobookDetailResponse(
+    val audiobook: Audiobook? = null,
+    val chapters: List<AudiobookChapter> = emptyList()
 )

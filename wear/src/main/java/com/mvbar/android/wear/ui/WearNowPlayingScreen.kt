@@ -178,9 +178,10 @@ private fun LocalNowPlaying(
     val ctx = LocalContext.current
     val backend = remember { Backend.get(ctx.applicationContext) }
     val scope = rememberCoroutineScope()
-    val accent = if (item.isPodcast) WearTheme.Orange else WearTheme.Cyan
+    val accent = if (item.isPodcast || item is PlayableItem.BookChapter) WearTheme.Orange else WearTheme.Cyan
     val artUrl = remember(item) {
         when (item) {
+            is PlayableItem.BookChapter -> backend.artworkUrl(item.artUrl)
             is PlayableItem.Music -> backend.artworkUrl(item.track.artPath)
             is PlayableItem.PodcastEp -> backend.artworkUrl(
                 item.episode.imagePath

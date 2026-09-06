@@ -425,7 +425,13 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun removeFavorite(trackId: Int) = api.removeFavorite(trackId)
     suspend fun getHistory(limit: Int = 50, offset: Int = 0) = api.getHistory(limit, offset)
     suspend fun recordPlay(trackId: Int, signal: PlaybackSignalRequest = PlaybackSignalRequest()) = api.recordPlay(trackId, signal)
-    suspend fun search(query: String, limit: Int = 50, offset: Int = 0) = api.search(query, limit, offset)
+    suspend fun search(query: String, limit: Int = 50, offset: Int = 0): SearchResults {
+        val result = api.search(query, limit, offset)
+        val indexing = try { api.scanProgress().active }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { false }
+        return result.copy(indexing = indexing)
+    }
     suspend fun getRecentSearches(limit: Int = 10) = api.getRecentSearches(limit)
     suspend fun saveRecentSearch(request: RecentSearchRequest) = api.saveRecentSearch(request)
     suspend fun removeRecentSearch(item: RecentSearchItem) = api.removeRecentSearch(item.itemType, item.itemKey)
