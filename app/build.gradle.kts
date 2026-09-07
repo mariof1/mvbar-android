@@ -41,6 +41,7 @@ android {
 
     defaultConfig {
         applicationId = "com.mvbar.android"
+        testInstrumentationRunner = "com.mvbar.android.auto.AutoBrowseInstrumentation"
         minSdk = 26
         targetSdk = 34
         versionCode = rootProject.extra["mvbarVersionCode"] as Int

@@ -1485,7 +1485,7 @@ class PlaybackService : MediaLibraryService() {
                     DebugLog.i("Auto", "onGetChildren: parentId=$parentId → ${items.size} items")
                     // Return content style hints so AA renders children appropriately
                     val childStyle = contentStyleForParent(parentId)
-                    LibraryResult.ofItemList(ImmutableList.copyOf(items), childStyle ?: params)
+                    LibraryResult.ofItemList(ImmutableList.copyOf(mediaBrowserPage(items, page, pageSize)), childStyle ?: params)
                 } catch (e: Exception) {
                     DebugLog.e("Auto", "Browse error for $parentId", e)
                     LibraryResult.ofItemList(ImmutableList.of(), params)

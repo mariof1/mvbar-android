@@ -434,3 +434,13 @@ mvbar/.local/criteria-keyboard-added-ui.xml. No playlist was saved or deleted.
 The original Cutting Crew song remained paused at zero, queue index 3.
 Long-list keyboard scrolling is implemented but was not exercised beyond the
 visible pop results in this pass.
+
+## 2026-09-07 — Android Auto / DHU investigation
+
+See android-auto-verification.md. BlueStacks connected to DHU but Android Auto
+failed before rendering with NO_AUDIO_CAPTURE / REMOTE_SUBMIX initialization
+failure. Setup and dependencies installed; physical-device continuation requested.
+A real legacy MediaBrowser probe exposed ignored pagination across categories.
+Fixed page slicing, added three unit tests and a reusable read-only on-device
+instrumentation probe. Tests/lint/build and the live probe passed after the fix.
+Actual DHU UI, audio and car-control behavior remain unverified.
