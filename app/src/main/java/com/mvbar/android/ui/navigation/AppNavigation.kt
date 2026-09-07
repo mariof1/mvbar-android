@@ -244,6 +244,7 @@ fun MainScreen(
     val audiobooksList by audiobookVm.audiobooks.collectAsState()
     val audiobookIsLoading by audiobookVm.isLoading.collectAsState()
     val audiobookDetailLoading by audiobookVm.detailLoading.collectAsState()
+    val audiobookDetailError by audiobookVm.detailError.collectAsState()
     val audiobookSelected by audiobookVm.selectedAudiobook.collectAsState()
     val audiobookChapters by audiobookVm.chapters.collectAsState()
     val audiobookProgress by audiobookVm.detailProgress.collectAsState()
@@ -1378,6 +1379,7 @@ fun MainScreen(
                         progress = audiobookProgress,
                         playingChapterId = audiobookPlayingChapter?.id,
                         isLoading = audiobookDetailLoading,
+                        error = audiobookDetailError,
                         onBack = { navController.popBackStack() },
                         onPlayChapter = { chapter, resumeMs ->
                             audiobookSelected?.let { audiobookVm.playChapter(it, chapter, resumeMs) }

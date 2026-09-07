@@ -29,6 +29,8 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
     private val _detailLoading = MutableStateFlow(false)
     val detailLoading: StateFlow<Boolean> = _detailLoading.asStateFlow()
+    private val _detailError = MutableStateFlow<String?>(null)
+    val detailError: StateFlow<String?> = _detailError.asStateFlow()
     private var detailJob: Job? = null
     private var detailGeneration = 0L
 
@@ -91,6 +93,7 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
         val generation = ++detailGeneration
         detailJob?.cancel()
         _detailLoading.value = true
+        _detailError.value = null
         _selectedAudiobook.value = _audiobooks.value.firstOrNull { it.id == audiobookId }
         _chapters.value = emptyList()
         _detailProgress.value = null
@@ -108,7 +111,10 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (e: Exception) {
                     DebugLog.e("Audiobooks", "Failed to read cached detail", e)
                 }
-                if (!NetworkMonitor.isOnline.value) return@launch
+                if (!NetworkMonitor.isOnline.value) {
+                    if (_chapters.value.isEmpty()) _detailError.value = "Chapters are not available offline. Reconnect and retry."
+                    return@launch
+                }
                 val resp = ApiClient.api.getAudiobookDetail(audiobookId)
                 if (generation != detailGeneration) return@launch
                 _selectedAudiobook.value = resp.audiobook
@@ -120,6 +126,9 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (generation == detailGeneration && _chapters.value.isEmpty()) {
+                    _detailError.value = "Unable to load chapters. Please try again."
+                }
                 DebugLog.e("Audiobooks", "Failed to load audiobook detail", e)
             } finally {
                 if (generation == detailGeneration) _detailLoading.value = false

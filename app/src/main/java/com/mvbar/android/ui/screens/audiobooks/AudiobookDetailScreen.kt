@@ -43,6 +43,7 @@ fun AudiobookDetailScreen(
     progress: AudiobookDetailProgress?,
     playingChapterId: Int?,
     isLoading: Boolean,
+    error: String?,
     onBack: () -> Unit,
     onPlayChapter: (AudiobookChapter, Long) -> Unit,
     onContinueListening: () -> Unit,
@@ -107,7 +108,7 @@ fun AudiobookDetailScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             audiobook?.let {
                                 Text(it.durationFormatted, style = MaterialTheme.typography.labelSmall, color = OnSurfaceSubtle)
-                                val chapterCount = if (chapters.isNotEmpty() || !isLoading) chapters.size else it.chapterCount
+                                val chapterCount = if (chapters.isNotEmpty() || (!isLoading && error == null)) chapters.size else it.chapterCount
                                 Text("$chapterCount ch", style = MaterialTheme.typography.labelSmall, color = OnSurfaceSubtle)
                             }
                             audiobook?.narrator?.let {
@@ -124,6 +125,7 @@ fun AudiobookDetailScreen(
                     val hasProgress = progress != null && !progress.finished
                     Button(
                         onClick = onContinueListening,
+                        enabled = chapters.isNotEmpty(),
                         colors = ButtonDefaults.buttonColors(containerColor = Cyan600, contentColor = OnSurface),
                         shape = RoundedCornerShape(20.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
@@ -157,6 +159,17 @@ fun AudiobookDetailScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(color = Cyan500)
+                }
+            }
+        } else if (chapters.isEmpty() && error != null) {
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(error, color = OnSurfaceDim)
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = onRetry) { Text("Retry") }
                 }
             }
         } else if (chapters.isEmpty()) {

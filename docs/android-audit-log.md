@@ -353,3 +353,29 @@ with a fresh observer. This was not established as an app reconnect defect.
 Still pending: true device-offline transitions, interrupted downloads, forced
 slow response races, and login failure/OAuth cases. Long-form offline progress
 restoration and uncached-detail error wording need further coverage.
+
+## 2026-09-07 — Uncached audiobook failure and Retry live checks
+
+Reproduced on BlueStacks: with requests refused by a temporary loopback proxy,
+opening A Fleet In Being (cached metadata, uncached chapters) displayed No chapters,
+0 ch, and an enabled Play button that could not start anything. This confused a
+failed request with a successful empty response and provided no inline recovery.
+
+Added a generation-owned detail error, cleared by each new detail request. When
+no chapters are available, request failure (or no network) gives a clear message
+and Retry. Play is disabled until chapters exist, and failure retains the known
+metadata chapter count. Cached chapter lists continue to work without an error.
+
+Live checks after unit tests/lint/build and installing the rebuilt APK:
+- Refused request shows Unable to load chapters with Retry and the known 1 ch.
+- UI hierarchy confirms Play enabled=false.
+- Repeated Retry under the same outage returns to the recoverable error state.
+- Opening cached 1984 during the outage shows its 26 chapters without the previous
+  error; returning to the uncached book shows its own error, not 1984's chapters.
+- Clearing the test proxy and pressing Retry loads Fleet In Being, removes the
+  error, and enables Play. No app restart is needed for recovery.
+
+Connection restored (empty proxy host, port zero). Playback was never started by
+this pass; the original Cutting Crew song remains paused at zero, queue index 3.
+Local failure UI evidence: mvbar/.local/live-uncached-error-ui.xml. This verifies
+server unreachability; true Android no-network transitions remain untested.
