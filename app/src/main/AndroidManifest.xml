@@ -38,6 +38,11 @@
         </activity>
 
         <service
+            android:name=".player.RemotePlaybackService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
+
+        <service
             android:name=".player.PlaybackService"
             android:foregroundServiceType="mediaPlayback"
             android:exported="true">

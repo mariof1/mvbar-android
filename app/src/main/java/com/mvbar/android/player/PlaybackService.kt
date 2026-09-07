@@ -52,6 +52,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import com.mvbar.android.social.SocialRealtimeManager
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.json.JSONArray
@@ -100,6 +103,7 @@ class PlaybackService : MediaLibraryService() {
     private var androidAutoConnected = false
     /** Job that eventually releases foreground after extended pause */
     private var foregroundTimeoutJob: Job? = null
+    private var remoteNotificationJob: Job? = null
 
     /**
      * When the audio output route changes (BT/USB disconnect → phone speaker),
@@ -347,6 +351,12 @@ class PlaybackService : MediaLibraryService() {
     // Keep the service in foreground as long as there's a queue, even when paused.
     // This prevents Android from killing the service during AA disconnects or brief pauses.
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        if (SocialRealtimeManager.isControllingRemote() && SocialRealtimeManager.selectedConnectDevice()?.state?.track != null) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            getSystemService(android.app.NotificationManager::class.java)
+                .cancel(DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID)
+            return
+        }
         val hasQueue = session.player.mediaItemCount > 0
         super.onUpdateNotification(session, startInForegroundRequired || hasQueue)
     }
@@ -779,6 +789,17 @@ class PlaybackService : MediaLibraryService() {
             .setBitmapLoader(AuthBitmapLoader())
             .build()
 
+        remoteNotificationJob = serviceScope.launch {
+            combine(SocialRealtimeManager.connectDevices, SocialRealtimeManager.selectedConnectDeviceId) { devices, selected ->
+                devices.any { it.id == selected && it.id != ApiClient.getClientId() && it.state.track != null }
+            }.distinctUntilChanged().collect { remote ->
+                if (remote) {
+                    startForegroundService(Intent(this@PlaybackService, RemotePlaybackService::class.java))
+                }
+                mediaSession?.let { onUpdateNotification(it, false) }
+            }
+        }
+
         // Switch custom layout (shuffle/repeat/love vs ±15s) on track change
         // and record play/skip activity via offline-resilient queue
         player.addListener(object : Player.Listener {
@@ -958,6 +979,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        remoteNotificationJob?.cancel()
         // Save playback state and episode progress before shutting down
         try { unregisterReceiver(noisyReceiver) } catch (_: Exception) {}
         progressSaveJob?.cancel()
@@ -1214,6 +1236,28 @@ class PlaybackService : MediaLibraryService() {
             controllerInfo: MediaSession.ControllerInfo,
             intent: Intent
         ): Boolean {
+            // Android may retain the last local audio session as its hardware-key target
+            // even while the active notification represents a remote output.
+            if (SocialRealtimeManager.isControllingRemote()) {
+                val event = androidx.core.content.IntentCompat.getParcelableExtra(
+                    intent, Intent.EXTRA_KEY_EVENT, KeyEvent::class.java
+                )
+                val command = when (event?.keyCode) {
+                    KeyEvent.KEYCODE_MEDIA_PLAY -> "play"
+                    KeyEvent.KEYCODE_MEDIA_PAUSE -> "pause"
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_HEADSETHOOK -> "toggle"
+                    KeyEvent.KEYCODE_MEDIA_NEXT -> "next"
+                    KeyEvent.KEYCODE_MEDIA_PREVIOUS -> "previous"
+                    KeyEvent.KEYCODE_MEDIA_STOP -> "stop"
+                    else -> null
+                }
+                if (command != null) {
+                    if (event?.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                        SocialRealtimeManager.sendCommandToSelected(command)
+                    }
+                    return true
+                }
+            }
             if (!isPodcastOrAudiobook(session.player.currentMediaItem)) {
                 return super.onMediaButtonEvent(session, controllerInfo, intent)
             }
