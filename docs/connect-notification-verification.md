@@ -32,3 +32,13 @@ the local callback therefore also routes transport keys to the selected remote.
 Session seeking is implemented but not exercised through Android 9's compact
 notification UI. Physical-headset behavior and newer Android notification layouts
 still need device coverage. Podcast/audiobook transfer remains unsupported.
+
+## CI lint follow-up
+
+The initial notification commit failed `:app:lintDebug` with
+`MissingOnPlayFromSearch`: the Android Auto detector also inspects the remote
+transport-only callback. That callback now has a documented, method-scoped
+exemption. It neither advertises search playback nor exposes an Auto browser
+service; Android Auto remains handled by PlaybackService. No project-wide lint
+rules or baselines were changed. Local `:app:testDebugUnitTest :app:lintDebug
+:app:assembleDebug --build-cache --parallel --console=plain` passed after the fix.

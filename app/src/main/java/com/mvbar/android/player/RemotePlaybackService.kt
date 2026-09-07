@@ -38,21 +38,7 @@ class RemotePlaybackService : Service() {
         session.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS)
         session.setPlaybackToRemote(object : VolumeProvider(VOLUME_CONTROL_FIXED, 1, 1) {})
         session.setSessionActivity(openApp())
-        session.setCallback(object : MediaSession.Callback() {
-            override fun onPlay() = command("play")
-            override fun onPause() = command("pause")
-            override fun onSkipToNext() = command("next")
-            override fun onSkipToPrevious() = command("previous")
-            override fun onStop() = command("stop")
-            override fun onSeekTo(pos: Long) {
-                if (currentDevice()?.id != displayedDeviceId) return
-                val duration = currentDevice()?.state?.durationMs ?: return
-                if (duration <= 0) return
-                SocialRealtimeManager.sendCommandToSelected("seek", buildJsonObject {
-                    put("positionMs", pos.coerceIn(0, duration))
-                })
-            }
-        })
+        session.setCallback(remoteTransportCallback())
         scope.launch {
             combine(SocialRealtimeManager.connectDevices, SocialRealtimeManager.selectedConnectDeviceId) { devices, selected ->
                 devices.firstOrNull { it.id == selected && it.id != ApiClient.getClientId() && it.state.track != null }
@@ -63,6 +49,26 @@ class RemotePlaybackService : Service() {
                     stopSelf()
                 } else publish(device)
             }
+        }
+    }
+
+    // Android Auto browsing/voice search belongs to PlaybackService. This private
+    // transport session does not advertise ACTION_PLAY_FROM_SEARCH or expose a
+    // browser service; it only controls the selected device's existing queue.
+    @android.annotation.SuppressLint("MissingOnPlayFromSearch")
+    private fun remoteTransportCallback() = object : MediaSession.Callback() {
+        override fun onPlay() = command("play")
+        override fun onPause() = command("pause")
+        override fun onSkipToNext() = command("next")
+        override fun onSkipToPrevious() = command("previous")
+        override fun onStop() = command("stop")
+        override fun onSeekTo(pos: Long) {
+            if (currentDevice()?.id != displayedDeviceId) return
+            val duration = currentDevice()?.state?.durationMs ?: return
+            if (duration <= 0) return
+            SocialRealtimeManager.sendCommandToSelected("seek", buildJsonObject {
+                put("positionMs", pos.coerceIn(0, duration))
+            })
         }
     }
 
