@@ -379,3 +379,32 @@ Connection restored (empty proxy host, port zero). Playback was never started by
 this pass; the original Cutting Crew song remains paused at zero, queue index 3.
 Local failure UI evidence: mvbar/.local/live-uncached-error-ui.xml. This verifies
 server unreachability; true Android no-network transitions remain untested.
+
+## 2026-09-07 — Remote seeking and artist Back navigation live checks
+
+Current phone APK and isolated Audit web A/B receivers: all four native UI Connect
+checks passed. Android picker transferred the paused queue to web B; a drag
+produced 104018 ms against duration 171453 ms. After changing songs, a second drag
+produced 154621 ms against duration 257000 ms (60.16%), demonstrating the updated
+duration. Changing the receiver song during an in-flight drag sent no stale seek.
+Dedicated players closed and the original seven-song Android queue was restored.
+Evidence: mvbar/.local/connect-native-ui-recheck-results.json.
+
+Additional live UI checks: a nonexistent search displayed its empty-result state;
+Clear returned recent searches; selecting the recent Limp Bizkit artist opened
+its detail. Repeated scrolling loaded rows beyond 100 without getting stuck.
+The sampled log contained no fatal exception/ANR matches.
+
+Found a Back-navigation regression: opening an album through search from the
+scrolled artist, then pressing Back, reset the artist page to its header. The
+artist route unconditionally reloaded its detail on re-entry, clearing tracks
+and clamping the restored lazy-list position. It now retains the already loaded
+matching artist and pages; a different artist or empty tracks still loads.
+
+Phone tests, lint and build passed, then installed the rebuilt APK. Live regression
+scrolled Limp Bizkit to rows 100-102, opened Nocturnal through search, and pressed
+Back. Nookie (row 100) had identical UI bounds before/after:
+[227,474][276,493]. Evidence: mvbar/.local/artist-scroll-before.xml and
+artist-scroll-after.xml. This establishes artist-to-album-to-artist recovery;
+returning through multiple different artist details is a separate untested case.
+Playback remained paused at the original Cutting Crew song after cleanup.

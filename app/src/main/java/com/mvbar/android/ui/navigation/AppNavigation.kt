@@ -957,7 +957,9 @@ fun MainScreen(
                 ) { entry ->
                     val id = entry.arguments?.getInt("id") ?: -1
                     LaunchedEffect(id) {
-                        if (id > 0) {
+                        // Returning from an album must retain the loaded pages so
+                        // the restored list position is not clamped to the header.
+                        if (id > 0 && (selectedArtist?.id != id || artistTracks.isEmpty())) {
                             browseVm.loadArtistDetail(Artist(id = id))
                         }
                     }
