@@ -163,13 +163,11 @@ class AuthRepository(private val context: Context) {
                 val request = okhttp3.Request.Builder()
                     .url("${url}api/auth/google/enabled")
                     .build()
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    val enabled = body.contains("\"enabled\":true")
-                    val clientId = Regex("\"clientId\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
-                    GoogleAuthInfo(enabled, clientId)
-                } else GoogleAuthInfo(false, null)
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        parseGoogleAuthConfig(response.body?.string().orEmpty())
+                    } else GoogleAuthInfo(false, null)
+                }
             } catch (_: Exception) {
                 GoogleAuthInfo(false, null)
             }
