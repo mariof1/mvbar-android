@@ -63,6 +63,9 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     private val _selectedArtist = MutableStateFlow<Artist?>(null)
     val selectedArtist: StateFlow<Artist?> = _selectedArtist.asStateFlow()
 
+    private var genreGeneration = 0L
+    private var genreDetailJob: Job? = null
+    private var genrePageJob: Job? = null
     private val _genreTracks = MutableStateFlow<List<Track>>(emptyList())
     val genreTracks: StateFlow<List<Track>> = _genreTracks.asStateFlow()
 
@@ -77,6 +80,9 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
 
     private var currentGenreName: String = ""
 
+    private var countryGeneration = 0L
+    private var countryDetailJob: Job? = null
+    private var countryPageJob: Job? = null
     private val _countryTracks = MutableStateFlow<List<Track>>(emptyList())
     val countryTracks: StateFlow<List<Track>> = _countryTracks.asStateFlow()
 
@@ -93,6 +99,9 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     private var artistLetterJob: Job? = null
     private var albumLetterJob: Job? = null
 
+    private var languageGeneration = 0L
+    private var languageDetailJob: Job? = null
+    private var languagePageJob: Job? = null
     private val _languageTracks = MutableStateFlow<List<Track>>(emptyList())
     val languageTracks: StateFlow<List<Track>> = _languageTracks.asStateFlow()
 
@@ -692,14 +701,19 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadGenreTracks(genreName: String) {
         currentGenreName = genreName
-        viewModelScope.launch {
+        val generation = ++genreGeneration
+        genreDetailJob?.cancel()
+        genrePageJob?.cancel()
+        _isLoadingMoreGenreTracks.value = false
+        genreDetailJob = viewModelScope.launch {
             _genreLoading.value = true
             _genreTracks.value = emptyList()
-            _hasMoreGenreTracks.value = true
+            _hasMoreGenreTracks.value = false
             try {
                 if (!NetworkMonitor.isOnline.value) {
                     val cached = repo.getCachedGenreTracks(genreName, PAGE_SIZE, 0).orEmpty()
                     val total = repo.getCachedGenreTrackCount(genreName)
+                    if (generation != genreGeneration) return@launch
                     _genreTracks.value = cached
                     _hasMoreGenreTracks.value = hasMore(0, cached.size, total)
                     return@launch
@@ -707,64 +721,80 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 DebugLog.i("Browse", "Loading genre tracks for '$genreName'")
                 val response = repo.getGenreTracks(genreName, PAGE_SIZE, 0)
                 DebugLog.i("Browse", "Got ${response.tracks.size} tracks for genre '$genreName'")
+                if (generation != genreGeneration) return@launch
                 _genreTracks.value = response.tracks
                 _hasMoreGenreTracks.value = response.tracks.size >= PAGE_SIZE
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Genre tracks failed for '$genreName'", e)
                 val cached = repo.getCachedGenreTracks(genreName, PAGE_SIZE, 0).orEmpty()
                 if (cached.isNotEmpty()) {
                     val total = repo.getCachedGenreTrackCount(genreName)
+                    if (generation != genreGeneration) return@launch
                     _genreTracks.value = cached
                     _hasMoreGenreTracks.value = hasMore(0, cached.size, total)
                 }
             } finally {
-                _genreLoading.value = false
+                if (generation == genreGeneration) _genreLoading.value = false
             }
         }
     }
 
     fun loadMoreGenreTracks() {
-        if (_isLoadingMoreGenreTracks.value || !_hasMoreGenreTracks.value) return
-        viewModelScope.launch {
-            _isLoadingMoreGenreTracks.value = true
+        if (_genreLoading.value || _isLoadingMoreGenreTracks.value || !_hasMoreGenreTracks.value) return
+        val generation = genreGeneration
+        val name = currentGenreName
+        _isLoadingMoreGenreTracks.value = true
+        genrePageJob = viewModelScope.launch {
             try {
                 val offset = _genreTracks.value.size
                 if (!NetworkMonitor.isOnline.value) {
-                    val cached = repo.getCachedGenreTracks(currentGenreName, PAGE_SIZE, offset).orEmpty()
-                    val total = repo.getCachedGenreTrackCount(currentGenreName)
+                    val cached = repo.getCachedGenreTracks(name, PAGE_SIZE, offset).orEmpty()
+                    val total = repo.getCachedGenreTrackCount(name)
+                    if (generation != genreGeneration) return@launch
                     _genreTracks.value = _genreTracks.value + cached
                     _hasMoreGenreTracks.value = hasMore(offset, cached.size, total)
                     return@launch
                 }
-                val response = repo.getGenreTracks(currentGenreName, PAGE_SIZE, offset)
+                val response = repo.getGenreTracks(name, PAGE_SIZE, offset)
                 DebugLog.i("Browse", "Loaded ${response.tracks.size} more genre tracks (offset $offset)")
+                if (generation != genreGeneration) return@launch
                 _genreTracks.value = _genreTracks.value + response.tracks
                 _hasMoreGenreTracks.value = response.tracks.size >= PAGE_SIZE
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more genre tracks failed", e)
                 val offset = _genreTracks.value.size
-                val cached = repo.getCachedGenreTracks(currentGenreName, PAGE_SIZE, offset).orEmpty()
+                val cached = repo.getCachedGenreTracks(name, PAGE_SIZE, offset).orEmpty()
                 if (cached.isNotEmpty()) {
-                    val total = repo.getCachedGenreTrackCount(currentGenreName)
+                    val total = repo.getCachedGenreTrackCount(name)
+                    if (generation != genreGeneration) return@launch
                     _genreTracks.value = _genreTracks.value + cached
                     _hasMoreGenreTracks.value = hasMore(offset, cached.size, total)
                 }
             } finally {
-                _isLoadingMoreGenreTracks.value = false
+                if (generation == genreGeneration) _isLoadingMoreGenreTracks.value = false
             }
         }
     }
 
     fun loadCountryTracks(name: String) {
         currentCountryName = name
-        viewModelScope.launch {
+        val generation = ++countryGeneration
+        countryDetailJob?.cancel()
+        countryPageJob?.cancel()
+        _isLoadingMoreCountryTracks.value = false
+        countryDetailJob = viewModelScope.launch {
             _countryLoading.value = true
             _countryTracks.value = emptyList()
-            _hasMoreCountryTracks.value = true
+            _hasMoreCountryTracks.value = false
             try {
                 if (!NetworkMonitor.isOnline.value) {
                     val cached = repo.getCachedCountryTracks(name, PAGE_SIZE, 0).orEmpty()
                     val total = repo.getCachedCountryTrackCount(name)
+                    if (generation != countryGeneration) return@launch
                     _countryTracks.value = cached
                     _hasMoreCountryTracks.value = hasMore(0, cached.size, total)
                     return@launch
@@ -772,64 +802,80 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 DebugLog.i("Browse", "Loading country tracks for '$name'")
                 val response = repo.getCountryTracks(name, PAGE_SIZE, 0)
                 DebugLog.i("Browse", "Got ${response.tracks.size} tracks for country '$name'")
+                if (generation != countryGeneration) return@launch
                 _countryTracks.value = response.tracks
                 _hasMoreCountryTracks.value = response.tracks.size >= PAGE_SIZE
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Country tracks failed for '$name'", e)
                 val cached = repo.getCachedCountryTracks(name, PAGE_SIZE, 0).orEmpty()
                 if (cached.isNotEmpty()) {
                     val total = repo.getCachedCountryTrackCount(name)
+                    if (generation != countryGeneration) return@launch
                     _countryTracks.value = cached
                     _hasMoreCountryTracks.value = hasMore(0, cached.size, total)
                 }
             } finally {
-                _countryLoading.value = false
+                if (generation == countryGeneration) _countryLoading.value = false
             }
         }
     }
 
     fun loadMoreCountryTracks() {
-        if (_isLoadingMoreCountryTracks.value || !_hasMoreCountryTracks.value) return
-        viewModelScope.launch {
-            _isLoadingMoreCountryTracks.value = true
+        if (_countryLoading.value || _isLoadingMoreCountryTracks.value || !_hasMoreCountryTracks.value) return
+        val generation = countryGeneration
+        val name = currentCountryName
+        _isLoadingMoreCountryTracks.value = true
+        countryPageJob = viewModelScope.launch {
             try {
                 val offset = _countryTracks.value.size
                 if (!NetworkMonitor.isOnline.value) {
-                    val cached = repo.getCachedCountryTracks(currentCountryName, PAGE_SIZE, offset).orEmpty()
-                    val total = repo.getCachedCountryTrackCount(currentCountryName)
+                    val cached = repo.getCachedCountryTracks(name, PAGE_SIZE, offset).orEmpty()
+                    val total = repo.getCachedCountryTrackCount(name)
+                    if (generation != countryGeneration) return@launch
                     _countryTracks.value = _countryTracks.value + cached
                     _hasMoreCountryTracks.value = hasMore(offset, cached.size, total)
                     return@launch
                 }
-                val response = repo.getCountryTracks(currentCountryName, PAGE_SIZE, offset)
+                val response = repo.getCountryTracks(name, PAGE_SIZE, offset)
                 DebugLog.i("Browse", "Loaded ${response.tracks.size} more country tracks (offset $offset)")
+                if (generation != countryGeneration) return@launch
                 _countryTracks.value = _countryTracks.value + response.tracks
                 _hasMoreCountryTracks.value = response.tracks.size >= PAGE_SIZE
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more country tracks failed", e)
                 val offset = _countryTracks.value.size
-                val cached = repo.getCachedCountryTracks(currentCountryName, PAGE_SIZE, offset).orEmpty()
+                val cached = repo.getCachedCountryTracks(name, PAGE_SIZE, offset).orEmpty()
                 if (cached.isNotEmpty()) {
-                    val total = repo.getCachedCountryTrackCount(currentCountryName)
+                    val total = repo.getCachedCountryTrackCount(name)
+                    if (generation != countryGeneration) return@launch
                     _countryTracks.value = _countryTracks.value + cached
                     _hasMoreCountryTracks.value = hasMore(offset, cached.size, total)
                 }
             } finally {
-                _isLoadingMoreCountryTracks.value = false
+                if (generation == countryGeneration) _isLoadingMoreCountryTracks.value = false
             }
         }
     }
 
     fun loadLanguageTracks(name: String) {
         currentLanguageName = name
-        viewModelScope.launch {
+        val generation = ++languageGeneration
+        languageDetailJob?.cancel()
+        languagePageJob?.cancel()
+        _isLoadingMoreLanguageTracks.value = false
+        languageDetailJob = viewModelScope.launch {
             _languageLoading.value = true
             _languageTracks.value = emptyList()
-            _hasMoreLanguageTracks.value = true
+            _hasMoreLanguageTracks.value = false
             try {
                 if (!NetworkMonitor.isOnline.value) {
                     val cached = repo.getCachedLanguageTracks(name, PAGE_SIZE, 0).orEmpty()
                     val total = repo.getCachedLanguageTrackCount(name)
+                    if (generation != languageGeneration) return@launch
                     _languageTracks.value = cached
                     _hasMoreLanguageTracks.value = hasMore(0, cached.size, total)
                     return@launch
@@ -837,50 +883,61 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                 DebugLog.i("Browse", "Loading language tracks for '$name'")
                 val response = repo.getLanguageTracks(name, PAGE_SIZE, 0)
                 DebugLog.i("Browse", "Got ${response.tracks.size} tracks for language '$name'")
+                if (generation != languageGeneration) return@launch
                 _languageTracks.value = response.tracks
                 _hasMoreLanguageTracks.value = response.tracks.size >= PAGE_SIZE
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Language tracks failed for '$name'", e)
                 val cached = repo.getCachedLanguageTracks(name, PAGE_SIZE, 0).orEmpty()
                 if (cached.isNotEmpty()) {
                     val total = repo.getCachedLanguageTrackCount(name)
+                    if (generation != languageGeneration) return@launch
                     _languageTracks.value = cached
                     _hasMoreLanguageTracks.value = hasMore(0, cached.size, total)
                 }
             } finally {
-                _languageLoading.value = false
+                if (generation == languageGeneration) _languageLoading.value = false
             }
         }
     }
 
     fun loadMoreLanguageTracks() {
-        if (_isLoadingMoreLanguageTracks.value || !_hasMoreLanguageTracks.value) return
-        viewModelScope.launch {
-            _isLoadingMoreLanguageTracks.value = true
+        if (_languageLoading.value || _isLoadingMoreLanguageTracks.value || !_hasMoreLanguageTracks.value) return
+        val generation = languageGeneration
+        val name = currentLanguageName
+        _isLoadingMoreLanguageTracks.value = true
+        languagePageJob = viewModelScope.launch {
             try {
                 val offset = _languageTracks.value.size
                 if (!NetworkMonitor.isOnline.value) {
-                    val cached = repo.getCachedLanguageTracks(currentLanguageName, PAGE_SIZE, offset).orEmpty()
-                    val total = repo.getCachedLanguageTrackCount(currentLanguageName)
+                    val cached = repo.getCachedLanguageTracks(name, PAGE_SIZE, offset).orEmpty()
+                    val total = repo.getCachedLanguageTrackCount(name)
+                    if (generation != languageGeneration) return@launch
                     _languageTracks.value = _languageTracks.value + cached
                     _hasMoreLanguageTracks.value = hasMore(offset, cached.size, total)
                     return@launch
                 }
-                val response = repo.getLanguageTracks(currentLanguageName, PAGE_SIZE, offset)
+                val response = repo.getLanguageTracks(name, PAGE_SIZE, offset)
                 DebugLog.i("Browse", "Loaded ${response.tracks.size} more language tracks (offset $offset)")
+                if (generation != languageGeneration) return@launch
                 _languageTracks.value = _languageTracks.value + response.tracks
                 _hasMoreLanguageTracks.value = response.tracks.size >= PAGE_SIZE
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more language tracks failed", e)
                 val offset = _languageTracks.value.size
-                val cached = repo.getCachedLanguageTracks(currentLanguageName, PAGE_SIZE, offset).orEmpty()
+                val cached = repo.getCachedLanguageTracks(name, PAGE_SIZE, offset).orEmpty()
                 if (cached.isNotEmpty()) {
-                    val total = repo.getCachedLanguageTrackCount(currentLanguageName)
+                    val total = repo.getCachedLanguageTrackCount(name)
+                    if (generation != languageGeneration) return@launch
                     _languageTracks.value = _languageTracks.value + cached
                     _hasMoreLanguageTracks.value = hasMore(offset, cached.size, total)
                 }
             } finally {
-                _isLoadingMoreLanguageTracks.value = false
+                if (generation == languageGeneration) _isLoadingMoreLanguageTracks.value = false
             }
         }
     }

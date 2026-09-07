@@ -151,3 +151,17 @@ Validation uses the existing phone tests, lint and APK build; authenticated rapi
 artist-switching remains pending live coverage. The preceding album fix's CI
 passed. Next audit genre/country/language detail pagination and visible loading or
 error feedback, then move beyond request ownership to other UX functions.
+
+## 2026-09-07 — Genre, country and language pagination
+
+The same unowned-request pattern was confirmed in all three category detail
+loaders and their pagination methods. New selections now cancel prior detail/page
+jobs and advance a generation; network and cached results must still own that
+generation before publishing. Page requests capture the category name and cannot
+start until first-page loading has finished. Cancellation does not invoke offline
+fallback, and old finalizers cannot clear a newer request's loading state.
+
+Verification covers source review and the existing phone test/lint/build checks;
+delayed-response navigation remains pending live coverage. The preceding artist
+fix's GitHub CI passed. Next focus on visible empty/error states and retry controls
+rather than treating further request-ownership changes as new UI coverage.
