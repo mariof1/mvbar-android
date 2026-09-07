@@ -8,6 +8,7 @@ import com.mvbar.android.data.NetworkMonitor
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.local.entity.toEntity
+import com.mvbar.android.data.local.entity.toModel
 import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
 import com.mvbar.android.debug.DebugLog
@@ -25,6 +26,10 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    private val _detailLoading = MutableStateFlow(false)
+    val detailLoading: StateFlow<Boolean> = _detailLoading.asStateFlow()
+    private var detailJob: Job? = null
+    private var detailGeneration = 0L
 
     private val _selectedAudiobook = MutableStateFlow<Audiobook?>(null)
     val selectedAudiobook: StateFlow<Audiobook?> = _selectedAudiobook.asStateFlow()
@@ -86,34 +91,42 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadAudiobookDetail(audiobookId: Int) {
-        _selectedAudiobook.value = null
+        val generation = ++detailGeneration
+        detailJob?.cancel()
+        _detailLoading.value = true
+        _selectedAudiobook.value = _audiobooks.value.firstOrNull { it.id == audiobookId }
         _chapters.value = emptyList()
         _detailProgress.value = null
-        viewModelScope.launch {
-            _isLoading.value = true
-            // Cache first
+        detailJob = viewModelScope.launch {
             try {
-                val cached = repo.getCachedAudiobookChapters(audiobookId)
-                if (!cached.isNullOrEmpty()) _chapters.value = cached
-            } catch (_: Exception) {}
-            if (!NetworkMonitor.isOnline.value) {
-                _selectedAudiobook.value = _audiobooks.value.firstOrNull { it.id == audiobookId }
-                _isLoading.value = false
-                return@launch
-            }
-            // Then API
-            try {
+                // Detail routes may open before the list screen has loaded.
+                try {
+                    val book = db.audiobookDao().getAudiobook(audiobookId)?.toModel()
+                    val cached = repo.getCachedAudiobookChapters(audiobookId).orEmpty()
+                    if (generation != detailGeneration) return@launch
+                    if (book != null) _selectedAudiobook.value = book
+                    _chapters.value = cached
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    DebugLog.e("Audiobooks", "Failed to read cached detail", e)
+                }
+                if (!NetworkMonitor.isOnline.value) return@launch
                 val resp = ApiClient.api.getAudiobookDetail(audiobookId)
+                if (generation != detailGeneration) return@launch
                 _selectedAudiobook.value = resp.audiobook
                 _chapters.value = resp.chapters
                 _detailProgress.value = resp.progress
                 resp.audiobook?.let { db.audiobookDao().insertAudiobooks(listOf(it.toEntity())) }
                 db.audiobookDao().replaceChapters(audiobookId, resp.chapters.map { it.toEntity() })
                 DebugLog.i("Audiobooks", "Loaded detail for audiobook $audiobookId: ${resp.chapters.size} chapters")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Audiobooks", "Failed to load audiobook detail", e)
+            } finally {
+                if (generation == detailGeneration) _detailLoading.value = false
             }
-            _isLoading.value = false
         }
     }
 

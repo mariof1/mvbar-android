@@ -13,6 +13,9 @@ interface AudiobookDao {
     @Query("SELECT * FROM audiobooks ORDER BY title COLLATE NOCASE ASC")
     suspend fun getAllAudiobooks(): List<AudiobookEntity>
 
+    @Query("SELECT * FROM audiobooks WHERE id = :id LIMIT 1")
+    suspend fun getAudiobook(id: Int): AudiobookEntity?
+
     @Query("SELECT * FROM audiobook_chapters WHERE audiobookId = :audiobookId ORDER BY position ASC")
     suspend fun getChapters(audiobookId: Int): List<AudiobookChapterEntity>
 

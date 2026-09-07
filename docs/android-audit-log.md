@@ -194,3 +194,18 @@ Verification scope is composable/navigation code review and phone tests/lint/bui
 the authenticated unavailable-screen UI still needs a live pass. No subscriptions,
 progress or playback were changed. Next inspect long-form cache fallback and loading
 state ownership, including list/detail requests sharing one loading flag.
+
+## 2026-09-07 — Cached audiobook detail recovery
+
+The previous loader restored cached chapters but left the selected book null on
+an online API failure. Offline metadata also came only from the in-memory list,
+so opening detail before loading that list hid valid cached content behind the
+unavailable screen. Detail now reads the book by ID from Room alongside chapters,
+preserves that fallback when the API fails, and has its own loading state so a
+list request cannot dismiss its spinner. A new detail request cancels the old job
+and verifies ownership before publishing cached or remote content.
+
+The Room lookup uses the existing table; no schema migration or data deletion is
+needed. Verification includes Room query generation, existing phone tests, lint
+and APK build; an authenticated offline playback/UI pass remains outstanding.
+Next inspect podcast cache metadata fallback and long-form resume state.
