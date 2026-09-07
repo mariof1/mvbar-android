@@ -272,3 +272,38 @@ guard as its progress timer instead of decoding every negative ID. This prevents
 podcast transitions from changing the displayed audiobook chapter. No real progress
 or media was modified during verification. Continue with queue actions and playlist
 forms next; authenticated playback coverage remains outstanding.
+
+## 2026-09-07 — Live verification on BlueStacks and proxy web app
+
+Ran authenticated checks against https://music2.faldasz.com using isolated browser
+players and the installed Android phone app (1.1.29). All nine web-to-web checks
+passed: paused transfer, pointer/keyboard remote seek, playing seek/progress,
+return transfer, queue boundaries, selection of an already playing receiver,
+and WebSocket disconnect/reconnect with subsequent control.
+
+All twelve Android/web checks passed: paused queue selection, actual advancing
+playback, seek, pause, next/previous, queue play/add/play-next, reorder/remove,
+clear upcoming, playing transfers both directions, paused transfer preserving
+position, and discovery after process restart without resurrecting a stopped
+queue. The original seven-song Android queue, selected index and paused position
+were saved and restored. Other existing players were not controlled. Local JSON
+evidence is in mvbar/.local/connect-web-edge-live-results.json and
+mvbar/.local/connect-emulator-live-recheck-results.json.
+
+UI checks opened the subscribed podcast and its 445-episode detail, audiobook
+list and 1984 detail, rapidly replaced search rock with Nocturnal, and opened the
+matching album. No stale rock results appeared in the observed final UI. This
+was ordinary live latency, not a deterministic delayed-response race test.
+The sampled device log contained no fatal exception/ANR matches.
+
+Reproduced a new UI issue: 1984's header said 0 ch while its loaded list showed
+26 chapters. The detail header now derives the count from the displayed chapter
+list once available, retaining metadata only while awaiting the initial load.
+Phone unit tests, lint and APK build passed. Installed the rebuilt APK preserving
+data and re-opened 1984: header now shows 26 ch, matching 26 chapters below.
+
+Offline verification remains pending: disabling emulator mobile data did not
+remove its virtual eth0 network; mobile data was restored. This pass also does
+not establish delayed login failure/OAuth ownership, forced request races,
+interrupted downloads, or long-form resume/progress behavior. Those earlier
+code-review/test-only entries remain explicitly unverified live.

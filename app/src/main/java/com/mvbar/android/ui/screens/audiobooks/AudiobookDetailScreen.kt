@@ -107,7 +107,8 @@ fun AudiobookDetailScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             audiobook?.let {
                                 Text(it.durationFormatted, style = MaterialTheme.typography.labelSmall, color = OnSurfaceSubtle)
-                                Text("${it.chapterCount} ch", style = MaterialTheme.typography.labelSmall, color = OnSurfaceSubtle)
+                                val chapterCount = if (chapters.isNotEmpty() || !isLoading) chapters.size else it.chapterCount
+                                Text("$chapterCount ch", style = MaterialTheme.typography.labelSmall, color = OnSurfaceSubtle)
                             }
                             audiobook?.narrator?.let {
                                 Text("• $it", style = MaterialTheme.typography.labelSmall, color = OnSurfaceSubtle,
