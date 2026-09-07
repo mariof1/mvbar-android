@@ -244,3 +244,17 @@ zero rather than seeking it to another chapter's position.
 Verification is code-path review plus existing phone tests/lint/build; live slow
 load and rapid-playback-switch scenarios remain pending. No real playback or
 progress was changed during this audit.
+
+## 2026-09-07 — Audiobook progress identity
+
+Confirmed: the audiobook progress timer remained active after switching media and
+derived a chapter ID from any negative track ID. A sufficiently large podcast
+episode ID could produce a positive bogus chapter ID and enqueue audiobook progress.
+Saving now requires audiobook mode, rejects podcast mode explicitly, and checks
+that the decoded chapter belongs to the known chapter list. Long arithmetic avoids
+overflow while validating IDs.
+
+Three isolated regression tests cover a valid chapter, a podcast with a colliding
+numeric ID, unknown/other chapters, music and no active track. No actual progress
+was submitted. The related playing-chapter display collector still warrants a
+separate review; this change guards progress persistence.

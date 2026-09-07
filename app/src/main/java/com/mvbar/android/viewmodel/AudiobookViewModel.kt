@@ -13,6 +13,7 @@ import com.mvbar.android.data.model.*
 import com.mvbar.android.data.repository.MusicRepository
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.PlayerManager
+import com.mvbar.android.player.audiobookProgressChapterId
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -190,10 +191,9 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     val state = playerManager.state.value
                     if (state.isPlaying) {
-                        val trackId = state.currentTrack?.id ?: continue
-                        if (trackId >= 0) continue
-                        val chId = -(trackId) - audiobookId * 100000
-                        if (chId <= 0) continue
+                        val chId = audiobookProgressChapterId(
+                            audiobookId, currentChaptersList.map { it.id }, state
+                        ) ?: continue
                         val posMs = state.position
                         ActivityQueue.enqueueAudiobookProgress(audiobookId, chId, posMs)
                     }
