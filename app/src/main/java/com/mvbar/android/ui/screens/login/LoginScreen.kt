@@ -105,20 +105,6 @@ fun LoginScreen(
                     contentDescription = "mvbar",
                     modifier = Modifier.size(80.dp)
                 )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "mvbar",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        brush = Brush.linearGradient(listOf(Color(0xFF4DD9FF), Color(0xFF00A3CC)))
-                    ),
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "Sign in to your server",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = OnSurfaceDim
-                )
-
                 Spacer(Modifier.height(32.dp))
 
                 OutlinedTextField(
