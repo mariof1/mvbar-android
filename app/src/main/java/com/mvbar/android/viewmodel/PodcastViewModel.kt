@@ -12,6 +12,7 @@ import com.mvbar.android.data.local.entity.toModel
 import com.mvbar.android.data.model.*
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.player.PlayerManager
+import com.mvbar.android.player.canSavePodcastProgress
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -394,7 +395,7 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
             while (true) {
                 kotlinx.coroutines.delay(15_000)
                 val state = playerManager.state.value
-                if (state.isPlaying && state.currentTrack?.id == -episodeId && state.position > 0) {
+                if (canSavePodcastProgress(episodeId, state)) {
                     ActivityQueue.enqueuePodcastProgress(episodeId, state.position)
                 }
             }

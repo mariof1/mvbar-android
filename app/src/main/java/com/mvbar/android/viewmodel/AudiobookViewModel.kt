@@ -54,14 +54,10 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch {
             playerManager.state.collect { state ->
-                val trackId = state.currentTrack?.id ?: return@collect
-                if (trackId >= 0 || currentAudiobookId == null) return@collect
                 val abId = currentAudiobookId ?: return@collect
-                val chId = -(trackId) - abId * 100000
-                if (chId > 0) {
-                    val chapter = currentChaptersList.find { it.id == chId }
-                    if (chapter != null) _playingChapter.value = chapter
-                }
+                val chId = audiobookProgressChapterId(abId, currentChaptersList.map { it.id }, state)
+                    ?: return@collect
+                currentChaptersList.find { it.id == chId }?.let { _playingChapter.value = it }
             }
         }
     }

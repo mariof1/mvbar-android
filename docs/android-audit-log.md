@@ -258,3 +258,17 @@ Three isolated regression tests cover a valid chapter, a podcast with a collidin
 numeric ID, unknown/other chapters, music and no active track. No actual progress
 was submitted. The related playing-chapter display collector still warrants a
 separate review; this change guards progress persistence.
+
+## 2026-09-07 — Podcast progress and chapter indicator identity
+
+The podcast timer had the inverse collision: it matched only the negative track
+ID, allowing an audiobook chapter with that same numeric ID to update the previous
+podcast's progress. Saving now requires actual podcast mode, a matching positive
+episode ID, active playback and positive progress. Three regression tests cover a
+valid episode, an audiobook ID collision and unrelated/inactive playback.
+
+The audiobook playing-chapter collector now uses the same known-chapter/media-mode
+guard as its progress timer instead of decoding every negative ID. This prevents
+podcast transitions from changing the displayed audiobook chapter. No real progress
+or media was modified during verification. Continue with queue actions and playlist
+forms next; authenticated playback coverage remains outstanding.
