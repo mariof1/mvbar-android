@@ -37,6 +37,7 @@ import androidx.credentials.GetCredentialRequest
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.mvbar.android.R
+import com.mvbar.android.BuildConfig
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.AuthState
@@ -346,6 +347,13 @@ fun LoginScreen(
                         }
                     }
                 }
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    text = BuildConfig.VERSION_NAME.trim().takeIf { it.isNotEmpty() }
+                        ?.let { "Version $it" } ?: "Debug",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = OnSurfaceDim
+                )
             }
         }
     }
