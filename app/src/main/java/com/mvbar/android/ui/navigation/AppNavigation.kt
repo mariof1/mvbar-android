@@ -231,6 +231,7 @@ fun MainScreen(
     val podcastsList by podcastVm.podcasts.collectAsState()
     val podcastContinueListening by podcastVm.continueListening.collectAsState()
     val podcastIsLoading by podcastVm.isLoading.collectAsState()
+    val podcastDetailLoading by podcastVm.detailLoading.collectAsState()
     val podcastSelectedPodcast by podcastVm.selectedPodcast.collectAsState()
     val podcastEpisodes by podcastVm.episodes.collectAsState()
     val podcastSearchResults by podcastVm.searchResults.collectAsState()
@@ -1332,7 +1333,7 @@ fun MainScreen(
                         },
                         podcast = podcastSelectedPodcast,
                         episodes = podcastEpisodes,
-                        isLoading = podcastIsLoading,
+                        isLoading = podcastDetailLoading,
                         onBack = { navigateBack() },
                         onPlayEpisode = { episode ->
                             podcastVm.playEpisode(episode, podcastEpisodes)

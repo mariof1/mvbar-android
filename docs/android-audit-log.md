@@ -209,3 +209,20 @@ The Room lookup uses the existing table; no schema migration or data deletion is
 needed. Verification includes Room query generation, existing phone tests, lint
 and APK build; an authenticated offline playback/UI pass remains outstanding.
 Next inspect podcast cache metadata fallback and long-form resume state.
+
+## 2026-09-07 — Podcast cache and detail ownership
+
+Confirmed: the detail loader did not clear the previous selection/episodes, and
+only published cache entries when nonempty. Opening an uncached podcast offline
+therefore retained another podcast's content; an online failure could also skip
+fallback/error handling because the unrelated episode list was nonempty.
+
+New detail requests clear stale content and errors, load metadata directly by ID
+with its matching episodes, retain that cache on network failure and reject older
+responses. Detail loading is separate from the podcast list spinner. Cancelled
+requests cannot publish errors or clear a newer loading state. The added Room
+query uses the existing schema and does not change stored data.
+
+Validation: Room query generation and existing phone tests/lint/build. Live
+offline navigation remains pending. Next inspect chapter/episode resume behavior
+and persisted progress rather than repeating detail-request isolation.

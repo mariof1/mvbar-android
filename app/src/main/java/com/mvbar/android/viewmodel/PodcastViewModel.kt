@@ -57,6 +57,10 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
     // Loading states
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    private val _detailLoading = MutableStateFlow(false)
+    val detailLoading: StateFlow<Boolean> = _detailLoading.asStateFlow()
+    private var detailJob: Job? = null
+    private var detailGeneration = 0L
 
     private val _subscribing = MutableStateFlow(false)
     val subscribing: StateFlow<Boolean> = _subscribing.asStateFlow()
@@ -121,52 +125,44 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadPodcastDetail(podcastId: Int) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            val cachedPodcast = try {
-                db.podcastDao().getAllPodcasts().find { it.id == podcastId }?.toModel()
-            } catch (_: Exception) { null }
-            val cachedEpisodes = try {
-                db.podcastDao().getEpisodes(podcastId).map { it.toModel() }
-            } catch (_: Exception) { emptyList() }
-            if (cachedPodcast != null) _selectedPodcast.value = cachedPodcast
-            if (cachedEpisodes.isNotEmpty()) _episodes.value = cachedEpisodes
-            if (!NetworkMonitor.isOnline.value) {
-                _isLoading.value = false
-                return@launch
-            }
+        val generation = ++detailGeneration
+        detailJob?.cancel()
+        _selectedPodcast.value = null
+        _episodes.value = emptyList()
+        _error.value = null
+        _detailLoading.value = true
+        detailJob = viewModelScope.launch {
             try {
-                val r = api.getPodcastDetail(podcastId)
-                _selectedPodcast.value = r.podcast
-                _episodes.value = r.episodes
-                r.podcast?.let { db.podcastDao().insertPodcasts(listOf(it.toEntity())) }
-                db.podcastDao().replaceEpisodes(podcastId, r.episodes.map { it.toEntity() })
-                DebugLog.i("Podcast", "Loaded ${r.episodes.size} episodes for podcast $podcastId")
-            } catch (e: Exception) {
-                DebugLog.e("Podcast", "Failed to load podcast detail from API", e)
-                // Fall back to local DB cache
-                if (_episodes.value.isEmpty()) {
-                    try {
-                        val cachedPodcast = db.podcastDao().getAllPodcasts()
-                            .find { it.id == podcastId }?.toModel()
-                        val cachedEpisodes = db.podcastDao().getEpisodes(podcastId)
-                            .map { it.toModel() }
-                        if (cachedPodcast != null) _selectedPodcast.value = cachedPodcast
-                        if (cachedEpisodes.isNotEmpty()) {
-                            _episodes.value = cachedEpisodes
-                            DebugLog.i("Podcast", "Loaded ${cachedEpisodes.size} episodes from cache")
-                        } else {
-                            _error.value = "Failed to load podcast"
-                        }
-                    } catch (_: Exception) {
-                        _error.value = "Failed to load podcast"
-                    }
+                try {
+                    val cachedPodcast = db.podcastDao().getPodcast(podcastId)?.toModel()
+                    val cachedEpisodes = db.podcastDao().getEpisodes(podcastId).map { it.toModel() }
+                    if (generation != detailGeneration) return@launch
+                    _selectedPodcast.value = cachedPodcast
+                    _episodes.value = cachedEpisodes
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    DebugLog.e("Podcast", "Failed to read cached detail", e)
                 }
+                if (!NetworkMonitor.isOnline.value) return@launch
+                val response = api.getPodcastDetail(podcastId)
+                if (generation != detailGeneration) return@launch
+                _selectedPodcast.value = response.podcast
+                _episodes.value = response.episodes
+                response.podcast?.let { db.podcastDao().insertPodcasts(listOf(it.toEntity())) }
+                db.podcastDao().replaceEpisodes(podcastId, response.episodes.map { it.toEntity() })
+                DebugLog.i("Podcast", "Loaded ${response.episodes.size} episodes for podcast $podcastId")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation != detailGeneration) return@launch
+                DebugLog.e("Podcast", "Failed to load podcast detail from API", e)
+                if (_selectedPodcast.value == null) _error.value = "Failed to load podcast"
+            } finally {
+                if (generation == detailGeneration) _detailLoading.value = false
             }
-            _isLoading.value = false
         }
     }
-
     fun searchPodcasts(query: String) {
         if (query.trim().length < 2) {
             _searchResults.value = emptyList()

@@ -13,6 +13,9 @@ interface PodcastDao {
     @Query("SELECT * FROM podcasts ORDER BY title COLLATE NOCASE ASC")
     suspend fun getAllPodcasts(): List<PodcastEntity>
 
+    @Query("SELECT * FROM podcasts WHERE id = :id LIMIT 1")
+    suspend fun getPodcast(id: Int): PodcastEntity?
+
     @Query("""
         SELECT * FROM podcasts
         WHERE title COLLATE NOCASE LIKE '%' || :query || '%'
