@@ -67,8 +67,9 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun login(serverUrl: String, email: String, password: String) {
+        if (_state.value.isLoading || _state.value.isLoggedIn) return
+        _state.value = _state.value.copy(isLoading = true, error = null)
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
             DebugLog.i("Auth", "Login attempt to $serverUrl as $email")
             val result = repo.login(serverUrl, email, password)
             _state.value = if (result.isSuccess) {
@@ -84,8 +85,9 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun googleSignIn(serverUrl: String, idToken: String) {
+        if (_state.value.isLoading || _state.value.isLoggedIn) return
+        _state.value = _state.value.copy(isLoading = true, error = null)
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
             DebugLog.i("Auth", "Google sign-in attempt to $serverUrl")
             val result = repo.googleSignIn(serverUrl, idToken)
             _state.value = if (result.isSuccess) {

@@ -76,6 +76,8 @@ fun LoginScreen(
     }
 
     val showGoogleButton = authState.googleEnabled
+    val signInBusy = authState.isLoading || googleLoading
+    val canSignIn = !signInBusy && server.isNotBlank() && email.isNotBlank() && password.isNotBlank()
 
     Box(
         modifier = Modifier
@@ -109,6 +111,7 @@ fun LoginScreen(
 
                 OutlinedTextField(
                     value = server,
+                    enabled = !signInBusy,
                     onValueChange = { server = it },
                     label = { Text("Server URL") },
                     placeholder = { Text("https://mvbar.example.com") },
@@ -137,6 +140,7 @@ fun LoginScreen(
 
                 OutlinedTextField(
                     value = email,
+                    enabled = !signInBusy,
                     onValueChange = { email = it },
                     label = { Text("Email") },
                     singleLine = true,
@@ -157,6 +161,7 @@ fun LoginScreen(
 
                 OutlinedTextField(
                     value = password,
+                    enabled = !signInBusy,
                     onValueChange = { password = it },
                     label = { Text("Password") },
                     singleLine = true,
@@ -178,7 +183,7 @@ fun LoginScreen(
                     keyboardActions = KeyboardActions(
                         onDone = {
                             focusManager.clearFocus()
-                            if (server.isNotBlank() && email.isNotBlank() && password.isNotBlank()) {
+                            if (canSignIn) {
                                 onLogin(server, email, password)
                             }
                         }
@@ -214,7 +219,7 @@ fun LoginScreen(
                         .height(52.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Cyan500),
-                    enabled = !authState.isLoading && !googleLoading && server.isNotBlank() && email.isNotBlank() && password.isNotBlank()
+                    enabled = canSignIn
                 ) {
                     if (authState.isLoading && !googleLoading) {
                         CircularProgressIndicator(
@@ -252,7 +257,8 @@ fun LoginScreen(
 
                         OutlinedButton(
                             onClick = {
-                                if (server.isBlank()) return@OutlinedButton
+                                if (signInBusy || server.isBlank()) return@OutlinedButton
+                                val signInServer = server.trim().removeSuffix("/")
                                 val clientId = authState.googleClientId
                                 if (clientId.isNullOrEmpty()) {
                                     googleError = "Server did not provide a Google client ID. Update the server."
@@ -284,7 +290,7 @@ fun LoginScreen(
                                         ) {
                                             val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                                             DebugLog.i("GoogleAuth", "Got idToken, calling onGoogleSignIn")
-                                            onGoogleSignIn(server.trim().removeSuffix("/"), googleIdTokenCredential.idToken)
+                                            onGoogleSignIn(signInServer, googleIdTokenCredential.idToken)
                                         } else {
                                             DebugLog.e("GoogleAuth", "Unexpected credential: class=${credential::class.qualifiedName} type=${credential.type}")
                                             googleLoading = false
@@ -303,6 +309,10 @@ fun LoginScreen(
                                         DebugLog.e("GoogleAuth", "Failed: ${e::class.simpleName}: ${e.message}", e)
                                         googleLoading = false
                                         googleError = e.message ?: "Google sign-in failed"
+                                    } finally {
+                                        // The view model owns the subsequent server request. A
+                                        // rejected token must leave both sign-in methods usable.
+                                        googleLoading = false
                                     }
                                 }
                             },
@@ -312,7 +322,7 @@ fun LoginScreen(
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, OnSurfaceSubtle),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
-                            enabled = !authState.isLoading && !googleLoading && server.isNotBlank()
+                            enabled = !signInBusy && server.isNotBlank()
                         ) {
                             if (googleLoading) {
                                 CircularProgressIndicator(
