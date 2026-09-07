@@ -329,35 +329,10 @@ object AudioCacheManager {
                 val url = ApiClient.streamUrl(track.id)
                 // Skip if already fully cached
                 if (isTrackCached(track.id)) continue
-                val key = url
 
                 try {
                     DebugLog.d("Cache", "Prefetching track ${track.id}: ${track.displayTitle}")
-                    val okClient = OkHttpClient.Builder()
-                        .addInterceptor { chain ->
-                            val builder = chain.request().newBuilder()
-                            ApiClient.getToken()?.let {
-                                builder.addHeader("Authorization", "Bearer $it")
-                            }
-                            chain.proceed(builder.build())
-                        }
-                        .build()
-                    val dataSourceFactory = OkHttpDataSource.Factory(okClient)
-                    val cacheDataSourceFactory = CacheDataSource.Factory()
-                        .setCache(c)
-                        .setUpstreamDataSourceFactory(dataSourceFactory)
-
-                    val dataSpec = DataSpec.Builder()
-                        .setUri(url)
-                        .setKey(key)
-                        .build()
-                    val cacheWriter = CacheWriter(
-                        cacheDataSourceFactory.createDataSource(),
-                        dataSpec,
-                        null,
-                        null
-                    )
-                    cacheWriter.cache()
+                    cacheUrl(c, url)
                     DebugLog.d("Cache", "Prefetched track ${track.id}")
                 } catch (e: CancellationException) {
                     throw e
@@ -400,7 +375,7 @@ object AudioCacheManager {
     }
 
     /** Download a URL into the cache. Must be called from a coroutine on IO. */
-    private fun cacheUrl(
+    private suspend fun cacheUrl(
         c: SimpleCache,
         url: String,
         progressListener: CacheWriter.ProgressListener? = null
@@ -422,7 +397,13 @@ object AudioCacheManager {
             .setUri(url)
             .setKey(url)
             .build()
-        CacheWriter(cacheDataSourceFactory.createDataSource(), dataSpec, null, progressListener).cache()
+        writeCacheCancellably { checkCancelled ->
+            CacheWriter(cacheDataSourceFactory.createDataSource(), dataSpec, null) { length, cached, added ->
+                // Check before publishing progress or allowing the next cache chunk.
+                checkCancelled()
+                progressListener?.onProgress(length, cached, added)
+            }.cache()
+        }
     }
 
     /**
@@ -481,7 +462,7 @@ object AudioCacheManager {
     private fun startManualDownload(url: String, label: String) {
         if (manualDownloadJobs[url]?.isActive == true) return
         val ctx = appContext ?: return
-        val job = prefetchScope.launch {
+        val job = prefetchScope.launch(start = CoroutineStart.LAZY) {
             try {
                 init(ctx)
                 val c = cache ?: error("Audio cache is unavailable")
@@ -533,10 +514,11 @@ object AudioCacheManager {
                 notifyCacheChanged()
                 DebugLog.e("Cache", "Manual download failed: $label", e)
             } finally {
-                manualDownloadJobs.remove(url)
+                manualDownloadJobs.remove(url, currentCoroutineContext().job)
             }
         }
         manualDownloadJobs[url] = job
+        job.start()
     }
 
     private fun contentLength(url: String): Long? {

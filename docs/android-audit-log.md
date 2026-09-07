@@ -81,3 +81,24 @@ label commit's GitHub CI passed (superseding the cancelled earlier run).
 
 Next: investigate blocking CacheWriter cancellation and download-job ownership
 during removal/retry. These remain audit candidates, not verified fixes.
+
+## 2026-09-07 — Blocking download cancellation and retry ownership
+
+Confirmed by code inspection: cancelling a download's coroutine previously did not
+connect to the blocking CacheWriter call. Prefetch had a separate copy of the same
+uncancellable write. Both now use a shared interruptible bridge with cancellation
+checks before the write, at progress/chunk boundaries and after completion.
+
+Manual jobs now register before starting, and cleanup removes only that job's own
+registry entry. An older cancelled job can no longer unregister a replacement job
+for the same URL. This also avoids a very fast completion leaving a finished job
+registered after its cleanup.
+
+Regression tests use isolated blocking IO to verify that cancellation interrupts
+the operation, runs cleanup and does not publish successful completion; normal
+chunked writes still complete. No real library data was deleted. The preceding
+server-scoped offline availability commit's GitHub CI passed.
+
+Remaining limitation: an upstream read that ignores interruption may stop only at
+the next chunk/read timeout. Continue checking removal ordering and concurrent
+cache writers before claiming immediate cancellation or complete removal atomicity.
