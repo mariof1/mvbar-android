@@ -47,6 +47,9 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<BrowseState> = _state.asStateFlow()
 
     private val _artistTracks = MutableStateFlow<List<Track>>(emptyList())
+    private var artistDetailJob: Job? = null
+    private var artistPageJob: Job? = null
+    private var artistDetailGeneration = 0L
     val artistTracks: StateFlow<List<Track>> = _artistTracks.asStateFlow()
 
     private val _albumTracks = MutableStateFlow<List<Track>>(emptyList())
@@ -524,17 +527,23 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadArtistDetail(artist: Artist) {
+        val generation = ++artistDetailGeneration
+        artistDetailJob?.cancel()
+        artistPageJob?.cancel()
+        _artistTracks.value = emptyList()
+        _isLoadingMoreArtistTracks.value = false
         _selectedArtist.value = artist
         _artistAlbums.value = emptyList()
         _artistAppearsOn.value = emptyList()
-        _hasMoreArtistTracks.value = true
+        _hasMoreArtistTracks.value = false
         currentArtistId = artist.id
         currentArtistName = artist.name
-        viewModelScope.launch {
+        artistDetailJob = viewModelScope.launch {
             try {
                 val id = artist.id
                 if (id == null) {
                     val cached = repo.getCachedArtistTracks(artist.name).orEmpty()
+                    if (generation != artistDetailGeneration) return@launch
                     _artistTracks.value = cached.take(PAGE_SIZE)
                     _hasMoreArtistTracks.value = cached.size > PAGE_SIZE
                     return@launch
@@ -545,11 +554,13 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                     try {
                         if (!NetworkMonitor.isOnline.value) {
                             val cached = repo.getCachedArtistTracks(artist.name).orEmpty()
+                            if (generation != artistDetailGeneration) return@launch
                             _artistTracks.value = cached.take(PAGE_SIZE)
                             _hasMoreArtistTracks.value = cached.size > PAGE_SIZE
                             return@launch
                         }
                         val response = repo.getArtistTracks(id, PAGE_SIZE, 0)
+                        if (generation != artistDetailGeneration) return@launch
                         _artistTracks.value = response.tracks
                         _hasMoreArtistTracks.value = response.tracks.size >= PAGE_SIZE
                         if (response.tracks.isNotEmpty()) {
@@ -558,9 +569,12 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                                 _selectedArtist.value = current.copy(trackCount = response.tracks.size)
                             }
                         }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         DebugLog.e("Browse", "Artist tracks failed", e)
                         val cached = repo.getCachedArtistTracks(artist.name).orEmpty()
+                        if (generation != artistDetailGeneration) return@launch
                         if (cached.isNotEmpty()) {
                             _artistTracks.value = cached.take(PAGE_SIZE)
                             _hasMoreArtistTracks.value = cached.size > PAGE_SIZE
@@ -571,6 +585,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                     try {
                         if (!NetworkMonitor.isOnline.value) return@launch
                         val detail = repo.getArtistDetail(id)
+                        if (generation != artistDetailGeneration) return@launch
                         _artistAlbums.value = detail.albums
                         _artistAppearsOn.value = detail.appearsOn
                         val current = _selectedArtist.value ?: artist
@@ -589,10 +604,14 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
                             ),
                             artPath = detailArtist?.artPath ?: current.artPath ?: artist.artPath
                         )
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         DebugLog.e("Browse", "Artist detail failed", e)
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Artist detail failed", e)
             }
@@ -602,34 +621,39 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     fun loadMoreArtistTracks() {
         if (_isLoadingMoreArtistTracks.value || !_hasMoreArtistTracks.value) return
         val id = currentArtistId
-        viewModelScope.launch {
-            _isLoadingMoreArtistTracks.value = true
+        val generation = artistDetailGeneration
+        val artistName = _selectedArtist.value?.name?.takeIf { it.isNotBlank() } ?: currentArtistName
+        _isLoadingMoreArtistTracks.value = true
+        artistPageJob = viewModelScope.launch {
             try {
                 val offset = _artistTracks.value.size
                 if (id == null || !NetworkMonitor.isOnline.value) {
-                    val artistName = _selectedArtist.value?.name?.takeIf { it.isNotBlank() } ?: currentArtistName
                     val cached = repo.getCachedArtistTracks(artistName).orEmpty()
+                    if (generation != artistDetailGeneration) return@launch
                     val next = cached.drop(offset).take(PAGE_SIZE)
                     _artistTracks.value = _artistTracks.value + next
                     _hasMoreArtistTracks.value = offset + next.size < cached.size
                     return@launch
                 }
                 val response = repo.getArtistTracks(id, PAGE_SIZE, offset)
+                if (generation != artistDetailGeneration) return@launch
                 DebugLog.i("Browse", "Loaded ${response.tracks.size} more artist tracks (offset $offset)")
                 _artistTracks.value = _artistTracks.value + response.tracks
                 _hasMoreArtistTracks.value = response.tracks.size >= PAGE_SIZE
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Load more artist tracks failed", e)
-                val artistName = _selectedArtist.value?.name?.takeIf { it.isNotBlank() } ?: currentArtistName
                 val offset = _artistTracks.value.size
                 val cached = repo.getCachedArtistTracks(artistName).orEmpty()
+                if (generation != artistDetailGeneration) return@launch
                 val next = cached.drop(offset).take(PAGE_SIZE)
                 if (next.isNotEmpty()) {
                     _artistTracks.value = _artistTracks.value + next
                     _hasMoreArtistTracks.value = offset + next.size < cached.size
                 }
             } finally {
-                _isLoadingMoreArtistTracks.value = false
+                if (generation == artistDetailGeneration) _isLoadingMoreArtistTracks.value = false
             }
         }
     }

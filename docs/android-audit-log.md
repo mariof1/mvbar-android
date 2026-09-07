@@ -136,3 +136,18 @@ Verification is code-path review and the existing phone test/lint/build checks;
 authenticated rapid-navigation testing remains outstanding. The prior search
 pagination commit's GitHub CI passed. Next examine artist-detail track/album jobs
 and pagination, which also share state across navigation.
+
+## 2026-09-07 — Artist details and pagination
+
+Code-path review confirmed that track, album and pagination requests could publish
+after another artist was selected, including writing the old artist's metadata
+into the new selection. Changing artists now clears old tracks and disables
+pagination until the first result, cancels both detail children and the page job,
+and advances request ownership. Each network/cache result checks that ownership.
+Pagination captures its artist name and ID; cancelled work cannot trigger offline
+fallback or clear a newer page's loading indicator.
+
+Validation uses the existing phone tests, lint and APK build; authenticated rapid
+artist-switching remains pending live coverage. The preceding album fix's CI
+passed. Next audit genre/country/language detail pagination and visible loading or
+error feedback, then move beyond request ownership to other UX functions.
