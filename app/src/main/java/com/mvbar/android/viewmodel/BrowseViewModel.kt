@@ -50,6 +50,8 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     val artistTracks: StateFlow<List<Track>> = _artistTracks.asStateFlow()
 
     private val _albumTracks = MutableStateFlow<List<Track>>(emptyList())
+    private var albumDetailJob: Job? = null
+    private var albumDetailGeneration = 0L
     val albumTracks: StateFlow<List<Track>> = _albumTracks.asStateFlow()
 
     private val _selectedAlbum = MutableStateFlow<Album?>(null)
@@ -633,26 +635,33 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadAlbumTracks(albumName: String) {
-        viewModelScope.launch {
+        val generation = ++albumDetailGeneration
+        albumDetailJob?.cancel()
+        _albumTracks.value = emptyList()
+        _selectedAlbum.value = _state.value.albums.firstOrNull { it.displayName == albumName }
+        albumDetailJob = viewModelScope.launch {
             try {
                 if (!NetworkMonitor.isOnline.value) {
                     val cached = repo.getCachedAlbumTracks(albumName).orEmpty()
+                    if (generation != albumDetailGeneration) return@launch
                     _albumTracks.value = cached
                     _selectedAlbum.value = _state.value.albums.firstOrNull { it.displayName == albumName }
                     return@launch
                 }
                 DebugLog.i("Browse", "Loading album tracks for '$albumName'")
                 val response: AlbumDetailResponse = repo.getAlbumTracks(albumName)
+                if (generation != albumDetailGeneration) return@launch
                 DebugLog.i("Browse", "Got ${response.tracks.size} tracks for album")
                 _albumTracks.value = response.tracks
                 _selectedAlbum.value = response.album
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Browse", "Album tracks failed for '$albumName'", e)
                 val cached = repo.getCachedAlbumTracks(albumName).orEmpty()
-                if (cached.isNotEmpty()) {
-                    _albumTracks.value = cached
-                    _selectedAlbum.value = _state.value.albums.firstOrNull { it.displayName == albumName }
-                }
+                if (generation != albumDetailGeneration) return@launch
+                _albumTracks.value = cached
+                _selectedAlbum.value = _state.value.albums.firstOrNull { it.displayName == albumName }
             }
         }
     }

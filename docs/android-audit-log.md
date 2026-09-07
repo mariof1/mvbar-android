@@ -121,3 +121,18 @@ Verification scope: code-path review plus the phone unit suite, lint and build;
 no authenticated live delayed-page test was performed. Keep that scenario in
 remaining live coverage. Next inspect detail navigation/back restoration and
 search failure fallback behavior without repeating completed login work.
+
+## 2026-09-07 — Album detail content ownership
+
+Code inspection confirmed that opening album B retained album A's track list until
+B loaded; an unsuccessful request with an empty cache never replaced A's list.
+Concurrent album loads also shared the same result state without request ownership.
+Album loading now immediately clears tracks, selects only matching known metadata,
+cancels the previous load and checks generation before publishing network/cache
+results. Empty fallback results are published, and cancellation is not converted
+into fallback work.
+
+Verification is code-path review and the existing phone test/lint/build checks;
+authenticated rapid-navigation testing remains outstanding. The prior search
+pagination commit's GitHub CI passed. Next examine artist-detail track/album jobs
+and pagination, which also share state across navigation.
