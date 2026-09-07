@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -216,8 +218,10 @@ class PlayerManager private constructor(private val context: Context) {
         return track.artPath?.let { ApiClient.artPathUrl(it) } ?: ApiClient.trackArtUrl(track.id)
     }
 
-    suspend fun connect() {
-        if (controller != null) return
+    private val connectionMutex = Mutex()
+
+    suspend fun connect() = connectionMutex.withLock {
+        if (controller != null) return@withLock
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
         controller = MediaController.Builder(context, token).buildAsync().await()
         controller?.addListener(object : Player.Listener {

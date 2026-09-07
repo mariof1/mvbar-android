@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -28,6 +29,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.ui.theme.Cyan400
 import com.mvbar.android.ui.theme.Cyan500
@@ -47,10 +53,13 @@ fun GlowingSeekbar(
     onProgressChange: (Float) -> Unit,
     onSeekFinished: () -> Unit,
     modifier: Modifier = Modifier,
+    gestureKey: Any? = null,
     accent: Color = Cyan500,
     accentHighlight: Color = Cyan400,
 ) {
     var dragging by remember { mutableStateOf(false) }
+    val currentProgressChange by rememberUpdatedState(onProgressChange)
+    val currentSeekFinished by rememberUpdatedState(onSeekFinished)
 
     val glowAlpha by animateFloatAsState(
         targetValue = if (dragging) 0.65f else 0.28f,
@@ -78,18 +87,27 @@ fun GlowingSeekbar(
         modifier = modifier
             .fillMaxWidth()
             .height(36.dp)
-            .pointerInput(Unit) {
+            .semantics {
+                contentDescription = "Playback position"
+                progressBarRangeInfo = ProgressBarRangeInfo(progress.coerceIn(0f, 1f), 0f..1f)
+                setProgress { value ->
+                    currentProgressChange(value.coerceIn(0f, 1f))
+                    currentSeekFinished()
+                    true
+                }
+            }
+            .pointerInput(gestureKey) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     dragging = true
                     val w = size.width.toFloat().coerceAtLeast(1f)
-                    onProgressChange((down.position.x / w).coerceIn(0f, 1f))
+                    currentProgressChange((down.position.x / w).coerceIn(0f, 1f))
                     drag(down.id) { change ->
-                        onProgressChange((change.position.x / w).coerceIn(0f, 1f))
+                        currentProgressChange((change.position.x / w).coerceIn(0f, 1f))
                         change.consume()
                     }
                     dragging = false
-                    onSeekFinished()
+                    currentSeekFinished()
                 }
             }
     ) {

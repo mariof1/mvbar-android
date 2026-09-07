@@ -323,11 +323,12 @@ fun NowPlayingScreen(
                             Spacer(Modifier.height(16.dp))
 
                             // Seekbar
-                            var isDragging by remember { mutableStateOf(false) }
-                            var dragProgress by remember { mutableFloatStateOf(0f) }
+                            var isDragging by remember(track.id) { mutableStateOf(false) }
+                            var dragProgress by remember(track.id) { mutableFloatStateOf(0f) }
                             val currentProgress = if (isDragging) dragProgress else if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
 
                             GlowingSeekbar(
+                                gestureKey = track.id,
                                 progress = currentProgress,
                                 onProgressChange = { isDragging = true; dragProgress = it },
                                 onSeekFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
@@ -431,11 +432,12 @@ fun NowPlayingScreen(
 
                                     Spacer(Modifier.height(8.dp))
 
-                                    var isDragging by remember { mutableStateOf(false) }
-                                    var dragProgress by remember { mutableFloatStateOf(0f) }
+                                    var isDragging by remember(track.id) { mutableStateOf(false) }
+                                    var dragProgress by remember(track.id) { mutableFloatStateOf(0f) }
                                     val currentProgress = if (isDragging) dragProgress else if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
 
                                     GlowingSeekbar(
+                                        gestureKey = track.id,
                                 progress = currentProgress,
                                 onProgressChange = { isDragging = true; dragProgress = it },
                                 onSeekFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
@@ -556,12 +558,13 @@ fun NowPlayingScreen(
                     }
 
                     // Seekbar
-                    var isDragging by remember { mutableStateOf(false) }
-                    var dragProgress by remember { mutableFloatStateOf(0f) }
+                    var isDragging by remember(track.id) { mutableStateOf(false) }
+                    var dragProgress by remember(track.id) { mutableFloatStateOf(0f) }
                     val currentProgress = if (isDragging) dragProgress
                         else if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
 
                     GlowingSeekbar(
+                        gestureKey = track.id,
                                 progress = currentProgress,
                                 onProgressChange = { isDragging = true; dragProgress = it },
                                 onSeekFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },
@@ -648,12 +651,13 @@ fun NowPlayingScreen(
                     Spacer(Modifier.height(24.dp))
 
                     // Seekbar
-                    var isDragging by remember { mutableStateOf(false) }
-                    var dragProgress by remember { mutableFloatStateOf(0f) }
+                    var isDragging by remember(track.id) { mutableStateOf(false) }
+                    var dragProgress by remember(track.id) { mutableFloatStateOf(0f) }
                     val currentProgress = if (isDragging) dragProgress
                         else if (state.duration > 0) state.position.toFloat() / state.duration.toFloat() else 0f
 
                     GlowingSeekbar(
+                        gestureKey = track.id,
                                 progress = currentProgress,
                                 onProgressChange = { isDragging = true; dragProgress = it },
                                 onSeekFinished = { isDragging = false; onSeek((dragProgress * state.duration).toLong()) },

@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
@@ -72,6 +73,18 @@ object SocialRealtimeManager {
     private var attempts = 0
     private var lastConnectStateSignature = ""
     private var lastConnectStateSentAt = 0L
+    @Volatile private var pendingTransfer: Pair<String, String>? = null
+    private var transferTimeoutJob: Job? = null
+
+    private fun clearPendingTransfer() {
+        pendingTransfer = null
+        transferTimeoutJob?.cancel()
+        transferTimeoutJob = null
+    }
+
+    private fun connectNotice(message: String) {
+        com.mvbar.android.ui.components.ToastManager.show(message, com.mvbar.android.ui.components.ToastIcon.ERROR)
+    }
 
     @Synchronized
     fun start(context: Context) {
@@ -94,6 +107,7 @@ object SocialRealtimeManager {
 
     @Synchronized
     fun stop() {
+        clearPendingTransfer()
         stopped = true
         reconnectJob?.cancel()
         reconnectJob = null
@@ -133,6 +147,7 @@ object SocialRealtimeManager {
     @Synchronized
     private fun disconnected(webSocket: WebSocket) {
         if (socket !== webSocket) return
+        clearPendingTransfer()
         socket = null
         _connectDevices.value = emptyList()
         _selectedConnectDeviceId.value = null
@@ -203,6 +218,13 @@ object SocialRealtimeManager {
                 }
                 if (type == "connect:command_ack") {
                     val data = root["data"]?.jsonObject
+                    val pending = pendingTransfer
+                    if (pending != null && data?.get("commandId")?.jsonPrimitive?.contentOrNull == pending.first) {
+                        if (data["accepted"]?.jsonPrimitive?.booleanOrNull == true && _connectDevices.value.any { it.id == pending.second }) {
+                            _selectedConnectDeviceId.value = pending.second
+                        }
+                        clearPendingTransfer()
+                    }
                     if (data?.get("accepted")?.jsonPrimitive?.booleanOrNull == false) {
                         val error = data["error"]?.jsonPrimitive?.contentOrNull ?: "The selected player is unavailable"
                         com.mvbar.android.ui.components.ToastManager.show(
@@ -254,14 +276,14 @@ object SocialRealtimeManager {
     }
 
     private fun connectStateJson(state: com.mvbar.android.player.PlayerState) = buildJsonObject {
-        val musicQueue = state.queue.filter { it.id > 0 }
         val activeTrack = state.currentTrack?.takeIf { it.id > 0 }
+        val musicQueue = if (activeTrack == null) emptyList() else state.queue
         put("track", activeTrack?.let { json.encodeToJsonElement(it.toConnectTrack()) }
             ?: kotlinx.serialization.json.JsonNull)
         put("queue", buildJsonArray {
-            musicQueue.forEach { add(json.encodeToJsonElement(it.toConnectTrack())) }
+            musicQueue.forEach { add(if (it.id > 0) json.encodeToJsonElement(it.toConnectTrack()) else kotlinx.serialization.json.JsonNull) }
         })
-        put("queueIndex", if (activeTrack == null) -1 else state.queue.take(state.queueIndex.coerceAtLeast(0)).count { it.id > 0 })
+        put("queueIndex", if (activeTrack == null) -1 else state.queueIndex)
         put("isPlaying", activeTrack != null && state.isPlaying)
         put("positionMs", if (activeTrack == null) 0 else state.position)
         put("durationMs", if (activeTrack == null) 0 else state.duration)
@@ -307,8 +329,14 @@ object SocialRealtimeManager {
 
     private fun handleConnectCommand(command: ConnectCommandPayload) {
         val context = appContext ?: return
+        val commandSocket = socket
         scope.launch(Dispatchers.Main) {
-            val result = runCatching { applyConnectCommand(PlayerManager.getInstance(context), command) }
+            val result = runCatching {
+                val player = PlayerManager.getInstance(context)
+                withTimeout(10_000) { player.connect() }
+                if (socket !== commandSocket) false else applyConnectCommand(player, command)
+            }
+            if (socket !== commandSocket) return@launch
             val success = result.getOrDefault(false)
             sendJson("connect:command_result", buildJsonObject {
                 put("commandId", command.commandId)
@@ -323,6 +351,7 @@ object SocialRealtimeManager {
     private fun applyConnectCommand(player: PlayerManager, command: ConnectCommandPayload): Boolean {
         val payload = command.payload
         val state = player.state.value
+        if ((state.isPodcastMode || state.isAudiobookMode) && command.command != "play_tracks") return false
         return when (command.command) {
             "play" -> (state.currentTrack != null).also { if (it) player.play() }
             "pause" -> (state.currentTrack != null).also { if (it) player.pause() }
@@ -390,10 +419,18 @@ object SocialRealtimeManager {
 
     fun selectConnectDevice(deviceId: String) {
         val target = _connectDevices.value.firstOrNull { it.id == deviceId } ?: return
+        if (target.id == _selectedConnectDeviceId.value) return
+        if (pendingTransfer != null) {
+            connectNotice("Playback is already transferring. Please wait.")
+            return
+        }
         if (target.id != ApiClient.getClientId()) {
             appContext?.let { context ->
                 val player = PlayerManager.getInstance(context)
-                if (player.state.value.isPodcastMode || player.state.value.isAudiobookMode) player.pause()
+                if (player.state.value.isPodcastMode || player.state.value.isAudiobookMode) {
+                    connectNotice("Connect transfers music only. Podcast or audiobook playback stays on this device.")
+                    return
+                }
             }
         }
         val current = selectedConnectDevice()
@@ -401,24 +438,40 @@ object SocialRealtimeManager {
         val source = current?.takeIf { it.state.track != null }
             ?: local?.takeIf { it.state.track != null }
             ?: _connectDevices.value.firstOrNull { it.state.isPlaying }
-        if (source != null && source.id != target.id) {
-            sendJson("connect:transfer", buildJsonObject {
+        if (source != null && source.id != target.id && (source.state.isPlaying || !target.state.isPlaying)) {
+            val commandId = "transfer_${java.util.UUID.randomUUID()}"
+            pendingTransfer = commandId to target.id
+            transferTimeoutJob = scope.launch {
+                delay(15_000)
+                if (pendingTransfer?.first == commandId) {
+                    pendingTransfer = null
+                    connectNotice("Playback transfer was not confirmed. Please try again.")
+                }
+            }
+            if (!sendJson("connect:transfer", buildJsonObject {
                 put("sourceDeviceId", source.id)
                 put("targetDeviceId", target.id)
-                put("commandId", "transfer_${System.currentTimeMillis()}")
-            })
+                put("commandId", commandId)
+            })) {
+                clearPendingTransfer()
+                connectNotice("MVBar Connect is disconnected. Please try again after reconnecting.")
+            }
+            return
         }
         _selectedConnectDeviceId.value = target.id
     }
 
     fun sendCommandToSelected(command: String, payload: kotlinx.serialization.json.JsonObject = buildJsonObject {}): Boolean {
         val target = selectedConnectDevice()?.takeIf { it.id != ApiClient.getClientId() } ?: return false
-        return sendJson("connect:command", buildJsonObject {
+        val sent = sendJson("connect:command", buildJsonObject {
             put("targetDeviceId", target.id)
             put("commandId", "android_${System.currentTimeMillis()}_${command}")
             put("command", command)
             put("payload", payload)
         })
+        if (!sent) connectNotice("MVBar Connect is disconnected. Please try again after reconnecting.")
+        // A failed remote send must never apply the action to the local player.
+        return true
     }
 
     fun playTracksOnSelected(tracks: List<Track>, startIndex: Int): Boolean {
