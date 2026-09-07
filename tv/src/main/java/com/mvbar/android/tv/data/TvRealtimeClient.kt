@@ -268,6 +268,8 @@ class TvRealtimeClient(
             append(snapshot.item?.mediaId)
             append(':').append(snapshot.isPlaying)
             append(':').append(snapshot.currentIndex)
+            append(':').append(snapshot.durationMs)
+            if (!snapshot.isPlaying) append(':').append(snapshot.positionMs)
             append(':').append(snapshot.queue.joinToString(",") { it.mediaId })
         }
         val now = System.currentTimeMillis()
@@ -312,7 +314,7 @@ class TvRealtimeClient(
     fun deviceId(): String = clientId
 
     private fun playbackStateJson(snapshot: PlaybackSnapshot): JsonObject = buildJsonObject {
-        val musicQueue = snapshot.queue.filter { it.kind == PlaybackKind.MUSIC && it.trackId != null }.take(500)
+        val musicQueue = snapshot.queue.filter { it.kind == PlaybackKind.MUSIC && it.trackId != null }
         val current = snapshot.item?.takeIf { it.kind == PlaybackKind.MUSIC && it.trackId != null }
         fun trackJson(item: com.mvbar.android.tv.playback.PlaybackItem) = buildJsonObject {
             put("id", item.trackId!!)
@@ -323,7 +325,7 @@ class TvRealtimeClient(
         }
         put("track", current?.let(::trackJson) ?: kotlinx.serialization.json.JsonNull)
         put("queue", buildJsonArray { musicQueue.forEach { add(trackJson(it)) } })
-        put("queueIndex", current?.let { active -> musicQueue.indexOfFirst { it.mediaId == active.mediaId }.coerceAtLeast(0) } ?: -1)
+        put("queueIndex", current?.let { snapshot.queue.take(snapshot.currentIndex.coerceAtLeast(0)).count { it.kind == PlaybackKind.MUSIC && it.trackId != null } } ?: -1)
         put("isPlaying", current != null && snapshot.isPlaying)
         put("positionMs", if (current == null) 0 else snapshot.positionMs)
         put("durationMs", if (current == null) 0 else snapshot.durationMs)

@@ -223,8 +223,13 @@ class PlayerManager private constructor(private val context: Context) {
         controller?.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (_state.value.isCasting) return
-                _state.value = _state.value.copy(isPlaying = isPlaying)
+                _state.value = _state.value.copy(isPlaying = isPlaying, position = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L)
                 if (isPlaying) startProgressUpdates() else stopProgressUpdates()
+            }
+
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                if (_state.value.isCasting) return
+                _state.value = _state.value.copy(position = newPosition.positionMs.coerceAtLeast(0L))
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -809,6 +814,7 @@ class PlayerManager private constructor(private val context: Context) {
         _queue.clear()
         ctrl.clearMediaItems()
         _state.value = PlayerState()
+        scope.launch { com.mvbar.android.data.AaPreferences.clearPlaybackState(context) }
     }
 
     fun togglePlay() {

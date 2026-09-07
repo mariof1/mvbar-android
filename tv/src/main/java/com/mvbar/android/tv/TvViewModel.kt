@@ -639,10 +639,9 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun playMusic(tracks: List<Track>, selectedIndex: Int) {
-        val playable = tracks.filter { it.id > 0 }.take(500)
+        val playable = tracks.filter { it.id > 0 }
         if (playable.isEmpty()) return
-        val originalId = tracks.getOrNull(selectedIndex)?.id
-        val safeIndex = playable.indexOfFirst { it.id == originalId }.coerceAtLeast(0)
+        val safeIndex = tracks.take(selectedIndex.coerceAtLeast(0)).count { it.id > 0 }.coerceAtMost(playable.lastIndex)
         if (selectedRemoteDevice() != null) {
             sendRemoteCommand("play_tracks", buildJsonObject {
                 put("tracks", buildJsonArray {
@@ -1161,7 +1160,10 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
             "seek" -> (snapshot.item != null).also {
                 if (it) playback.seekTo(payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L)
             }
-            "stop", "clear_queue" -> true.also { playback.clearQueue() }
+            "stop" -> true.also { playback.clearQueue() }
+            "clear_queue" -> (snapshot.currentIndex in snapshot.queue.indices).also { valid ->
+                if (valid) snapshot.queue.indices.reversed().filter { it != snapshot.currentIndex }.forEach(playback::removeQueueIndex)
+            }
             "play_index" -> {
                 val index = payload["index"]?.jsonPrimitive?.intOrNull ?: 0
                 (index in snapshot.queue.indices).also { if (it) playback.playQueueIndex(index) }

@@ -239,6 +239,8 @@ object SocialRealtimeManager {
                     append(state.currentTrack?.id)
                     append(':').append(state.isPlaying)
                     append(':').append(state.queueIndex)
+                    append(':').append(state.duration)
+                    if (!state.isPlaying) append(':').append(state.position)
                     append(':').append(state.queue.joinToString(",") { it.id.toString() })
                 }
                 val now = System.currentTimeMillis()
@@ -252,14 +254,14 @@ object SocialRealtimeManager {
     }
 
     private fun connectStateJson(state: com.mvbar.android.player.PlayerState) = buildJsonObject {
-        val musicQueue = state.queue.filter { it.id > 0 }.take(500)
+        val musicQueue = state.queue.filter { it.id > 0 }
         val activeTrack = state.currentTrack?.takeIf { it.id > 0 }
         put("track", activeTrack?.let { json.encodeToJsonElement(it.toConnectTrack()) }
             ?: kotlinx.serialization.json.JsonNull)
         put("queue", buildJsonArray {
             musicQueue.forEach { add(json.encodeToJsonElement(it.toConnectTrack())) }
         })
-        put("queueIndex", if (activeTrack == null) -1 else musicQueue.indexOfFirst { it.id == activeTrack.id }.coerceAtLeast(0))
+        put("queueIndex", if (activeTrack == null) -1 else state.queue.take(state.queueIndex.coerceAtLeast(0)).count { it.id > 0 })
         put("isPlaying", activeTrack != null && state.isPlaying)
         put("positionMs", if (activeTrack == null) 0 else state.position)
         put("durationMs", if (activeTrack == null) 0 else state.duration)
@@ -330,7 +332,10 @@ object SocialRealtimeManager {
             "seek" -> (state.currentTrack != null).also {
                 if (it) player.seekTo(payload["positionMs"]?.jsonPrimitive?.longOrNull ?: 0L)
             }
-            "stop", "clear_queue" -> true.also { player.clearQueue() }
+            "stop" -> true.also { player.clearQueue() }
+            "clear_queue" -> (state.queueIndex in state.queue.indices).also { valid ->
+                if (valid) state.queue.indices.reversed().filter { it != state.queueIndex }.forEach(player::removeFromQueue)
+            }
             "play_index" -> {
                 val index = payload["index"]?.jsonPrimitive?.intOrNull ?: 0
                 (index in state.queue.indices).also { if (it) player.playQueueIndex(index) }
@@ -417,10 +422,9 @@ object SocialRealtimeManager {
     }
 
     fun playTracksOnSelected(tracks: List<Track>, startIndex: Int): Boolean {
-        val musicTracks = tracks.filter { it.id > 0 }.take(500)
+        val musicTracks = tracks.filter { it.id > 0 }
         if (musicTracks.isEmpty()) return false
-        val selectedId = tracks.getOrNull(startIndex)?.id
-        val safeIndex = musicTracks.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
+        val safeIndex = tracks.take(startIndex.coerceAtLeast(0)).count { it.id > 0 }.coerceAtMost(musicTracks.lastIndex)
         return sendCommandToSelected("play_tracks", buildJsonObject {
             put("tracks", buildJsonArray {
                 musicTracks.forEach { add(json.encodeToJsonElement(it.toConnectTrack())) }
@@ -432,7 +436,7 @@ object SocialRealtimeManager {
     }
 
     fun addTracksOnSelected(tracks: List<Track>): Boolean {
-        val musicTracks = tracks.filter { it.id > 0 }.take(500)
+        val musicTracks = tracks.filter { it.id > 0 }
         if (musicTracks.isEmpty()) return false
         return sendCommandToSelected("add_tracks", buildJsonObject {
             put("tracks", buildJsonArray {

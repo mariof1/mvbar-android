@@ -183,7 +183,10 @@ class TvPlaybackController(
     }
 
     fun playQueueIndex(index: Int) {
-        controller?.takeIf { index in queue.indices }?.seekTo(index, 0L)
+        controller?.takeIf { index in queue.indices }?.let {
+            it.seekTo(index, 0L)
+            it.play()
+        }
     }
 
     fun playNext(track: Track) {
