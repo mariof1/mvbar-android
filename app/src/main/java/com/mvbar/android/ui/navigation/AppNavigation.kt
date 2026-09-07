@@ -187,6 +187,7 @@ fun MainScreen(
     val smartPlaylists by mainVm.smartPlaylists.collectAsState()
     val searchResults by mainVm.searchResults.collectAsState()
     val searchLoading by mainVm.searchLoading.collectAsState()
+    val searchError by mainVm.searchError.collectAsState()
     val aiMixState by mainVm.aiMixState.collectAsState()
     val recentSearches by mainVm.recentSearches.collectAsState()
     val recentSearchesLoading by mainVm.recentSearchesLoading.collectAsState()
@@ -1612,6 +1613,7 @@ fun MainScreen(
             }
 
             SearchScreen(
+                searchError = searchError,
                 results = searchResults,
                 isLoading = searchLoading,
                 aiResult = aiMixState.result,

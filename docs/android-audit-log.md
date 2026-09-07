@@ -165,3 +165,18 @@ Verification covers source review and the existing phone test/lint/build checks;
 delayed-response navigation remains pending live coverage. The preceding artist
 fix's GitHub CI passed. Next focus on visible empty/error states and retry controls
 rather than treating further request-ownership changes as new UI coverage.
+
+## 2026-09-07 — Search failure recovery
+
+Confirmed code path: if server search threw and cached search then threw, the
+fallback exception escaped before the loading flag was cleared. Search now clears
+loading in an ownership-checked `finally`, catches fallback errors, discards stale
+results on total failure and exposes a user-facing error with Retry. Successful
+cache fallback explains that results are cached and also offers Retry. The normal
+“No results found” prompt is suppressed for errors so a failed search is not
+presented as a successful empty result. New/cleared searches reset the error.
+
+Verification uses source-path review and existing phone tests/lint/build. The new
+failure UI has not been exercised in an authenticated live screen; retain mocked
+server/cache failure coverage as outstanding rather than claiming a full UI pass.
+Next inspect podcast/audiobook loading failures and recovery.

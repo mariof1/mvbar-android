@@ -91,6 +91,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _searchLoading = MutableStateFlow(false)
     val searchLoading: StateFlow<Boolean> = _searchLoading.asStateFlow()
+    private val _searchError = MutableStateFlow<String?>(null)
+    val searchError: StateFlow<String?> = _searchError.asStateFlow()
 
     private var searchJob: kotlinx.coroutines.Job? = null
     private var searchPageJob: Job? = null
@@ -1175,6 +1177,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun search(query: String) {
+        _searchError.value = null
         val generation = ++searchGeneration
         searchJob?.cancel()
         searchPageJob?.cancel()
@@ -1204,12 +1207,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: Exception) {
                 DebugLog.e("Search", "Search failed, falling back to cache", e)
-                val results = repo.searchCached(query, PAGE_SIZE, 0)
-                if (generation != searchGeneration) return@launch
-                _searchResults.value = results
-                _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
+                try {
+                    val results = repo.searchCached(query, PAGE_SIZE, 0)
+                    if (generation != searchGeneration) return@launch
+                    _searchResults.value = results
+                    _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
+                    _searchError.value = "Server search is unavailable. Showing cached results."
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (cacheError: Exception) {
+                    if (generation != searchGeneration) return@launch
+                    DebugLog.e("Search", "Cached search also failed", cacheError)
+                    _searchResults.value = null
+                    _hasMoreSearch.value = false
+                    _searchError.value = "Search could not be loaded. Please try again."
+                }
+            } finally {
+                if (generation == searchGeneration) _searchLoading.value = false
             }
-            if (generation == searchGeneration) _searchLoading.value = false
         }
     }
 
@@ -1247,6 +1262,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearSearch() {
+        _searchError.value = null
         searchGeneration++
         searchJob?.cancel()
         searchPageJob?.cancel()

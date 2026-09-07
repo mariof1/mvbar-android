@@ -90,7 +90,8 @@ fun SearchScreen(
     onClose: () -> Unit,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
-    onLoadMore: () -> Unit = {}
+    onLoadMore: () -> Unit = {},
+    searchError: String? = null
 ) {
     var query by remember { mutableStateOf("") }
     var aiPrompt by remember { mutableStateOf("") }
@@ -247,6 +248,18 @@ fun SearchScreen(
                 onSearch(query)
             }
         }
+        if (searchError != null && query.trim().length >= 2) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(searchError, modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDim)
+                TextButton(onClick = { onSearch(query) }, enabled = !isLoading) {
+                    Text("Retry")
+                }
+            }
+        }
         if (results?.indexing == true) {
             Text("Library updating - search results may be incomplete", modifier = Modifier.padding(16.dp), color = OnSurfaceDim)
         }
@@ -392,7 +405,7 @@ fun SearchScreen(
                     }
                 }
             }
-        } else if (hasQuery && !isLoading) {
+        } else if (hasQuery && !isLoading && searchError == null) {
             // No results
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
