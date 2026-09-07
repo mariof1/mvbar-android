@@ -5,6 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -25,6 +31,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.mvbar.android.data.model.*
 import com.mvbar.android.ui.theme.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -667,17 +674,42 @@ private fun SearchableChipSection(
 
         AnimatedVisibility(visible = showSearch) {
             Column {
+                val availableSuggestions = suggestions.filter { suggestion ->
+                    val label = if (suggestion is Pair<*, *>) suggestion.second.toString() else suggestion.toString()
+                    if (kind == "artist" && suggestion is Pair<*, *>) suggestion.first !in selectedArtistIds
+                    else isSmartSuggestionAvailable(label, items)
+                }
+                var activeIndex by remember(searchQuery, availableSuggestions) { mutableStateOf(-1) }
+                val suggestionListState = rememberLazyListState()
+                LaunchedEffect(activeIndex) {
+                    if (activeIndex >= 0) suggestionListState.animateScrollToItem(activeIndex)
+                }
+                fun chooseSuggestion(suggestion: Any) {
+                    when {
+                        kind == "artist" && suggestion is Pair<*, *> -> {
+                            onAddArtist?.invoke(suggestion.first as Int, suggestion.second as String)
+                        }
+                        kind == "year" && suggestion is Int -> onAddYear?.invoke(suggestion)
+                        else -> onAddString?.invoke(suggestion.toString())
+                    }
+                    searchJob?.cancel()
+                    searchQuery = ""
+                    suggestions = emptyList()
+                }
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { query ->
                         searchQuery = query
                         searchJob?.cancel()
+                        suggestions = emptyList()
                         if (query.isNotEmpty() && onSuggest != null) {
                             searchJob = scope.launch {
                                 delay(300)
                                 try {
                                     val resp = onSuggest(kind, query)
                                     suggestions = parseSuggestions(resp, kind)
+                                } catch (e: CancellationException) {
+                                    throw e
                                 } catch (_: Exception) {
                                     suggestions = emptyList()
                                 }
@@ -693,7 +725,9 @@ private fun SearchableChipSection(
                         keyboardType = if (kind == "year") KeyboardType.Number else KeyboardType.Unspecified
                     ),
                     keyboardActions = KeyboardActions(onDone = {
-                        if (kind == "year" && searchQuery.isNotBlank()) {
+                        if (activeIndex in availableSuggestions.indices) {
+                            chooseSuggestion(availableSuggestions[activeIndex])
+                        } else if (kind == "year" && searchQuery.isNotBlank()) {
                             searchQuery.toIntOrNull()?.let { year ->
                                 onAddYear?.invoke(year)
                                 searchQuery = ""
@@ -702,26 +736,34 @@ private fun SearchableChipSection(
                         }
                     }),
                     colors = textFieldColors(),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
+                        val selectionKey = event.key == Key.DirectionDown || event.key == Key.DirectionUp ||
+                            ((event.key == Key.Enter || event.key == Key.NumPadEnter) && activeIndex >= 0)
+                        if (availableSuggestions.isEmpty() || !selectionKey) false
+                        else {
+                            if (event.type == KeyEventType.KeyDown) {
+                                when (event.key) {
+                                    Key.DirectionDown -> activeIndex = (activeIndex + 1).coerceAtMost(availableSuggestions.lastIndex)
+                                    Key.DirectionUp -> activeIndex = if (activeIndex < 0) availableSuggestions.lastIndex else (activeIndex - 1).coerceAtLeast(0)
+                                    else -> chooseSuggestion(availableSuggestions[activeIndex])
+                                }
+                            }
+                            true
+                        }
+                    }
                 )
 
-                val availableSuggestions = suggestions.filter { suggestion ->
-                    val label = if (suggestion is Pair<*, *>) suggestion.second.toString() else suggestion.toString()
-                    if (kind == "artist" && suggestion is Pair<*, *>) suggestion.first !in selectedArtistIds
-                    else isSmartSuggestionAvailable(label, items)
-                }
                 if (availableSuggestions.isNotEmpty()) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .heightIn(max = 250.dp)
-                                .verticalScroll(rememberScrollState())
+                        LazyColumn(
+                            state = suggestionListState,
+                            modifier = Modifier.heightIn(max = 250.dp)
                         ) {
-                            availableSuggestions.forEach { suggestion ->
+                            itemsIndexed(availableSuggestions) { index, suggestion ->
                                 val displayText = when (suggestion) {
                                     is Pair<*, *> -> suggestion.second as String
                                     is Int -> suggestion.toString()
@@ -733,23 +775,9 @@ private fun SearchableChipSection(
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable {
-                                            when {
-                                                kind == "artist" && suggestion is Pair<*, *> -> {
-                                                    @Suppress("UNCHECKED_CAST")
-                                                    val pair = suggestion as Pair<Int, String>
-                                                    onAddArtist?.invoke(pair.first, pair.second)
-                                                }
-                                                kind == "year" && suggestion is Int -> {
-                                                    onAddYear?.invoke(suggestion)
-                                                }
-                                                else -> {
-                                                    onAddString?.invoke(displayText)
-                                                }
-                                            }
-                                            searchQuery = ""
-                                            suggestions = emptyList()
-                                        }
+                                        .background(if (index == activeIndex) accent.copy(alpha = 0.2f) else Color.Transparent)
+                                        .semantics { selected = index == activeIndex }
+                                        .clickable { chooseSuggestion(suggestion) }
                                         .padding(horizontal = 12.dp, vertical = 10.dp)
                                 )
                             }

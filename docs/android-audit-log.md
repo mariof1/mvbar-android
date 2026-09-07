@@ -408,3 +408,29 @@ Back. Nookie (row 100) had identical UI bounds before/after:
 artist-scroll-after.xml. This establishes artist-to-album-to-artist recovery;
 returning through multiple different artist details is a separate untested case.
 Playback remained paused at the original Cutting Crew song after cleanup.
+
+## 2026-09-07 — Smart playlist form and criteria keyboard live audit
+
+Used Easy Listening's edit draft without saving changes. Verified empty name
+turns Save Changes off; Cancel/reopen restores the name. Entered minimum duration
+999 with maximum 480: submitting was rejected locally with Duration minimum must
+not exceed maximum. Cancel/reopen restored 88/480. Date picker opened within the
+landscape viewport and Cancel left dates untouched. Exact selected genre labels
+were excluded from pop suggestions (case-distinct library tags remain distinct).
+
+Reproduced keyboard failure: Down then Enter in genre suggestions did not select
+an item. Added Up/Down navigation, an active-row highlight, Enter selection, and
+scrolling to the active row. Mouse and keyboard share selection behavior. Query
+changes clear obsolete suggestions immediately; selecting cancels pending work,
+and cancelled suggestion requests rethrow cancellation instead of publishing an
+empty list over a newer request.
+
+Phone tests, lint and APK build passed; installed the new APK in BlueStacks.
+Live regression: typing pop, Down, Enter added Art Pop and cleared the field.
+Typing again retained input focus, excluded Art Pop from suggestions, and
+Down/Down/Up/Enter added Electro Pop. Cancel and reopen returned the original
+nine genres and duration 88/480. Local UI evidence:
+mvbar/.local/criteria-keyboard-added-ui.xml. No playlist was saved or deleted.
+The original Cutting Crew song remained paused at zero, queue index 3.
+Long-list keyboard scrolling is implemented but was not exercised beyond the
+visible pop results in this pass.
