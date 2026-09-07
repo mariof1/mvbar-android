@@ -132,8 +132,8 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
 
     fun playChapter(audiobook: Audiobook, chapter: AudiobookChapter, resumePositionMs: Long = 0) {
         val chapters = _chapters.value
-        currentAudiobookId = audiobook.id
-        currentChaptersList = chapters
+        val startIndex = chapters.indexOfFirst { it.id == chapter.id }
+        if (startIndex < 0) return
 
         val allPseudoTracks = chapters.map { ch ->
             Track(
@@ -152,20 +152,20 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
             pseudoId to ApiClient.audiobookArtUrl(audiobook.id)
         }
 
-        val startIndex = chapters.indexOfFirst { it.id == chapter.id }.coerceAtLeast(0)
-
         com.mvbar.android.social.SocialRealtimeManager.selectLocalLongFormPlayback()
-        playerManager.playTracks(allPseudoTracks, startIndex, allStreamUrls, allArtUrls)
+        val resumePositions = if (resumePositionMs > 0) {
+            mapOf(allPseudoTracks[startIndex].id to resumePositionMs)
+        } else emptyMap()
+        val started = playerManager.playTracks(
+            allPseudoTracks, startIndex, allStreamUrls, allArtUrls,
+            customResumePositions = resumePositions
+        )
+        if (!started) return
+        currentAudiobookId = audiobook.id
+        currentChaptersList = chapters
 
         _playingChapter.value = chapter
         _playingAudiobook.value = audiobook
-
-        if (resumePositionMs > 0) {
-            viewModelScope.launch {
-                delay(500)
-                playerManager.seekTo(resumePositionMs)
-            }
-        }
 
         startProgressSync(audiobook.id)
     }
@@ -174,8 +174,9 @@ class AudiobookViewModel(app: Application) : AndroidViewModel(app) {
         val progress = _detailProgress.value
         val chapters = _chapters.value
         if (progress != null && chapters.isNotEmpty()) {
-            val chapter = chapters.find { it.id == progress.chapterId } ?: chapters.first()
-            playChapter(audiobook, chapter, progress.positionMs)
+            val chapter = chapters.find { it.id == progress.chapterId }
+            if (chapter != null) playChapter(audiobook, chapter, progress.positionMs)
+            else playChapter(audiobook, chapters.first())
         } else if (chapters.isNotEmpty()) {
             playChapter(audiobook, chapters.first())
         }

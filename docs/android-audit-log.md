@@ -226,3 +226,21 @@ query uses the existing schema and does not change stored data.
 Validation: Room query generation and existing phone tests/lint/build. Live
 offline navigation remains pending. Next inspect chapter/episode resume behavior
 and persisted progress rather than repeating detail-request isolation.
+
+## 2026-09-07 — Audiobook resume timing
+
+Confirmed code path: `playChapter` launched an unowned 500 ms delayed seek against
+the current player. A quick switch could apply the old chapter's saved position to
+new playback, while a slow load could miss the intended resume. Saved position is
+now attached only to the selected chapter's media item through PlayerManager's
+existing customResumePositions mechanism. PlaybackService applies it at READY and
+replaces pending resume state on item transitions, as it already does for podcasts.
+
+The view model now updates playing-book/chapter state only after playback startup
+is accepted. A missing selected chapter does not silently play the first one. If
+stored progress references a removed chapter, Continue starts the first chapter at
+zero rather than seeking it to another chapter's position.
+
+Verification is code-path review plus existing phone tests/lint/build; live slow
+load and rapid-playback-switch scenarios remain pending. No real playback or
+progress was changed during this audit.
