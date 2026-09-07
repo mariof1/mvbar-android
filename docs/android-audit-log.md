@@ -307,3 +307,49 @@ remove its virtual eth0 network; mobile data was restored. This pass also does
 not establish delayed login failure/OAuth ownership, forced request races,
 interrupted downloads, or long-form resume/progress behavior. Those earlier
 code-review/test-only entries remain explicitly unverified live.
+
+## 2026-09-07 — Long-form playback and server outage live verification
+
+BlueStacks phone app, authenticated proxy server, dedicated idle web receiver:
+
+- Audiobook Continue: saved 962403 ms in chapter 41 resumed and advanced to
+  966068 ms before hardware Pause. Rapid Continue then chapter-two selection
+  produced active queue item 1 at 3216 ms, not the first chapter's resume offset.
+- Paused audiobook Back 15s clamped 3216 ms to zero; Forward 15s produced exactly
+  15000 ms, retaining the paused state.
+- Podcast Continue: saved 183769 ms resumed and advanced to 187344 ms before Pause.
+- After switching back to music and playing for 18 seconds (past the long-form
+  timers), audiobook progress remained 962403 ms and podcast progress 183769 ms.
+  This checks ordinary media identity changes, not synthetic colliding IDs.
+- Selecting the dedicated web receiver from a paused podcast displayed the music-
+  only transfer notice and retained local playback. Receiver remained paused at
+  zero. Podcast/audiobook transfer support itself is still not implemented.
+- Simulated server unreachability using a temporary BlueStacks HTTP proxy pointing
+  to closed loopback port 9; device log confirmed connection refusal. This tests
+  request failure with a network present, not Android's no-network state.
+- Podcast cached metadata and 445 episodes remained navigable during the outage.
+- Search showed its cached-results/server-unavailable banner; after clearing the
+  proxy, Retry returned Nocturnal albums/songs and removed the error banner.
+
+Found and fixed a cache data-loss bug: audiobook metadata insertion used SQLite
+REPLACE on a parent with ON DELETE CASCADE chapters. Returning to the list erased
+previously cached chapter rows. Full sync also deleted every parent before
+refetching chapters, losing existing chapters if a later request failed.
+Audiobook insertion now uses Room Upsert; full list replacement upserts retained
+books and deletes only absent IDs. No schema migration or server changes needed.
+
+Live regression: before the change, 1984 showed No chapters during the outage
+although its 26 chapters had previously loaded. After rebuilding/installing,
+loaded the detail, returned to the refreshed list, restarted with the failing
+proxy and reopened 1984: all 26 chapters remained visible. Evidence UI hierarchy:
+mvbar/.local/live-cache-fixed-ui.xml. Phone tests, lint and APK build passed.
+
+Cleanup: test proxy disabled (empty host, port zero), successful API/search
+recovery observed, temporary web receiver and observers closed. Original Android
+seven-song queue restored, index 3, (I Just) Died In Your Arms, paused at zero.
+An older observer connection stopped receiving updates; restoration succeeded
+with a fresh observer. This was not established as an app reconnect defect.
+
+Still pending: true device-offline transitions, interrupted downloads, forced
+slow response races, and login failure/OAuth cases. Long-form offline progress
+restoration and uncached-detail error wording need further coverage.

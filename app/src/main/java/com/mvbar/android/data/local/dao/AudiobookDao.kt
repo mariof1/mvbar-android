@@ -22,7 +22,8 @@ interface AudiobookDao {
     @Query("SELECT * FROM audiobook_chapters WHERE audiobookId = :audiobookId ORDER BY position ASC")
     fun chaptersFlow(audiobookId: Int): Flow<List<AudiobookChapterEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // REPLACE deletes the parent row and cascades to its cached chapters.
+    @Upsert
     suspend fun insertAudiobooks(audiobooks: List<AudiobookEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -30,6 +31,9 @@ interface AudiobookDao {
 
     @Query("DELETE FROM audiobooks")
     suspend fun deleteAllAudiobooks()
+
+    @Query("DELETE FROM audiobooks WHERE id NOT IN (:ids)")
+    suspend fun deleteAudiobooksExcept(ids: List<Int>)
 
     @Query("DELETE FROM audiobook_chapters")
     suspend fun deleteAllChapters()
@@ -39,8 +43,8 @@ interface AudiobookDao {
 
     @Transaction
     suspend fun replaceAllAudiobooks(audiobooks: List<AudiobookEntity>) {
-        deleteAllAudiobooks()
         insertAudiobooks(audiobooks)
+        deleteAudiobooksExcept(audiobooks.map { it.id })
     }
 
     @Transaction
