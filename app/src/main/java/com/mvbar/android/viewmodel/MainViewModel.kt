@@ -93,6 +93,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val searchLoading: StateFlow<Boolean> = _searchLoading.asStateFlow()
 
     private var searchJob: kotlinx.coroutines.Job? = null
+    private var searchPageJob: Job? = null
+    private var searchGeneration = 0L
 
     private val _aiMixState = MutableStateFlow(AiMixState())
     val aiMixState: StateFlow<AiMixState> = _aiMixState.asStateFlow()
@@ -1173,7 +1175,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun search(query: String) {
+        val generation = ++searchGeneration
         searchJob?.cancel()
+        searchPageJob?.cancel()
+        _isLoadingMoreSearch.value = false
         if (query.length < 2) {
             _searchResults.value = null
             _searchLoading.value = false
@@ -1192,6 +1197,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     repo.searchCached(query, PAGE_SIZE, 0)
                 }
+                if (generation != searchGeneration) return@launch
                 _searchResults.value = results
                 _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -1199,42 +1205,52 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 DebugLog.e("Search", "Search failed, falling back to cache", e)
                 val results = repo.searchCached(query, PAGE_SIZE, 0)
+                if (generation != searchGeneration) return@launch
                 _searchResults.value = results
                 _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
             }
-            _searchLoading.value = false
+            if (generation == searchGeneration) _searchLoading.value = false
         }
     }
 
     fun loadMoreSearchResults() {
-        if (_isLoadingMoreSearch.value || !_hasMoreSearch.value) return
+        if (_searchLoading.value || _isLoadingMoreSearch.value || !_hasMoreSearch.value) return
         val current = _searchResults.value ?: return
-        viewModelScope.launch {
-            _isLoadingMoreSearch.value = true
+        val query = currentSearchQuery
+        val generation = searchGeneration
+        _isLoadingMoreSearch.value = true
+        searchPageJob = viewModelScope.launch {
             try {
                 val offset = current.hits.size
                 val results = if (NetworkMonitor.isOnline.value) {
-                    repo.search(currentSearchQuery, PAGE_SIZE, offset)
+                    repo.search(query, PAGE_SIZE, offset)
                 } else {
-                    repo.searchCached(currentSearchQuery, PAGE_SIZE, offset)
+                    repo.searchCached(query, PAGE_SIZE, offset)
                 }
+                if (generation != searchGeneration) return@launch
                 DebugLog.i("Search", "Loaded ${results.hits.size} more hits (offset $offset)")
                 _searchResults.value = current.copy(hits = current.hits + results.hits)
                 _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Search", "Load more failed", e)
                 val offset = current.hits.size
-                val results = repo.searchCached(currentSearchQuery, PAGE_SIZE, offset)
+                val results = repo.searchCached(query, PAGE_SIZE, offset)
+                if (generation != searchGeneration) return@launch
                 _searchResults.value = current.copy(hits = current.hits + results.hits)
                 _hasMoreSearch.value = results.hits.size >= PAGE_SIZE
             } finally {
-                _isLoadingMoreSearch.value = false
+                if (generation == searchGeneration) _isLoadingMoreSearch.value = false
             }
         }
     }
 
     fun clearSearch() {
+        searchGeneration++
         searchJob?.cancel()
+        searchPageJob?.cancel()
+        _isLoadingMoreSearch.value = false
         _searchResults.value = null
         _searchLoading.value = false
         _hasMoreSearch.value = false

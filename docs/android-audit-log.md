@@ -102,3 +102,22 @@ server-scoped offline availability commit's GitHub CI passed.
 Remaining limitation: an upstream read that ignores interruption may stop only at
 the next chunk/read timeout. Continue checking removal ordering and concurrent
 cache writers before claiming immediate cancellation or complete removal atomicity.
+
+## 2026-09-07 — Search pagination ownership
+
+Code inspection confirmed that `loadMoreSearchResults` launched an untracked job
+and always published its captured result list. Changing or clearing the search
+cancelled only the first-page job, so a late page could restore an old query's
+results. Its exception fallback also used the mutable current query with the old
+result list/offset, potentially combining two searches.
+
+Pagination now captures the query and search generation, is cancelled when search
+changes or clears, and checks ownership before publishing network/cache results
+or clearing loading flags. Cancellation is rethrown rather than treated as a
+network failure. First-page results also check ownership. New pagination cannot
+start while the first page is loading.
+
+Verification scope: code-path review plus the phone unit suite, lint and build;
+no authenticated live delayed-page test was performed. Keep that scenario in
+remaining live coverage. Next inspect detail navigation/back restoration and
+search failure fallback behavior without repeating completed login work.
