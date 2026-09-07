@@ -41,6 +41,15 @@ data class CacheDownloadState(
 internal fun isCompleteCacheEntry(contentLength: Long?, cachedBytes: Long, rangeCached: Boolean): Boolean =
     contentLength != null && contentLength > 0 && cachedBytes >= contentLength && rangeCached
 
+/** Cache keys include the server: numeric track IDs alone are not globally unique. */
+internal fun cachedTrackIdForServer(key: String, baseUrl: String): Int? {
+    if (baseUrl.isBlank()) return null
+    val prefix = baseUrl.trimEnd('/') + "/api/library/tracks/"
+    val suffix = "/stream"
+    if (!key.startsWith(prefix) || !key.endsWith(suffix)) return null
+    return key.removePrefix(prefix).removeSuffix(suffix).toIntOrNull()?.takeIf { it > 0 }
+}
+
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object AudioCacheManager {
 
@@ -131,13 +140,10 @@ object AudioCacheManager {
     /** Returns IDs of tracks whose audio is in the ExoPlayer cache. */
     fun getCachedTrackIds(): List<Int> {
         val keys = cache?.keys ?: return emptyList()
-        val prefix = "api/library/tracks/"
-        val suffix = "/stream"
-        return keys.filter(::isUrlFullyCached).mapNotNull { key ->
-            val start = key.indexOf(prefix)
-            if (start < 0 || !key.endsWith(suffix)) return@mapNotNull null
-            val idStr = key.substring(start + prefix.length, key.length - suffix.length)
-            idStr.toIntOrNull()
+        val server = ApiClient.getBaseUrl()
+        return keys.mapNotNull { key ->
+            val id = cachedTrackIdForServer(key, server) ?: return@mapNotNull null
+            id.takeIf { isUrlFullyCached(key) }
         }
     }
 

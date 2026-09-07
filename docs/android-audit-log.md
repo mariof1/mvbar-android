@@ -63,3 +63,21 @@ recovery commit's GitHub CI completed successfully.
 Offline review started with AudioCacheManager enumeration and cancellation paths;
 no offline change was made in this cycle. Next inspect cache identity across server
 changes, partial downloads and cancellation versus removal, using isolated data.
+
+## 2026-09-07 — Offline availability after switching servers
+
+Confirmed: `getCachedTrackIds` extracted numeric IDs from all fully cached URLs,
+regardless of server. BrowseViewModel and MainViewModel used those IDs to mark the
+current library available offline. A cached track 42 from server A could therefore
+mark unrelated track 42 on server B playable offline, although the requested B URL
+was not cached. Enumeration now requires the current server's exact stream prefix
+before checking completeness. Stored media is preserved; no cache deletion occurs.
+
+Three regression tests cover host/protocol/port separation, server base paths,
+valid current-server IDs and rejection of invalid/non-music keys. These use isolated
+URL fixtures; no real media downloads or account changes were performed. Existing
+partial-content tests still cover incomplete cached byte ranges. The prior version
+label commit's GitHub CI passed (superseding the cancelled earlier run).
+
+Next: investigate blocking CacheWriter cancellation and download-job ownership
+during removal/retry. These remain audit candidates, not verified fixes.
