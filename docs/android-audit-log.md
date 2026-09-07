@@ -38,9 +38,28 @@ Full phone unit tests, lint and debug APK build passed for this change.
 
 ## Next coverage
 
-- Complete live sign-in failure/retry coverage when available. Investigate stale
-  OAuth discovery responses when changing server URLs before starting sign-in.
+- Complete live sign-in failure/retry coverage when available.
 - Then cover phone downloads/offline behavior and lifecycle recovery, followed by
   navigation, browsing/search and playlist forms. Continue Connect edge cases using
   the existing Connect audit reports, avoiding duplicate completed checks.
 - TV and standalone Wear remain deferred; tagging/media cleanup is excluded.
+
+## 2026-09-07 — OAuth configuration follows the selected server
+
+Code inspection confirmed that discovery requests previously updated one shared
+configuration without checking request order, and the UI displayed Google sign-in
+based only on its enabled flag, even after the URL changed. Discovery now cancels
+the prior job and checks a request generation before publishing either a result or
+failure. Beginning a check clears the old configuration. Results carry their server
+URL, and the button and click handler both require a match with the entered server.
+Logout invalidates pending discovery work.
+
+Three regression tests exercise immediate rejection of another server, an empty
+address and another base path; equivalent whitespace/trailing-slash formatting;
+and pending, unattributed or disabled discovery. Network response ordering remains
+verified by code inspection rather than a live OAuth flow. The previous login
+recovery commit's GitHub CI completed successfully.
+
+Offline review started with AudioCacheManager enumeration and cancellation paths;
+no offline change was made in this cycle. Next inspect cache identity across server
+changes, partial downloads and cancellation versus removal, using isolated data.

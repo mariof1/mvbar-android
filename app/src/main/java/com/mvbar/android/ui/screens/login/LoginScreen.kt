@@ -75,7 +75,7 @@ fun LoginScreen(
         }
     }
 
-    val showGoogleButton = authState.googleEnabled
+    val showGoogleButton = authState.canUseGoogleAuth(server)
     val signInBusy = authState.isLoading || googleLoading
     val canSignIn = !signInBusy && server.isNotBlank() && email.isNotBlank() && password.isNotBlank()
 
@@ -257,7 +257,7 @@ fun LoginScreen(
 
                         OutlinedButton(
                             onClick = {
-                                if (signInBusy || server.isBlank()) return@OutlinedButton
+                                if (signInBusy || !authState.canUseGoogleAuth(server)) return@OutlinedButton
                                 val signInServer = server.trim().removeSuffix("/")
                                 val clientId = authState.googleClientId
                                 if (clientId.isNullOrEmpty()) {

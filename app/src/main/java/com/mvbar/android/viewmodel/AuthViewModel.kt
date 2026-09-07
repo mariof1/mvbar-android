@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 
 data class AuthState(
     val isLoggedIn: Boolean = false,
@@ -19,13 +21,19 @@ data class AuthState(
     val error: String? = null,
     val googleEnabled: Boolean = false,
     val googleClientId: String? = null,
-    val checkingGoogle: Boolean = false
-)
+    val checkingGoogle: Boolean = false,
+    val googleServerUrl: String? = null
+) {
+    fun canUseGoogleAuth(serverUrl: String): Boolean = googleEnabled && !checkingGoogle &&
+        googleServerUrl != null && googleServerUrl == serverUrl.trim().trimEnd('/')
+}
 
 class AuthViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = AuthRepository(app)
     private val _state = MutableStateFlow(AuthState())
     val state: StateFlow<AuthState> = _state.asStateFlow()
+    private var googleDiscoveryJob: Job? = null
+    private var googleDiscoveryRequest = 0L
 
     init {
         viewModelScope.launch {
@@ -49,18 +57,27 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun checkGoogleAuth(serverUrl: String) {
-        if (serverUrl.isBlank()) return
-        viewModelScope.launch {
-            _state.value = _state.value.copy(checkingGoogle = true)
+        val server = serverUrl.trim().trimEnd('/')
+        val request = ++googleDiscoveryRequest
+        googleDiscoveryJob?.cancel()
+        _state.value = _state.value.copy(googleEnabled = false, googleClientId = null,
+            googleServerUrl = null, checkingGoogle = server.isNotBlank())
+        if (server.isBlank()) return
+        googleDiscoveryJob = viewModelScope.launch {
             try {
-                val info = repo.checkGoogleAuth(serverUrl)
+                val info = repo.checkGoogleAuth(server)
+                if (request != googleDiscoveryRequest) return@launch
                 _state.value = _state.value.copy(
                     googleEnabled = info.enabled,
                     googleClientId = info.clientId,
+                    googleServerUrl = server,
                     checkingGoogle = false
                 )
                 DebugLog.d("Auth", "Google OAuth enabled: ${info.enabled}, clientId present: ${info.clientId != null}")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (request != googleDiscoveryRequest) return@launch
                 _state.value = _state.value.copy(googleEnabled = false, googleClientId = null, checkingGoogle = false)
             }
         }
@@ -102,6 +119,8 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun logout() {
+        googleDiscoveryRequest++
+        googleDiscoveryJob?.cancel()
         viewModelScope.launch {
             DebugLog.i("Auth", "Logout")
             repo.logout()
