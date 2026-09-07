@@ -42,13 +42,23 @@ fun PodcastDetailScreen(
     onPlayEpisode: (Episode) -> Unit,
     onMarkPlayed: (Int, Boolean) -> Unit,
     onRefresh: () -> Unit,
-    onUnsubscribe: () -> Unit
+    onUnsubscribe: () -> Unit,
+    onRetry: () -> Unit
 ) {
     BackHandler(onBack = onBack)
 
     if (podcast == null && !isLoading) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Podcast not found", color = OnSurfaceDim)
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Unable to load podcast", color = OnSurfaceDim)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(onClick = onBack) { Text("Back") }
+                Button(onClick = onRetry) { Text("Retry") }
+            }
         }
         return
     }

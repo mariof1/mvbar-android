@@ -180,3 +180,17 @@ Verification uses source-path review and existing phone tests/lint/build. The ne
 failure UI has not been exercised in an authenticated live screen; retain mocked
 server/cache failure coverage as outstanding rather than claiming a full UI pass.
 Next inspect podcast/audiobook loading failures and recovery.
+
+## 2026-09-07 — Podcast and audiobook unavailable screens
+
+Both detail composables returned a text-only “not found” screen when their item
+was null after loading. This also occurs for failed requests, and removed all
+on-screen navigation/retry controls. Their unavailable states now offer Back and
+Retry and use “Unable to load” wording. Retry loads the current navigation route's
+ID, so it works even when no selected item was returned. It does not depend on the
+podcast refresh action, which requires an already-loaded selection.
+
+Verification scope is composable/navigation code review and phone tests/lint/build;
+the authenticated unavailable-screen UI still needs a live pass. No subscriptions,
+progress or playback were changed. Next inspect long-form cache fallback and loading
+state ownership, including list/detail requests sharing one loading flag.

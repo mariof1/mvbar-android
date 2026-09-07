@@ -46,11 +46,21 @@ fun AudiobookDetailScreen(
     onBack: () -> Unit,
     onPlayChapter: (AudiobookChapter, Long) -> Unit,
     onContinueListening: () -> Unit,
-    onMarkFinished: () -> Unit
+    onMarkFinished: () -> Unit,
+    onRetry: () -> Unit
 ) {
     if (audiobook == null && !isLoading) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Audiobook not found", color = OnSurfaceDim)
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Unable to load audiobook", color = OnSurfaceDim)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(onClick = onBack) { Text("Back") }
+                Button(onClick = onRetry) { Text("Retry") }
+            }
         }
         return
     }

@@ -1322,8 +1322,13 @@ fun MainScreen(
                     )
                 }
 
-                composable("podcast/{id}") {
+                composable("podcast/{id}") { entry ->
                     PodcastDetailScreen(
+                        onRetry = {
+                            entry.arguments?.getString("id")?.toIntOrNull()?.let {
+                                podcastVm.loadPodcastDetail(it)
+                            }
+                        },
                         podcast = podcastSelectedPodcast,
                         episodes = podcastEpisodes,
                         isLoading = podcastIsLoading,
@@ -1365,6 +1370,7 @@ fun MainScreen(
                     val bookId = backStackEntry.arguments?.getInt("id") ?: return@composable
                     LaunchedEffect(bookId) { audiobookVm.loadAudiobookDetail(bookId) }
                     AudiobookDetailScreen(
+                        onRetry = { audiobookVm.loadAudiobookDetail(bookId) },
                         audiobook = audiobookSelected,
                         chapters = audiobookChapters,
                         progress = audiobookProgress,
