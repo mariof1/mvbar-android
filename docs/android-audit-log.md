@@ -603,3 +603,30 @@ auto-touch-final-resumed.png afterward, corresponding .local/logs state files,
 and auto-touch-recovery-build.log. Prior commit 15831cd passed GitHub CI.
 Remaining: podcast-specific outage coverage, remote Connect seeking, rotary/voice,
 phone version consumers and service/process-death progress restoration.
+
+## 2026-09-08 — Persist paused seeks before process death
+
+Confirmed on projected Android Auto: paused audiobook chapter 1, sought to
+1121239 ms (18:41), waited three seconds, force-stopped only the test app process,
+then reopened and reconnected. It resumed near the beginning (10458 ms observed
+after automatic playback), losing the paused seek. The snapshot timer only saved
+while playing, and pause/seek events did not refresh it.
+
+The playback listener now saves queue position on explicit seek discontinuities
+and when playWhenReady becomes false, alongside long-form progress. This makes
+paused seeks and the final pause position available without waiting for the
+playing-only 30-second timer or a graceful service shutdown.
+
+Validation: 68 unit tests, lintDebug and assembleDebug passed; updated APK installed
+with adb install -r. Repeated the same seek/force-stop/reopen/DHU sequence. The
+restored buffering state reported exactly 1121239 ms on chapter 1, then playback
+advanced normally from that point. Paused and returned the test chapter to zero,
+closed DHU and removed the test port forward. No account data was cleared.
+
+Evidence: mvbar/.local/logs/auto-restore-before-stop.log,
+auto-restore-before-fix-restarted.log, auto-restore-after-fix-before-stop.log,
+auto-restore-after-fix-restarted.log, auto-restore-after-fix-playing.log and
+auto-restore-fix-build.log; projected screenshot auto-restore-after-fix.png.
+Prior commit ff5209b passed CI. Follow-up: podcast rewind-to-zero restoration
+needs separate coverage because its restore path can prefer a larger DB position;
+remote Connect, phone version consumers and rotary/voice checks remain open.

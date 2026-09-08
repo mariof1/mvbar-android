@@ -833,6 +833,29 @@ class PlaybackService : MediaLibraryService() {
         // Switch custom layout (shuffle/repeat/love vs ±15s) on track change
         // and record play/skip activity via offline-resilient queue
         player.addListener(object : Player.Listener {
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                    mediaSession?.player?.let { p ->
+                        // Paused seeks never reach the periodic playing-only saver.
+                        savePlaybackSnapshot(p)
+                        saveEpisodeProgress(p)
+                    }
+                }
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady) {
+                    mediaSession?.player?.let { p ->
+                        savePlaybackSnapshot(p)
+                        saveEpisodeProgress(p)
+                    }
+                }
+            }
+
             override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
                 val session = mediaSession ?: return
                 val p = session.player
