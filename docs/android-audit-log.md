@@ -1086,4 +1086,5 @@ sciencenews without submitting: the old error was replaced with Tap Search to fi
 podcasts. Closed and reopened discovery: query and error were cleared and the
 initial search guidance returned. Restored networking and closed the dialog;
 paused playback and subscriptions remained unchanged. No new defect confirmed.
-CI for fa992f4 was still running when checked during this pass.
+Android CI passed for fa992f4; the separate Android APK release workflow was
+still building signed release APKs during this pass.
