@@ -1145,3 +1145,12 @@ player remained paused. Build logs: mvbar/.local/logs/auto-queue-context-build.l
 and auto-queue-probe-final-build.log. Actual projected search-to-album gestures and
 multiple simultaneous controllers remain unverified; ID-only requests inherently
 cannot identify an older source screen once another matching list has been loaded.
+
+## 2026-09-08 — Search pagination after queue-context tagging
+
+CI passed for a0143ce. Reran the live MediaBrowser search instrumentation against
+the installed fix: love announced 22 items, returned pages of 5/5/5/5/2 with no
+duplicates, and preserved order across mixed page sizes. Beyond-end checks passed.
+The probe was read-only and playback was paused at 29,885 ms before it started.
+Reopened the phone app afterward. No regression confirmed; this is browser API
+coverage, not projected DHU gesture verification.
