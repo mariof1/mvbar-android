@@ -650,3 +650,24 @@ podcast-zero-before-fix-restarted.log (filename predates the passing result),
 podcast-zero-restored-playing.log and .local/podcast-zero-*.png. Commit d82b6e1
 passed GitHub CI. Next: service-only restoration, remote Connect controls, podcast
 network failure, phone version consumers, rotary and voice.
+
+## 2026-09-08 — Podcast service restoration and network outage
+
+Extended the zero-position check without reopening MainActivity: force-stopped
+the test app after a paused seek to zero, explicitly started PlaybackService,
+then reconnected DHU. The same episode played from the beginning (6592 ms observed),
+not its former listening position. This verifies the explicit service-start path.
+
+Also tested a single-episode queue with Wi-Fi and mobile data disabled and an
+uncached seek to 3445014 ms. Logcat showed the initial network failure and two
+retries. The projected player then remained paused at that position with Play
+available. Restored both network settings and tapped Play: the same episode
+resumed from the retained position, with the projected timeline advancing.
+
+No defect reproduced and no application code changed. Returned the episode to
+approximately its pre-test one-minute position, paused it, closed DHU and removed
+the test port forward. Evidence: mvbar/.local/logs/podcast-service-*.log,
+podcast-outage-paused.log, podcast-outage-recovered.log and the corresponding
+.local/podcast-outage-*.png screenshots. Prior docs commit 3e02e14 passed CI.
+Next priority: remote Connect controls and phone UI/version consumers; rotary,
+voice and audible quality remain unverified.
