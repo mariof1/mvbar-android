@@ -902,3 +902,17 @@ now shows titles/artists/albums for previously anonymous tracks, including Plan 
 Care, Heatwave and Ready For Your Love. It still shows 8 items / 162 MB. Playback
 remained paused and no cache was deleted. Evidence: mvbar/.local/cache-metadata-after.xml
 and .local/logs/cache-metadata-fix-build.log.
+
+## 2026-09-08 — Cache filters break at large text sizes
+
+CI passed for 46f3c4b. Tested cache management at font scales 1.5 and 2.0.
+At 2.0, the fixed-width filter row squeezed Episodes into four lines, greatly
+increasing its height and pushing content down. Added horizontal scrolling to
+the filter row so chips measure at their natural width.
+
+Validation: unit tests, lintDebug and assembleDebug passed; installed updated APK
+without clearing data. At 2.0, labels remained on one line. Swiped the filter row
+left and tapped Episodes: it correctly showed the one cached podcast with its
+Remove control still visible. No removal was performed. Restored the original
+unset font_scale setting. Evidence: mvbar/.local/cache-font-before.png,
+cache-font-after.png and .local/logs/cache-font-fix-build.log.
