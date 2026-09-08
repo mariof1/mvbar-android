@@ -45,6 +45,8 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _searchLoading = MutableStateFlow(false)
     val searchLoading: StateFlow<Boolean> = _searchLoading.asStateFlow()
+    private var searchJob: Job? = null
+    private var searchGeneration = 0L
 
     private val _preview = MutableStateFlow<PodcastPreview?>(null)
     val preview: StateFlow<PodcastPreview?> = _preview.asStateFlow()
@@ -165,23 +167,33 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun searchPodcasts(query: String) {
+        val generation = ++searchGeneration
+        searchJob?.cancel()
+        _searchResults.value = emptyList()
+        _searchLoading.value = false
         if (query.trim().length < 2) {
-            _searchResults.value = emptyList()
             return
         }
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
             _searchLoading.value = true
             try {
                 val r = api.searchPodcasts(query.trim())
-                _searchResults.value = r.results
+                if (generation == searchGeneration) _searchResults.value = r.results
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Podcast", "Search failed", e)
+            } finally {
+                if (generation == searchGeneration) _searchLoading.value = false
             }
-            _searchLoading.value = false
         }
     }
 
     fun clearSearch() {
+        searchGeneration++
+        searchJob?.cancel()
+        searchJob = null
+        _searchLoading.value = false
         _searchResults.value = emptyList()
     }
 

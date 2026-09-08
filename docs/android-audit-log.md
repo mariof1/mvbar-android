@@ -992,3 +992,23 @@ was selected, favorites/history were not edited, and playback remained paused.
 No defect confirmed. This covers search UI recovery, not an assertion that every
 returned item is downloaded or playable offline. The upstream 1.1.33 version bump
 was preserved by the previous clean rebase.
+
+## 2026-09-08 — Podcast discovery request cancellation
+
+Source review found podcast discovery launched untracked requests and clearSearch
+only emptied results. A response completing after dialog close could repopulate
+state; overlapping submissions could also overwrite newer results/loading state.
+Unlike library search, this path had no cancellation or request-generation guard.
+
+Added a tracked search job and generation checks. New searches cancel older jobs
+and reset results; clearing search cancels and invalidates pending responses and
+resets loading. Cancellation is rethrown rather than logged as a search failure.
+Only the current request may publish results or finish its loading state.
+
+Validation: unit tests, lintDebug and assembleDebug passed; installed updated APK.
+Submitted science then immediately closed discovery; reopening showed a clean idle
+dialog. A fresh normal science search returned Discovery, Science Magazine Podcast
+and Science Friday. Closed without subscribing or changing playback. Evidence:
+mvbar/.local/podcast-search-after.xml and .local/logs/podcast-search-cancel-build.log.
+The race was identified from control flow; live checks cover close/reopen and normal
+completion, not deterministic forced response reordering. CI for 7094937 passed.
