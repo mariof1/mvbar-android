@@ -7,6 +7,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.ui.input.pointer.pointerInput
@@ -124,6 +128,15 @@ fun FavoritesScreen(
                 }
                 else -> {
                     Column {
+                    Button(
+                        onClick = { ordered.firstOrNull()?.let { onPlayTrack(it, ordered) } },
+                        enabled = !busy && draggingId == null && ordered.isNotEmpty(),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).heightIn(min = 48.dp)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Play all")
+                    }
                     Text(if (isReordering) "Saving order…" else "Hold a track or grip and drag to reorder",
                         color = OnSurfaceDim, style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
@@ -131,7 +144,9 @@ fun FavoritesScreen(
                         items(ordered, key = { it.id }) { track ->
                             Row(verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
-                                    .background(if (draggingId == track.id) Cyan500.copy(alpha = 0.18f) else androidx.compose.ui.graphics.Color.Transparent)
+                                    .zIndex(if (draggingId == track.id) 1f else 0f)
+                                    .background(if (draggingId == track.id) Cyan500.copy(alpha = 0.28f) else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(12.dp))
+                                    .border(2.dp, if (draggingId == track.id) Cyan400 else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(12.dp))
                                     .pointerInput(track.id) {
                                         detectDragGesturesAfterLongPress(
                                             onDragStart = { offset ->
