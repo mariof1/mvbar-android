@@ -349,8 +349,9 @@ class PlaybackService : MediaLibraryService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
-    // Keep the service in foreground as long as there's a queue, even when paused.
-    // This prevents Android from killing the service during AA disconnects or brief pauses.
+    // Let Media3 decide when playback requires foreground execution. A paused
+    // queue can reappear after remote control ends while the app is backgrounded;
+    // promoting it then violates Android's foreground-service start restrictions.
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         if (SocialRealtimeManager.isControllingRemote() && SocialRealtimeManager.selectedConnectDevice()?.state?.track != null) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -358,8 +359,7 @@ class PlaybackService : MediaLibraryService() {
                 .cancel(DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID)
             return
         }
-        val hasQueue = session.player.mediaItemCount > 0
-        super.onUpdateNotification(session, startInForegroundRequired || hasQueue)
+        super.onUpdateNotification(session, startInForegroundRequired)
     }
 
     private fun handleVoiceCommand(intent: Intent) {

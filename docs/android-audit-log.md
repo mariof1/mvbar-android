@@ -767,3 +767,29 @@ the command outcomes. No defect confirmed or production code changed. Previous
 commit 9c8d2a8 passed GitHub CI. Still to check: remote notification seeking,
 locked-screen controls and abrupt network loss rather than graceful tab closure;
 full long-form Connect remains unsupported.
+
+## 2026-09-08 — Remote notification seek and background foreground-service crash
+
+Notification timeline seeking moved the paused browser's Plan B to 96.1 seconds,
+confirmed in the browser. Disabled the official emulator's Wi-Fi and mobile data:
+remote controls disappeared and the browser retained its paused position. After
+restoring connectivity and selecting the paused browser again, the local queue
+transferred to it. The app subsequently crashed while backgrounded as remote
+selection cleared. Logcat confirmed ForegroundServiceStartNotAllowedException in
+PlaybackService.onUpdateNotification, called by the Connect-selection collector.
+
+The notification override forced foreground execution whenever a queue existed,
+including paused local queues resurfacing after remote control. It now passes
+Media3's startInForegroundRequired flag through unchanged. Actual playback still
+uses Media3 foreground management; merely retaining a paused queue no longer
+requests a prohibited background foreground-service start.
+
+Validation: unit tests, lintDebug and assembleDebug passed; installed the updated
+APK with data preserved. Repeated remote selection, background network outage,
+network restoration and selection with a paused local queue. Process 3531 survived
+throughout, with no crash-buffer entries for that process. The paused local media
+notification returned; tapping Play resumed local playback (PLAYING at 12153 ms).
+Paused it again, restored connectivity and closed the isolated browser. Evidence:
+mvbar/.local/logs/remote-foreground-crash.log, remote-foreground-fix-build.log and
+remote-foreground-after-crash-check.log. Previous docs commit b3248ed passed CI.
+Still open: locked-screen controls and extended reconnect/selection stability.
