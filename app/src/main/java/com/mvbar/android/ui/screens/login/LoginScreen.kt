@@ -37,7 +37,6 @@ import androidx.credentials.GetCredentialRequest
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.mvbar.android.R
-import com.mvbar.android.BuildConfig
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.ui.theme.*
 import com.mvbar.android.viewmodel.AuthState
@@ -59,6 +58,14 @@ fun LoginScreen(
     var googleError by remember { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
+    val versionLabel = remember(context) {
+        // Read the installed package so incremental builds cannot retain an
+        // older version string inlined from the generated BuildConfig class.
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+            ?.let { "Version $it" } ?: "Debug"
+    }
     val scope = rememberCoroutineScope()
 
     // Check Google auth when server URL is entered (debounced, only on valid-looking URLs)
@@ -349,8 +356,7 @@ fun LoginScreen(
                 }
                 Spacer(Modifier.height(20.dp))
                 Text(
-                    text = BuildConfig.VERSION_NAME.trim().takeIf { it.isNotEmpty() }
-                        ?.let { "Version $it" } ?: "Debug",
+                    text = versionLabel,
                     style = MaterialTheme.typography.labelSmall,
                     color = OnSurfaceDim
                 )

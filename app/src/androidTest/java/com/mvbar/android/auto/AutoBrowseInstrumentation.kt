@@ -5,6 +5,7 @@ import android.app.Instrumentation
 import android.content.ComponentName
 import android.media.browse.MediaBrowser
 import android.os.Bundle
+import com.mvbar.android.ui.verifyLoginVersion
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
@@ -13,14 +14,24 @@ import java.util.concurrent.TimeUnit
 /** Read-only probe of legacy browse and Media3 search interfaces used by Android Auto. */
 class AutoBrowseInstrumentation : Instrumentation() {
     private var searchOnly = false
+    private var loginVersionOnly = false
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
         searchOnly = arguments?.getString("scope") == "search"
+        loginVersionOnly = arguments?.getString("scope") == "login-version"
         start()
     }
 
     override fun onStart() {
+        if (loginVersionOnly) {
+            try {
+                finish(Activity.RESULT_OK, verifyLoginVersion())
+            } catch (error: Throwable) {
+                finish(Activity.RESULT_CANCELED, Bundle().apply { putString("error", error.toString()) })
+            }
+            return
+        }
         val report = JSONArray()
         var browser: MediaBrowser? = null
         try {

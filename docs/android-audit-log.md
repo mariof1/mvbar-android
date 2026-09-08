@@ -487,3 +487,30 @@ LoginScreenKt$LoginScreen$4$1.class contains 1.1.29 while version.properties and
 generated BuildConfig report 1.1.30, including after this incremental build.
 Investigate stale compile-time version inlining separately without clearing
 the signed-in user's data.
+
+## 2026-09-08 — Login displays the installed version
+
+Confirmed the mismatch with a live login rendering probe: Android package
+metadata reported 1.1.30 while the screen rendered Version 1.1.29. The compiled
+login lambda retained the older BuildConfig constant after incremental builds.
+The login label now reads PackageManager's installed version at runtime and
+retains the Debug fallback for missing/unavailable version information.
+
+Added a test-only login-version scope to the instrumentation runner. It renders
+the real LoginScreen with inert callbacks in MainActivity, compares its actual
+accessibility text with installed package metadata, saves a screenshot, and
+finishes the temporary activity. It does not log out or write authentication
+data. Before the fix it failed with rendered [Version 1.1.29]; afterward it passed
+with Version 1.1.30. Screenshots confirmed both values. Reopening MainActivity
+returned to the signed-in For You screen.
+
+Validation: phone unit tests, lintDebug, assembleDebug and
+assembleDebugAndroidTest passed. Updated APK installed with adb install -r.
+Local evidence: mvbar/.local/logs/login-version-before.log,
+login-version-after.log, login-version-fix-build.log, and the corresponding
+login-version-before.png/login-version-after.png screenshots in mvbar/.local.
+Prior search-pagination commit fa45389 passed GitHub CI.
+
+Next coverage: check the remaining BuildConfig.VERSION_NAME consumers (settings,
+update checks and diagnostics) for similar stale values, then continue the
+projected DHU long-form playback and seeking checks.

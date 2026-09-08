@@ -116,6 +116,12 @@ the complete announced result set contained 22 distinct items across pages of
 5/5/5/5/2, with an empty terminal page and stable ordering at a different page
 size. See android-audit-log.md for implementation and verification details.
 
+The same test runner also accepts `-e scope login-version` for a phone UI version
+check. This temporarily renders the real login form with inert callbacks,
+without logging out, compares the visible label with installed package metadata,
+and closes the temporary activity. It does not run the Auto browse/search probe
+in this mode. Reopen MVBar normally afterward to return to the signed-in UI.
+
 ```powershell
 . ./dev-env.ps1
 ./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest
