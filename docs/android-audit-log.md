@@ -793,3 +793,18 @@ Paused it again, restored connectivity and closed the isolated browser. Evidence
 mvbar/.local/logs/remote-foreground-crash.log, remote-foreground-fix-build.log and
 remote-foreground-after-crash-check.log. Previous docs commit b3248ed passed CI.
 Still open: locked-screen controls and extended reconnect/selection stability.
+
+## 2026-09-08 — Swipe-lock remote controls
+
+CI passed for ae5c926. Selected an isolated playing browser from Android, enabled
+the emulator's swipe lock temporarily (locksettings get-disabled was true), then
+slept and woke the phone. The actual lock screen displayed remote track metadata,
+transport controls and seeking. Pause stopped the browser at 99.7 seconds; Next
+changed track while retaining pause; timeline seeking moved it to 133.1 seconds.
+Play resumed it and the browser advanced to 137.3 seconds. Browser accessibility
+observations confirmed each command, independently of the Android card.
+
+Paused and closed the browser, restored locksettings set-disabled true and reopened
+MVBar. Process 3531 remained alive. Screenshot: mvbar/.local/connect-lock.png.
+No new defect confirmed. This covers a swipe lock, not PIN-protected keyguard.
+Extended reconnect/selection stability and projected Auto lifecycle checks remain.
