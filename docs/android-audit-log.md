@@ -575,3 +575,31 @@ logs under .local/logs; build log auto-network-fix-build.log. Restored both netw
 settings, paused the test player, and closed the isolated DHU session. No audible
 quality claim is made. Next checks: touch-only recovery, podcast outage regression,
 remote Connect seeking, rotary/voice and remaining phone version consumers.
+
+## 2026-09-08 — Touch recovery after exhausted network retries
+
+Confirmed a follow-up UX problem on the projected head unit: after long-form
+network retries stopped, the fatal Source error screen had no Play action and
+the dashboard transport controls were disabled. Hardware play worked, but the
+car touch interface did not offer an equivalent retry at the retained position.
+
+The session's ForwardingPlayer now presents a paused state for recoverable network
+errors on paused long-form items. ExoPlayer itself retains the failure, item and
+position. Explicit session play prepares the failed stream before playing it.
+Other errors and music retain their existing reporting. Suppressing the error
+alone was insufficient in live testing because Auto also hides controls for idle
+players; the final implementation exposes the paused session state as well.
+
+Validation: 68 unit tests, lintDebug and assembleDebug passed; installed with
+adb install -r. Repeated the projected offline/uncached seek. After retries the
+head unit retained chapter 1 at 1121239 ms, with artwork, timeline and an enabled
+Play button. Restored Wi-Fi/mobile data and tapped that button, without hardware
+play: the same chapter resumed from that position (1126157 ms observed). Restored
+the test player to paused at zero, closed DHU and removed its port forward.
+
+Evidence: mvbar/.local/auto-touch-recovery-error.png and
+auto-touch-recovery-dashboard.png before the fix; auto-touch-final-paused.png and
+auto-touch-final-resumed.png afterward, corresponding .local/logs state files,
+and auto-touch-recovery-build.log. Prior commit 15831cd passed GitHub CI.
+Remaining: podcast-specific outage coverage, remote Connect seeking, rotary/voice,
+phone version consumers and service/process-death progress restoration.

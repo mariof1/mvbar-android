@@ -741,6 +741,31 @@ class PlaybackService : MediaLibraryService() {
                 return specialPlaybackTarget(wrappedPlayer.currentMediaItem) != null
             }
 
+            private fun waitingForNetworkRetry(): Boolean {
+                val error = super.getPlayerError() ?: return false
+                val recoverableNetworkError = error.errorCode in setOf(
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                )
+                return isPodcastOrAudiobook() && !playWhenReady && recoverableNetworkError
+            }
+
+            // Expose exhausted long-form retries as paused to session controllers.
+            // Auto hides Play for both fatal errors and idle players. The underlying
+            // ExoPlayer retains its error and position until an explicit retry.
+            override fun getPlayerError(): androidx.media3.common.PlaybackException? =
+                if (waitingForNetworkRetry()) null else super.getPlayerError()
+
+            override fun getPlaybackState(): Int =
+                if (waitingForNetworkRetry()) Player.STATE_READY else super.getPlaybackState()
+
+            override fun play() {
+                if (waitingForNetworkRetry()) super.prepare()
+                super.play()
+            }
+
             override fun pause() {
                 if (!focusPauseCommandInProgress) {
                     // Capture pause at the transport boundary. If focus loss has

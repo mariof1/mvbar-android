@@ -136,9 +136,14 @@ verified podcast and audiobook playback, on-screen and hardware 15-second seekin
 rewind clamping at zero, audiobook queue selection while paused and timeline
 seeking. See android-audit-log.md for observations and evidence.
 
+Subsequent audiobook tests verified disconnect pause, same-chapter reconnect,
+network failure without chapter skipping, and touch retry at the retained position
+after connectivity returned. See the network and touch recovery entries in the
+audit log for the fixes and evidence.
+
 Still unverified: rotary navigation, voice search, audible quality, driving
-restrictions, long-form reconnect/resume and network interruption. Media-browser
-success does not substitute for projected car-interface tests.
+restrictions, podcast-specific network interruption and process-death restoration.
+Media-browser success does not substitute for projected car-interface tests.
 
 ## BlueStacks limitation follow-up
 
