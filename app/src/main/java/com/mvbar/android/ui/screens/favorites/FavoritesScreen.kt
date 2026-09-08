@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragHandle
@@ -52,9 +53,14 @@ fun FavoritesScreen(
     var ordered by remember(favorites) { mutableStateOf(favorites) }
     var draggingId by remember { mutableStateOf<Int?>(null) }
     var dragY by remember { mutableFloatStateOf(0f) }
+    var grabOffset by remember { mutableFloatStateOf(0f) }
     val busy by rememberUpdatedState(isReordering || isLoading)
     val currentFavorites by rememberUpdatedState(favorites)
     val submit by rememberUpdatedState(onReorder)
+    LaunchedEffect(favorites, isReordering, isLoading, draggingId) {
+        // Also reconcile rejected/offline drops where the authoritative list never changes.
+        if (draggingId == null && !isReordering && !isLoading) ordered = favorites
+    }
     fun finishDrag(cancel: Boolean) {
         val id = draggingId ?: return
         draggingId = null
@@ -66,7 +72,6 @@ fun FavoritesScreen(
                 submit(id, next.getOrNull(index + 1)?.id)
             }
             // The view model owns saved state and rollback, including offline failures.
-            ordered = currentFavorites
         }
     }
     fun moveOverPointer() {
@@ -78,9 +83,14 @@ fun FavoritesScreen(
         val from = ordered.indexOfFirst { it.id == id }
         val to = ordered.indexOfFirst { it.id == target.key }
         if (from < 0 || to < 0) return
+        // Wait for the previous reorder to reach layout before evaluating another target.
+        if (listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == id }?.index != from) return
         // Cross the destination's midpoint before moving, preventing boundary jitter.
         val midpoint = target.offset + target.size / 2f
         if ((from < to && dragY < midpoint) || (from > to && dragY > midpoint)) return
+        // LazyColumn normally follows the first visible key. During a reorder that key
+        // may be the dragged first track, so preserve the viewport position instead.
+        listState.requestScrollToItem(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
         ordered = ordered.toMutableList().apply { add(to, removeAt(from)) }
     }
     val movePointer by rememberUpdatedState({ moveOverPointer() })
@@ -137,35 +147,46 @@ fun FavoritesScreen(
                         Spacer(Modifier.width(8.dp))
                         Text(if (isReordering) "Saving order…" else "Play all")
                     }
-                    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 140.dp)) {
+                    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 140.dp),
+                        modifier = Modifier.pointerInput(Unit) {
+                            // The gesture stays in list coordinates while keyed rows move beneath it.
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { offset ->
+                                    if (!busy) {
+                                        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull {
+                                            offset.y >= it.offset && offset.y < it.offset + it.size
+                                        }
+                                        if (item != null) {
+                                            draggingId = item.key as? Int
+                                            dragY = offset.y
+                                            grabOffset = offset.y - item.offset
+                                        }
+                                    }
+                                },
+                                onDrag = { change, _ ->
+                                    if (draggingId != null) {
+                                        change.consume()
+                                        dragY = change.position.y
+                                        movePointer()
+                                    }
+                                },
+                                onDragEnd = { endDrag(false) },
+                                onDragCancel = { endDrag(true) }
+                            )
+                        }
+                    ) {
                         items(ordered, key = { it.id }) { track ->
                             Row(verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
                                     .zIndex(if (draggingId == track.id) 1f else 0f)
+                                    .graphicsLayer {
+                                        translationY = if (draggingId == track.id) {
+                                            val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == track.id }
+                                            if (item != null) dragY - grabOffset - item.offset else 0f
+                                        } else 0f
+                                    }
                                     .background(if (draggingId == track.id) Cyan500.copy(alpha = 0.28f) else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(12.dp))
                                     .border(2.dp, if (draggingId == track.id) Cyan400 else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(12.dp))
-                                    .pointerInput(track.id) {
-                                        detectDragGesturesAfterLongPress(
-                                            onDragStart = { offset ->
-                                                if (!busy) {
-                                                    val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == track.id }
-                                                    if (item != null) { draggingId = track.id; dragY = item.offset + offset.y }
-                                                }
-                                            },
-                                            onDrag = { change, _ ->
-                                                if (draggingId == track.id) {
-                                                    change.consume()
-                                                    // A moved row changes local pointer coordinates. Re-anchor to
-                                                    // the list rather than accumulating the row's movement too.
-                                                    val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == track.id }
-                                                    if (item != null) dragY = item.offset + change.position.y
-                                                    movePointer()
-                                                }
-                                            },
-                                            onDragEnd = { endDrag(false) },
-                                            onDragCancel = { endDrag(true) }
-                                        )
-                                    }
                             ) {
                             Icon(Icons.Default.DragHandle, contentDescription = null,
                                 tint = OnSurfaceDim, modifier = Modifier.size(48.dp).padding(12.dp).semantics {

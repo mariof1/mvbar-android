@@ -7,6 +7,7 @@ import android.media.browse.MediaBrowser
 import android.os.Bundle
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.debug.DebugLog
+import com.mvbar.android.ui.verifyFavoritesDrag
 import com.mvbar.android.ui.verifyLoginVersion
 import org.json.JSONArray
 import org.json.JSONObject
@@ -15,6 +16,7 @@ import java.util.concurrent.TimeUnit
 
 /** Browse/search probes; queue-context scopes temporarily append and remove paused test items. */
 class AutoBrowseInstrumentation : Instrumentation() {
+    private var favoritesDragOnly = false
     private var searchOnly = false
     private var queueContextOnly = false
     private var queueContextIdOnly = false
@@ -23,6 +25,7 @@ class AutoBrowseInstrumentation : Instrumentation() {
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
+        favoritesDragOnly = arguments?.getString("scope") == "favorites-drag"
         searchOnly = arguments?.getString("scope") == "search"
         queueContextIdOnly = arguments?.getString("scope") == "queue-context-id-only"
         queueContextOnly = queueContextIdOnly || arguments?.getString("scope") == "queue-context"
@@ -32,6 +35,11 @@ class AutoBrowseInstrumentation : Instrumentation() {
     }
 
     override fun onStart() {
+        if (favoritesDragOnly) {
+            try { finish(Activity.RESULT_OK, verifyFavoritesDrag()) }
+            catch (error: Throwable) { finish(Activity.RESULT_CANCELED, Bundle().apply { putString("error", error.toString()) }) }
+            return
+        }
         if (versionMetadataOnly) {
             // onStart runs on the instrumentation thread and may race Application.onCreate.
             // Queue this after the main thread has completed application initialization.
