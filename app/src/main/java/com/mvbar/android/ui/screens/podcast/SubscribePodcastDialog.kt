@@ -18,8 +18,10 @@ import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -50,11 +52,12 @@ fun SubscribePodcastDialog(
     onSubscribe: (String) -> Unit,
     onClose: () -> Unit
 ) {
-    var tab by remember { mutableStateOf(SubscribeTab.SEARCH) }
-    var searchQuery by remember { mutableStateOf("") }
-    var rssUrl by remember { mutableStateOf("") }
+    var tab by rememberSaveable { mutableStateOf(SubscribeTab.SEARCH) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var rssUrl by rememberSaveable { mutableStateOf("") }
     var previewResult by remember { mutableStateOf<PodcastSearchResult?>(null) }
     val dialogHeightFraction = when {
+        LocalConfiguration.current.screenHeightDp < 480 -> 0.94f
         tab == SubscribeTab.SEARCH && (searchQuery.isNotBlank() || searchResults.isNotEmpty() || searchLoading) -> 0.76f
         tab == SubscribeTab.SEARCH -> 0.54f
         else -> 0.44f
@@ -131,6 +134,7 @@ fun SubscribePodcastDialog(
                         }
                     )
                     SubscribeTab.RSS -> RssPodcastTab(
+                        modifier = Modifier.weight(1f),
                         rssUrl = rssUrl,
                         onRssUrlChange = { rssUrl = it },
                         onSubscribe = {
@@ -489,12 +493,13 @@ private fun PodcastPreviewDialog(
 
 @Composable
 private fun RssPodcastTab(
+    modifier: Modifier = Modifier,
     rssUrl: String,
     onRssUrlChange: (String) -> Unit,
     onSubscribe: (String) -> Unit,
     onClose: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         OutlinedTextField(
             value = rssUrl,
             onValueChange = onRssUrlChange,

@@ -1023,3 +1023,20 @@ Restored networking and reopened Details: language and description loaded
 subscribing or changing playback. No defect confirmed in this flow. Preview
 request response-reordering remains unverified; search cancellation and preview
 cancellation are distinct paths.
+
+## 2026-09-08 — Podcast subscription rotation and landscape layout
+
+Live rotation dismissed the open RSS subscription dialog and lost its draft.
+Saved dialog visibility, selected tab, search text and RSS URL across activity
+recreation. The first regression check also exposed a separate layout issue:
+the portrait height fraction clipped the RSS field and actions in landscape.
+Use most available height on short screens and make the RSS body scrollable.
+
+Validation: unit tests, lintDebug and assembleDebug passed. Installed the updated
+debug APK without clearing data. Entered an example.com RSS draft, dismissed the
+keyboard, rotated to landscape and back: the dialog, RSS tab and complete URL
+survived both transitions. Cancel and Add were visible in both orientations.
+Cancelled without submitting, restored original rotation settings, and preserved
+paused playback. Evidence: mvbar/.local/podcast-draft-portrait-after.xml and
+.local/logs/podcast-draft-landscape-build.log. Keyboard-open landscape and process
+death restoration remain separate unverified cases.

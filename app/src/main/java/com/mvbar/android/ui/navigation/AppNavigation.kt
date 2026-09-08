@@ -159,7 +159,7 @@ fun MainScreen(
     var contextCollection by remember { mutableStateOf<CollectionRef?>(null) }
     var collectionTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
     var showAddCollectionToPlaylist by remember { mutableStateOf(false) }
-    var showSubscribeDialog by remember { mutableStateOf(false) }
+    var showSubscribeDialog by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var shareTrack by remember { mutableStateOf<Track?>(null) }
     val openTrackShare: (Track) -> Unit = { track ->
         shareTrack = track
