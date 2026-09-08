@@ -1104,3 +1104,19 @@ No items screen. Restored restrict none, kept playback paused, closed DHU and
 removed the test forward. No app defect confirmed. This is a narrow restriction
 smoke check, not full driving-distraction, voice or browse-depth coverage.
 Evidence: mvbar/.local/auto-restrict-{player,browse,search,input}.png.
+
+## 2026-09-08 — Auto queue context source review
+
+CI passed for aa66324. Reviewed combined search pagination and its existing
+MediaBrowserPageTest coverage: partial final pages, invalid inputs and overflow
+use bounded Long arithmetic. No additional pagination defect identified.
+
+A remaining queue-context hypothesis needs targeted verification: onAddMediaItems
+identifies search-origin tracks by membership in any retained search result before
+checking browse lists. A track found by search and subsequently tapped in an album
+could therefore receive the similar-tracks queue rather than the album queue.
+Multiple browse lists containing the same track may also be ambiguous. No change
+made without checking the actual controller request context. Next test should
+search a known song, browse its album, tap that song and inspect the resulting
+queue, using an isolated DHU and preserving the pre-test queue. This was source
+review only; no new live transport or queue-selection coverage is claimed.
