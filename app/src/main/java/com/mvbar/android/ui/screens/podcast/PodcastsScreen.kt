@@ -391,7 +391,8 @@ private fun ResumeEpisodeCard(
                     )
                 } else if (downloadState?.phase == CacheDownloadPhase.FAILED) {
                     Text(
-                        downloadState.error ?: "Download failed",
+                        "Download failed",
+                        modifier = Modifier.widthIn(max = 112.dp),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.labelSmall,
                         maxLines = 1,
@@ -690,7 +691,8 @@ fun EpisodeListItem(
                     )
                 } else if (downloadState?.phase == CacheDownloadPhase.FAILED) {
                     Text(
-                        downloadState.error ?: "Download failed",
+                        "Download failed",
+                        modifier = Modifier.widthIn(max = 112.dp),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.labelSmall,
                         maxLines = 1,

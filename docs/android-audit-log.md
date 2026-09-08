@@ -841,3 +841,26 @@ reenabled Wi-Fi/mobile data. Existing queue and cache were retained. Evidence:
 mvbar/.local/logs/offline-music-before.log and offline-music-transition.log.
 No defect confirmed. This tests existing cached audio, not manual download
 interruption/retry, cache eviction, or audible output; those remain separate gaps.
+
+## 2026-09-08 — Podcast download failure hides Retry controls
+
+Started Download for offline for the continued TaZ podcast episode with emulator
+Wi-Fi and mobile data disabled. The card rendered the nested IOException /
+UnknownHostException text in its bottom row. This consumed the row's available
+width: Episode options and Mark played disappeared from the accessibility tree,
+making Retry inaccessible from that card.
+
+Both podcast error labels now use concise "Download failed" text with a bounded
+width. Detailed download exceptions remain logged by AudioCacheManager. This
+keeps the Continue card's controls visible and avoids showing raw exceptions in
+the episode-list view as well.
+
+Validation: unit tests, lintDebug and assembleDebug passed; installed updated APK
+with data preserved. Repeated the offline download failure: progress, Offline,
+Download failed, Episode options and Mark played all remained visible. Opened
+the menu and verified Retry offline download; restored networking and tapped it.
+Download progress advanced from 6% to 29%, then completed with the Cached badge.
+Retained the completed cache entry. Playback and played status were not
+changed. Evidence: mvbar/.local/download-error-before.png,
+download-error-after.png and .local/logs/download-error-layout-build.log.
+Prior commit 6091af1 passed CI.
