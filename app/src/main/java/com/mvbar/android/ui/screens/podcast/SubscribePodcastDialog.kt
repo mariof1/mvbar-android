@@ -54,6 +54,7 @@ fun SubscribePodcastDialog(
 ) {
     var tab by rememberSaveable { mutableStateOf(SubscribeTab.SEARCH) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    var submittedQuery by rememberSaveable { mutableStateOf<String?>(null) }
     var rssUrl by rememberSaveable { mutableStateOf("") }
     var previewResult by remember { mutableStateOf<PodcastSearchResult?>(null) }
     val dialogHeightFraction = when {
@@ -119,11 +120,15 @@ fun SubscribePodcastDialog(
                     SubscribeTab.SEARCH -> SearchPodcastTab(
                         modifier = Modifier.weight(1f),
                         searchQuery = searchQuery,
+                        querySubmitted = submittedQuery == searchQuery.trim(),
                         onSearchQueryChange = { searchQuery = it },
                         searchResults = searchResults,
                         searchLoading = searchLoading,
                         subscribedFeedUrls = subscribedFeedUrls,
-                        onSearch = onSearch,
+                        onSearch = {
+                            submittedQuery = it.trim()
+                            onSearch(it)
+                        },
                         onDetails = {
                             previewResult = it
                             onPreview(it)
@@ -202,6 +207,7 @@ private fun SubscribeTabChip(
 private fun SearchPodcastTab(
     modifier: Modifier = Modifier,
     searchQuery: String,
+    querySubmitted: Boolean,
     onSearchQueryChange: (String) -> Unit,
     searchResults: List<PodcastSearchResult>,
     searchLoading: Boolean,
@@ -264,6 +270,9 @@ private fun SearchPodcastTab(
             when {
                 searchQuery.isBlank() -> item {
                     DialogEmptyState("Search by show title, host, or network")
+                }
+                !querySubmitted && searchResults.isEmpty() && !searchLoading -> item {
+                    DialogEmptyState("Tap Search to find podcasts")
                 }
                 searchResults.isEmpty() && !searchLoading -> item {
                     DialogEmptyState("No matches")

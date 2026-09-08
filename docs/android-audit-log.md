@@ -1040,3 +1040,23 @@ Cancelled without submitting, restored original rotation settings, and preserved
 paused playback. Evidence: mvbar/.local/podcast-draft-portrait-after.xml and
 .local/logs/podcast-draft-landscape-build.log. Keyboard-open landscape and process
 death restoration remain separate unverified cases.
+
+## 2026-09-08 — Podcast search prompt and keyboard follow-up
+
+CI passed for 8e2c34a. In landscape with the keyboard open, the RSS field stays
+editable while the header and actions are obscured; Back dismisses the keyboard
+and restores all controls with the complete draft retained. Search text also
+survived rotation back to portrait. Restored original rotation settings. This
+does not establish that every control is simultaneously visible with the keyboard.
+
+Confirmed a separate misleading empty state: typing science without submitting
+showed No matches. Track the submitted query across recreation and show Tap Search
+to find podcasts for an unsubmitted draft when there are no results. Keep No
+matches for a submitted query with an empty completed result.
+
+Validation: unit tests, lintDebug and assembleDebug passed; installed updated APK.
+Typing science showed the prompt; submitting returned Discovery, Science Magazine
+Podcast and Science Friday. A fresh submitted mvbarzzzxq987654321 query showed No
+matches. Closed without subscribing or changing paused playback. Evidence:
+mvbar/.local/podcast-search-prompt-after.xml, .local/podcast-keyboard.png and
+.local/logs/podcast-search-prompt-build.log.
