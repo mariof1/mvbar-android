@@ -134,7 +134,9 @@ object AudioCacheManager {
     fun getCacheSizeMb(): Long = (cache?.cacheSpace ?: 0) / (1024 * 1024)
 
     fun getCachedTrackCount(): Int {
-        return cache?.keys?.size ?: 0
+        // Settings describes these as available offline; partial stream buffers
+        // occupy storage but cannot be counted as complete offline items.
+        return getCachedKeys().size
     }
 
     /** Returns IDs of tracks whose audio is in the ExoPlayer cache. */

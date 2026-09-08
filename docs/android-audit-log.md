@@ -864,3 +864,20 @@ Retained the completed cache entry. Playback and played status were not
 changed. Evidence: mvbar/.local/download-error-before.png,
 download-error-after.png and .local/logs/download-error-layout-build.log.
 Prior commit 6091af1 passed CI.
+
+## 2026-09-08 — Offline count includes incomplete cache entries
+
+CI passed for 863897d. While reviewing cache management, Settings reported
+11 audio items available offline, but Manage listed 8 complete items (7 tracks
+and 1 episode). getCachedTrackCount counted every cache key, including partial
+stream buffers. It now uses getCachedKeys, the existing complete-file filter.
+Storage usage still includes partial buffers because they occupy disk space.
+
+Validation: unit tests including partial/missing-range cache coverage, lintDebug
+and assembleDebug passed. Installed updated APK with data preserved. Live
+Settings now reports 8 audio items available offline; Manage reports 8 items.
+Both show 162 MB. No cache was removed. Evidence:
+mvbar/.local/offline-count-settings-after.xml and
+.local/logs/offline-count-fix-build.log. During this check, cached music rows
+showed Track #ID / Unknown; metadata persistence for prefetched mix tracks needs
+investigation in a later pass. Cache removal races remain unconfirmed.
