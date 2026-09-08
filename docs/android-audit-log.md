@@ -941,3 +941,16 @@ Evidence: mvbar/.local/auto-rotary-config.png and
 coverage: full MVBar browse/queue traversal, driving restrictions, voice and
 audible quality remain unverified. The SDK CLI help also exposes restrict
 none/all and focus audio/nav/video for future isolated tests.
+
+## 2026-09-08 — Rotary browse follow-up inconclusive
+
+CI passed for 455950c. Used isolated rotary.ini DHU on port 5277. Media shortcut
+and controller clicks reached the full player and the For You browse screen.
+Before category focus could be established, the projected UI returned to playback
+with a different track (Nienawidze urodzin / Filipek). Input/render timing did not
+establish whether a delayed click selected a mix or playback changed independently.
+Do not count this as verified category traversal or a confirmed navigation defect.
+Closed the isolated DHU and removed the forward; no production changes made.
+Evidence: mvbar/.local/auto-rotary-browse.png and
+.local/logs/auto-rotary-browse-final.log. Next rotary pass should wait for stable
+screens between each input and verify the focused control before activating it.
