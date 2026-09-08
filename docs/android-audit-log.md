@@ -1168,3 +1168,13 @@ Playlists > Podcasts > Queue retained 28 tracks and the same paused current song
 No playlist or podcast was selected for playback. Evidence:
 mvbar/.local/queue-playlist-labels-after.xml and
 .local/logs/queue-playlist-labels-build.log.
+
+## 2026-09-08 — Now Playing search navigation
+
+CI passed for 7629055. Opened Now Playing, toggled its Queue view, then opened
+library search from the player toolbar. Recent searches rendered; closing search
+returned to Home. Source confirms this route explicitly closes Now Playing when
+opening search. Reopening the player and Queue showed the same 28 tracks and
+paused current song. No results were selected or history entries removed. Closed
+the player afterward. No defect confirmed; restoring the player automatically
+after closing search would be a navigation preference, not a proven regression.
