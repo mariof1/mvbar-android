@@ -5,6 +5,8 @@ import android.app.Instrumentation
 import android.content.ComponentName
 import android.media.browse.MediaBrowser
 import android.os.Bundle
+import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.ui.verifyLoginVersion
 import org.json.JSONArray
 import org.json.JSONObject
@@ -15,15 +17,39 @@ import java.util.concurrent.TimeUnit
 class AutoBrowseInstrumentation : Instrumentation() {
     private var searchOnly = false
     private var loginVersionOnly = false
+    private var versionMetadataOnly = false
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
         searchOnly = arguments?.getString("scope") == "search"
         loginVersionOnly = arguments?.getString("scope") == "login-version"
+        versionMetadataOnly = arguments?.getString("scope") == "version-metadata"
         start()
     }
 
     override fun onStart() {
+        if (versionMetadataOnly) {
+            // onStart runs on the instrumentation thread and may race Application.onCreate.
+            // Queue this after the main thread has completed application initialization.
+            runOnMainSync {
+                try {
+                    val installed = targetContext.packageManager
+                        .getPackageInfo(targetContext.packageName, 0).versionName
+                    val apiVersion = ApiClient.getAppVersion()
+                    val logVersion = DebugLog.getLogText().lineSequence().first { it.startsWith("App: ") }
+                    check(apiVersion == installed) { "API version $apiVersion differs from installed $installed" }
+                    check(logVersion == "App: $installed") { "Diagnostic version differs from installed $installed" }
+                    finish(Activity.RESULT_OK, Bundle().apply {
+                        putString("installedVersion", installed)
+                        putString("apiAndConnectVersion", apiVersion)
+                        putString("diagnosticVersion", logVersion)
+                    })
+                } catch (error: Throwable) {
+                    finish(Activity.RESULT_CANCELED, Bundle().apply { putString("error", error.toString()) })
+                }
+            }
+            return
+        }
         if (loginVersionOnly) {
             try {
                 finish(Activity.RESULT_OK, verifyLoginVersion())

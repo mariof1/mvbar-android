@@ -3,7 +3,7 @@ package com.mvbar.android.data.api
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import com.mvbar.android.BuildConfig
+import com.mvbar.android.installedAppVersion
 import com.mvbar.android.debug.DebugLog
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
@@ -20,6 +20,7 @@ object ApiClient {
     private var authToken: String? = null
     private var _api: MvbarApi? = null
     @Volatile private var clientId: String = "android_${UUID.randomUUID()}"
+    @Volatile private var appVersion: String = "debug"
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -34,6 +35,7 @@ object ApiClient {
     }
 
     fun initializeClient(context: Context) {
+        appVersion = installedAppVersion(context) ?: "debug"
         val prefs = context.applicationContext.getSharedPreferences("mvbar_client", Context.MODE_PRIVATE)
         val existing = prefs.getString("client_id", null)
         clientId = existing ?: "android_${UUID.randomUUID()}".also {
@@ -49,6 +51,7 @@ object ApiClient {
     fun getBaseUrl(): String = baseUrl
     fun getToken(): String? = authToken
     fun getClientId(): String = clientId
+    fun getAppVersion(): String = appVersion
 
     fun absoluteUrl(path: String?): String? {
         val value = path?.trim()?.takeIf { it.isNotEmpty() } ?: return null
@@ -66,7 +69,7 @@ object ApiClient {
                     val builder = chain.request().newBuilder()
                         .header("X-MVBar-Client", "android")
                         .header("X-MVBar-Client-Id", clientId)
-                        .header("X-MVBar-Version", BuildConfig.VERSION_NAME)
+                        .header("X-MVBar-Version", appVersion)
                         .header("X-MVBar-Device", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
                         .header("X-MVBar-Platform", "Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
                     authToken?.let { builder.addHeader("Authorization", "Bearer $it") }

@@ -5,7 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import com.mvbar.android.BuildConfig
+import com.mvbar.android.installedAppVersion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -29,9 +29,11 @@ object DebugLog {
 
     /** File for persisting log entries across crashes */
     private var logFile: File? = null
+    private var appVersion: String = "debug"
 
     /** Call from Application.onCreate() to restore persisted settings and log entries */
     fun init(context: Context) {
+        appVersion = installedAppVersion(context) ?: "debug"
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         enabled = prefs.getBoolean(KEY_ENABLED, false)
 
@@ -149,7 +151,7 @@ object DebugLog {
             appendLine("Time: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date())}")
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
             appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-            appendLine("App: ${BuildConfig.VERSION_NAME}")
+            appendLine("App: $appVersion")
             appendLine("Entries: ${entries.size}")
             appendLine("================================")
             appendLine()
@@ -196,7 +198,7 @@ object DebugLog {
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "text/plain; charset=utf-8")
             conn.setRequestProperty("X-Device", device)
-            conn.setRequestProperty("X-App-Version", BuildConfig.VERSION_NAME)
+            conn.setRequestProperty("X-App-Version", appVersion)
             if (token != null) {
                 conn.setRequestProperty("Authorization", "Bearer $token")
                 conn.setRequestProperty("Cookie", "mvbar_token=$token")

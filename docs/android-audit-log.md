@@ -720,3 +720,30 @@ connect-transfer-back-android.log; browser accessibility observations confirmed
 the reverse seek/play. Prior code commit 0af5c51 passed CI. Next: assess the scope
 and requirements for long-form Connect, notification controls while remotely
 playing, disconnected targets, and remaining stale version consumers.
+
+## 2026-09-08 — Runtime versions in API, Connect and diagnostics
+
+Confirmed further stale compiled constants: ApiClient and DebugLog contained
+1.1.27, and SocialRealtimeManager contained 1.1.28, while the installed APK was
+1.1.31. These paths populate HTTP/WebSocket headers, Connect registration and
+diagnostic text/upload metadata.
+
+ApiClient and DebugLog now read installed package metadata during application
+initialization; Connect uses the same API version value. No runtime
+BuildConfig.VERSION_NAME references remain in the phone app. The three compiled
+classes no longer contain the stale version strings.
+
+Added instrumentation scope `version-metadata`, which compares the initialized
+API/Connect value and diagnostic header with PackageManager without uploading
+logs or sending messages. The probe runs its reads on the main thread after
+application initialization; reading immediately on the instrumentation thread
+initially raced startup and saw the fallback value. Final live result: installed,
+API/Connect and diagnostic versions all 1.1.31, INSTRUMENTATION_CODE -1.
+
+Validation: 68 unit tests, lintDebug, assembleDebug and assembleDebugAndroidTest
+passed; installed both APKs with data preserved and reopened MainActivity after
+the probe. Evidence: mvbar/.local/logs/version-metadata-live.log,
+version-metadata-fix-build.log and version-metadata-probe-build.log. This validates
+runtime values used by the sender code, not a captured network registration.
+Prior commit a17fdb6 passed CI. Next: remote notification controls and target
+disconnect behavior; full long-form Connect remains unsupported.

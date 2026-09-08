@@ -2,7 +2,6 @@ package com.mvbar.android.social
 
 import android.content.Context
 import android.os.Build
-import com.mvbar.android.BuildConfig
 import com.mvbar.android.connect.ConnectCommandPayload
 import com.mvbar.android.connect.ConnectDevice
 import com.mvbar.android.connect.ConnectDevicesPayload
@@ -130,7 +129,7 @@ object SocialRealtimeManager {
             .header("Authorization", "Bearer $token")
             .header("X-MVBar-Client", "android")
             .header("X-MVBar-Client-Id", ApiClient.getClientId())
-            .header("X-MVBar-Version", BuildConfig.VERSION_NAME)
+            .header("X-MVBar-Version", ApiClient.getAppVersion())
             .header("X-MVBar-Device", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
             .header("X-MVBar-Platform", "Android ${Build.VERSION.RELEASE}")
             .build()
@@ -296,7 +295,7 @@ object SocialRealtimeManager {
             put("deviceId", ApiClient.getClientId())
             put("name", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
             put("type", "android")
-            put("appVersion", BuildConfig.VERSION_NAME)
+            put("appVersion", ApiClient.getAppVersion())
             put("platform", "Android ${Build.VERSION.RELEASE}")
             put("capabilities", buildJsonArray {
                 add(kotlinx.serialization.json.JsonPrimitive("music"))
