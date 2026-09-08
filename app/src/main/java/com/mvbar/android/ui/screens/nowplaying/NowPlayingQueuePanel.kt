@@ -29,6 +29,7 @@ import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.model.Episode
 import com.mvbar.android.data.model.Playlist
 import com.mvbar.android.data.model.SmartPlaylist
+import com.mvbar.android.ui.screens.smartplaylist.smartPlaylistSortLabel
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.player.PlayMode
 import com.mvbar.android.player.PlayerState
@@ -344,7 +345,7 @@ internal fun QueuePanelContent(
                                         Spacer(Modifier.width(12.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(playlist.name, style = MaterialTheme.typography.bodyMedium, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text("${playlist.itemCount} tracks", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                                            Text("${playlist.itemCount} ${if (playlist.itemCount == 1) "track" else "tracks"}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
                                         }
                                         Icon(Icons.Filled.ChevronRight, null, tint = OnSurfaceDim, modifier = Modifier.size(20.dp))
                                     }
@@ -374,7 +375,7 @@ internal fun QueuePanelContent(
                                         Spacer(Modifier.width(12.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(sp.name, style = MaterialTheme.typography.bodyMedium, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text("Smart • ${sp.sort}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                                            Text("Smart • ${smartPlaylistSortLabel(sp.sort)}", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
                                         }
                                         Icon(Icons.Filled.ChevronRight, null, tint = OnSurfaceDim, modifier = Modifier.size(20.dp))
                                     }

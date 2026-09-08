@@ -1154,3 +1154,17 @@ duplicates, and preserved order across mixed page sizes. Beyond-end checks passe
 The probe was read-only and playback was paused at 29,885 ms before it started.
 Reopened the phone app afterward. No regression confirmed; this is browser API
 coverage, not projected DHU gesture verification.
+
+## 2026-09-08 — Phone queue playlist labels
+
+CI passed for 29a1dd2. Live Queue > Playlists showed raw smart-sort identifiers
+(Smart / most_played) and 1 tracks. Reused the smart-playlist editor's label mapping
+for readable sort names, with Custom order for unknown values, and corrected the
+singular track label in this panel.
+
+Validation: unit tests, lintDebug and assembleDebug passed; installed updated APK.
+The panel now shows Smart / Most Played, Smart / Random and 1 track. Switching
+Playlists > Podcasts > Queue retained 28 tracks and the same paused current song.
+No playlist or podcast was selected for playback. Evidence:
+mvbar/.local/queue-playlist-labels-after.xml and
+.local/logs/queue-playlist-labels-build.log.

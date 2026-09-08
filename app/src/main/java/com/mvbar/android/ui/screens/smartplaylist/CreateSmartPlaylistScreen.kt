@@ -58,6 +58,9 @@ private val SORT_OPTIONS = listOf(
 
 private val SLIDER_STEPS = listOf(25, 50, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000)
 
+internal fun smartPlaylistSortLabel(sort: String): String =
+    SORT_OPTIONS.firstOrNull { it.first == sort }?.second ?: "Custom order"
+
 // Card tint colors (approximating Tailwind slate/emerald/red used on web)
 private val CardSlateBg = Color(0x4D1E293B)        // slate-800 @ 30%
 private val CardSlateBorder = Color(0x4D334155)    // slate-700 @ 30%
