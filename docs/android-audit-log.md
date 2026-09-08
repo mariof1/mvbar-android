@@ -1120,3 +1120,28 @@ made without checking the actual controller request context. Next test should
 search a known song, browse its album, tap that song and inspect the resulting
 queue, using an isolated DHU and preserving the pre-test queue. This was source
 review only; no new live transport or queue-selection coverage is claimed.
+
+## 2026-09-08 — Confirmed Auto search-to-album queue context
+
+CI passed for 405252d. Added a focused live Media3 browser probe, using the service
+callback shared with Auto rather than projected DHU taps. Search love, load the
+Love album containing When I Fall in Love, then append that album item while paused:
+before the fix the callback produced only track 74 instead of the expected 28-track
+album sequence. The probe removes appended items and restores shuffle afterward.
+
+Cached browse/search items now carry their source parent in metadata extras.
+Queue construction prefers that validated parent. For controllers sending only
+an ID, it falls back to the most recently loaded matching list; revisiting a list
+updates its recency. This also avoids choosing the oldest overlapping browse list.
+Podcast and audiobook list caches use the same context tagging.
+
+Validation: unit tests, lintDebug, assembleDebug and assembleDebugAndroidTest passed.
+Installed debug APK and reran the original case: all 28 expected IDs matched in
+order. Strengthened queue-context scope to refresh search after loading the album:
+explicit album metadata still selects the album. queue-context-id-only scope also
+matched all 28 IDs using the latest-list fallback. Both probes assert queue equality
+and clean up in finally. Reopened the phone app: original Nienawidzę urodzin mini
+player remained paused. Build logs: mvbar/.local/logs/auto-queue-context-build.log
+and auto-queue-probe-final-build.log. Actual projected search-to-album gestures and
+multiple simultaneous controllers remain unverified; ID-only requests inherently
+cannot identify an older source screen once another matching list has been loaded.

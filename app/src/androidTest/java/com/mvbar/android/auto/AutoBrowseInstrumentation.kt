@@ -13,15 +13,19 @@ import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** Read-only probe of legacy browse and Media3 search interfaces used by Android Auto. */
+/** Browse/search probes; queue-context scopes temporarily append and remove paused test items. */
 class AutoBrowseInstrumentation : Instrumentation() {
     private var searchOnly = false
+    private var queueContextOnly = false
+    private var queueContextIdOnly = false
     private var loginVersionOnly = false
     private var versionMetadataOnly = false
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
         searchOnly = arguments?.getString("scope") == "search"
+        queueContextIdOnly = arguments?.getString("scope") == "queue-context-id-only"
+        queueContextOnly = queueContextIdOnly || arguments?.getString("scope") == "queue-context"
         loginVersionOnly = arguments?.getString("scope") == "login-version"
         versionMetadataOnly = arguments?.getString("scope") == "version-metadata"
         start()
@@ -99,7 +103,7 @@ class AutoBrowseInstrumentation : Instrumentation() {
             val roots = children(client.root, pageSize = 100)
             check(roots.isNotEmpty()) { "Empty root" }
             report.put(JSONObject().put("root", client.root).put("folders", JSONArray(roots.map { it.mediaId })))
-            for (folder in roots.filter { it.isBrowsable && !searchOnly }) {
+            for (folder in roots.filter { it.isBrowsable && !searchOnly && !queueContextOnly }) {
                 val items = children(folder.mediaId!!)
                 check(items.size <= 10) { "Page size ignored for ${folder.mediaId}: ${items.size}" }
                 report.put(JSONObject().put("folder", folder.mediaId).put("count", items.size)
@@ -143,6 +147,11 @@ class AutoBrowseInstrumentation : Instrumentation() {
             }
             val modern = modernFuture!!.get(30, TimeUnit.SECONDS)
             try {
+                if (queueContextOnly) {
+                    val result = verifyAutoQueueContext(modern, queueContextIdOnly)
+                    finish(Activity.RESULT_OK, Bundle().apply { putString("report", result.toString()) })
+                    return
+                }
                 runOnMainSync { modern.search("love", null) }
                 check(searchReady.await(45, TimeUnit.SECONDS)) { "Search notification timed out" }
                 check(announcedCount > 5) { "Search fixture needs more than five results" }

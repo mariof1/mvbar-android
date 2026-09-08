@@ -1505,14 +1505,12 @@ class PlaybackService : MediaLibraryService() {
                         parentId == PODCASTS_ID -> getPodcastsRootChildren()
                         parentId == PODCAST_CONTINUE_ID -> {
                             val eps = getContinueListeningEpisodes()
-                            browsedTrackCache[PODCAST_CONTINUE_ID] = eps
-                            eps
+                            cacheQueueContext(PODCAST_CONTINUE_ID, eps)
                         }
                         parentId == PODCAST_SUBS_ID -> getPodcastsSubscriptionsList()
                         parentId == PODCAST_NEW_ID -> {
                             val eps = getNewEpisodesItems()
-                            browsedTrackCache[PODCAST_NEW_ID] = eps
-                            eps
+                            cacheQueueContext(PODCAST_NEW_ID, eps)
                         }
                         parentId == AUDIOBOOKS_ID -> getAudiobooksList()
                         parentId == COUNTRIES_ID -> getCountriesList()
@@ -1525,13 +1523,11 @@ class PlaybackService : MediaLibraryService() {
                         parentId.startsWith("country:") -> withShuffle(parentId, getCountryTracks(parentId.removePrefix("country:")))
                         parentId.startsWith("podcast:") -> {
                             val eps = getPodcastEpisodes(parentId.removePrefix("podcast:").toInt())
-                            browsedTrackCache[parentId] = eps
-                            eps
+                            cacheQueueContext(parentId, eps)
                         }
                         parentId.startsWith("audiobook:") -> {
                             val chs = getAudiobookChapters(parentId.removePrefix("audiobook:").toInt())
-                            browsedTrackCache[parentId] = chs
-                            chs
+                            cacheQueueContext(parentId, chs)
                         }
                         else -> emptyList()
                     }
@@ -1602,8 +1598,13 @@ class PlaybackService : MediaLibraryService() {
                 }
 
                 // Search result tap: play just the tapped track + fetch similar from server
-                val isFromSearch = browsedTrackCache.entries
-                    .any { it.key.startsWith("search:") && it.value.any { t -> t.mediaId == tappedId } }
+                val explicitContext = first.mediaMetadata.extras?.getString("mvbar.queue_parent")
+                val queueContext = explicitContext?.takeIf { key ->
+                    browsedTrackCache[key]?.any { it.mediaId == tappedId } == true
+                } ?: browsedTrackCache.entries.lastOrNull { entry ->
+                    entry.value.any { it.mediaId == tappedId }
+                }?.key
+                val isFromSearch = queueContext?.startsWith("search:") == true
                 if (isFromSearch && !isPodcastOrBook) {
                     return serviceScope.future {
                         mediaSession.player.shuffleModeEnabled = false
@@ -1630,7 +1631,7 @@ class PlaybackService : MediaLibraryService() {
                 }
 
                 // Browse list tap: queue all tracks from the same list, starting from tapped
-                val otherEntries = browsedTrackCache.entries.filter { !it.key.startsWith("search:") }
+                val otherEntries = browsedTrackCache.entries.filter { it.key == queueContext && !it.key.startsWith("search:") }
                 for ((key, tracks) in otherEntries) {
                     val idx = tracks.indexOfFirst { it.mediaId == tappedId }
                     if (idx >= 0) {
@@ -1694,8 +1695,8 @@ class PlaybackService : MediaLibraryService() {
                     DebugLog.i("Auto", "Search results '$query': ${items.size} items (${results.podcasts.size} podcasts, ${results.podcastEpisodes.size} episodes, ${results.hits.size} songs)")
                     // Clear previous search caches to avoid stale matches
                     browsedTrackCache.keys.removeAll { it.startsWith("search:") }
-                    browsedTrackCache["search:$query"] = items
-                    LibraryResult.ofItemList(ImmutableList.copyOf(mediaBrowserPage(items, page, pageSize)), params)
+                    val contextualItems = cacheQueueContext("search:$query", items)
+                    LibraryResult.ofItemList(ImmutableList.copyOf(mediaBrowserPage(contextualItems, page, pageSize)), params)
                 } catch (e: Exception) {
                     DebugLog.e("Auto", "Search results error", e)
                     LibraryResult.ofItemList(ImmutableList.of(), params)
@@ -2551,7 +2552,7 @@ class PlaybackService : MediaLibraryService() {
     /** Prepend a "Shuffle All" item and cache tracks for queue-all on tap */
     private fun withShuffle(parentId: String, tracks: List<MediaItem>): List<MediaItem> {
         if (tracks.isEmpty()) return tracks
-        browsedTrackCache[parentId] = tracks
+        val contextualTracks = cacheQueueContext(parentId, tracks)
         val shuffleItem = MediaItem.Builder()
             .setMediaId("shuffle:$parentId")
             .setMediaMetadata(
@@ -2564,7 +2565,20 @@ class PlaybackService : MediaLibraryService() {
                     .build()
             )
             .build()
-        return listOf(shuffleItem) + tracks
+        return listOf(shuffleItem) + contextualTracks
+    }
+
+    private fun cacheQueueContext(parentId: String, items: List<MediaItem>): List<MediaItem> {
+        val contextualItems = items.map { item ->
+            val extras = Bundle(item.mediaMetadata.extras ?: Bundle()).apply {
+                putString("mvbar.queue_parent", parentId)
+            }
+            item.buildUpon().setMediaMetadata(item.mediaMetadata.buildUpon().setExtras(extras).build()).build()
+        }
+        // Legacy controllers may send only an ID: prefer the most recently loaded matching list.
+        browsedTrackCache.remove(parentId)
+        browsedTrackCache[parentId] = contextualItems
+        return contextualItems
     }
 
     /** Load tracks for a given parent ID (used by shuffle) */
