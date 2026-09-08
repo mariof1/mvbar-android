@@ -826,3 +826,18 @@ Evidence: mvbar/.local/auto-foreground-second-connection.png and
 .local/logs/auto-foreground-{paused,disconnected,reconnected}.log.
 Corrected the verification summary's stale podcast coverage exclusions to match
 the earlier completed outage and service-restoration tests.
+
+## 2026-09-08 — Cached music playback and queue transition offline
+
+CI passed for 73aa5eb. Reviewed manual download completion/failure/cancellation
+paths without changing code. With Plan B marked Cached and initially paused at
+85828 ms, disabled emulator Wi-Fi and mobile data. Used the full-player slider
+to seek to about 152 seconds and Play: media session PLAYING at 152841 ms with
+no error. Sought near the end; playback advanced naturally to queue index 1,
+the Sharon Van Etten / Josh Homme track, PLAYING at 6342 ms without network.
+
+Paused, returned to Plan B, restored approximately 1:25 using the slider and
+reenabled Wi-Fi/mobile data. Existing queue and cache were retained. Evidence:
+mvbar/.local/logs/offline-music-before.log and offline-music-transition.log.
+No defect confirmed. This tests existing cached audio, not manual download
+interruption/retry, cache eviction, or audible output; those remain separate gaps.
