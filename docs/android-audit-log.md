@@ -970,3 +970,13 @@ in the actual UI). Restored networking. Evidence:
 mvbar/.local/cache-podcast-title-offline.xml and
 .local/logs/cache-podcast-title-build.log. CI for bb9da6d passed; a separate
 user-triggered Android APK workflow was in progress at the start of this pass.
+
+## 2026-09-08 — Storage totals after returning from Manage
+
+Both f128600 CI and the separate Android APK workflow completed successfully.
+Manage showed 11 complete items / 191 MB after recent background prefetch.
+System Back returned to Settings, which correctly refreshed to 11 audio items
+available offline / 191 MB. The earlier 8-item display was not a persistent
+return-navigation defect. No code change required. Playback remained paused;
+no downloads were removed. Refresh while staying on an already open Settings
+screen and simultaneous cache writers remain separate unverified cases.
