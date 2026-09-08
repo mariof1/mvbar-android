@@ -177,6 +177,7 @@ fun MainScreen(
     val favorites by mainVm.favorites.collectAsState()
     val favoriteIds by mainVm.favoriteIds.collectAsState()
     val favoritesLoading by mainVm.favoritesLoading.collectAsState()
+    val favoritesReordering by mainVm.favoritesReordering.collectAsState()
     val favoritesError by mainVm.favoritesError.collectAsState()
     val history by mainVm.history.collectAsState()
     val historyLoading by mainVm.historyLoading.collectAsState()
@@ -1296,6 +1297,8 @@ fun MainScreen(
                 composable("favorites") {
                     FavoritesScreen(
                         favorites = favorites,
+                        onReorder = mainVm::moveFavorite,
+                        isReordering = favoritesReordering,
                         currentTrackId = currentTrackId,
                         onPlayTrack = { track, queue -> mainVm.playTrack(track, queue) },
                         onToggleFavorite = { mainVm.toggleFavorite(it) },

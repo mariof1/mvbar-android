@@ -34,6 +34,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.mvbar.android.MainActivity
 import com.mvbar.android.R
+import com.mvbar.android.data.api.getAllFavorites
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.ActivityQueue
 import com.mvbar.android.data.AaPreferences
@@ -437,7 +438,7 @@ class PlaybackService : MediaLibraryService() {
                         try {
                             when (query.lowercase()) {
                                 "favorites", "favourites" -> {
-                                    val resp = ApiClient.api.getFavorites()
+                                    val resp = ApiClient.api.getAllFavorites()
                                     if (resp.tracks.isNotEmpty()) {
                                         val items = resp.tracks.map { trackToMediaItem(it) }
                                             .map { resolveStreamUri(it) }
@@ -1935,7 +1936,7 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun getFavoriteTracks(): List<MediaItem> {
         return apiOrCache("Favorites",
-            apiCall = { ApiClient.api.getFavorites().tracks.map { trackToMediaItem(it) } },
+            apiCall = { ApiClient.api.getAllFavorites().tracks.map { trackToMediaItem(it) } },
             cacheCall = { db.favoriteDao().getFavorites().map { trackToMediaItem(it.toModel()) } }
         )
     }

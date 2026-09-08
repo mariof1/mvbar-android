@@ -3,6 +3,7 @@ package com.mvbar.android.data.sync
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.mvbar.android.data.api.getAllFavorites
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.local.entity.*
@@ -67,8 +68,8 @@ class SyncWorker(
             // 3. Sync favorites
             SyncManager.setSyncStatus("Syncing favorites...")
             try {
-                val favs = api.getFavorites()
-                db.favoriteDao().replaceAll(favs.tracks.map { FavoriteTrackEntity(it.id) })
+                val favs = api.getAllFavorites()
+                db.favoriteDao().replaceAll(favs.tracks.mapIndexed { index, track -> FavoriteTrackEntity(track.id, index) })
                 DebugLog.i("SyncWorker", "Synced ${favs.tracks.size} favorites")
                 // Re-cache favorites if auto-cache is enabled
                 AudioCacheManager.reCacheFavorites()

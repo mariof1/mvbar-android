@@ -1,5 +1,6 @@
 package com.mvbar.android.data.repository
 
+import com.mvbar.android.data.api.getAllFavorites
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.local.entity.*
@@ -420,7 +421,17 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun getCountryTracks(name: String, limit: Int = 50, offset: Int = 0) = api.getCountryTracks(name, limit, offset)
     suspend fun getLanguages(limit: Int = 50, offset: Int = 0) = api.getLanguages(limit, offset)
     suspend fun getLanguageTracks(name: String, limit: Int = 50, offset: Int = 0) = api.getLanguageTracks(name, limit, offset)
-    suspend fun getFavorites() = api.getFavorites()
+    suspend fun getFavorites(): FavoritesResponse {
+        val result = api.getAllFavorites()
+        db?.trackDao()?.insertMissing(result.tracks.map { it.toEntity() })
+        db?.favoriteDao()?.replaceAll(result.tracks.mapIndexed { index, track -> FavoriteTrackEntity(track.id, index) })
+        return result
+    }
+
+    suspend fun moveFavorite(trackId: Int, beforeTrackId: Int?) {
+        val response = api.moveFavorite(com.mvbar.android.data.api.FavoriteMoveRequest(trackId, beforeTrackId))
+        if (!response.isSuccessful) throw retrofit2.HttpException(response)
+    }
     suspend fun addFavorite(trackId: Int) = api.addFavorite(trackId)
     suspend fun removeFavorite(trackId: Int) = api.removeFavorite(trackId)
     suspend fun getHistory(limit: Int = 50, offset: Int = 0) = api.getHistory(limit, offset)

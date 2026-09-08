@@ -10,14 +10,14 @@ interface FavoriteDao {
     @Query("""
         SELECT t.* FROM tracks t
         INNER JOIN favorite_tracks f ON t.id = f.trackId
-        ORDER BY t.title COLLATE NOCASE ASC
+        ORDER BY f.position ASC, f.trackId DESC
     """)
     fun favoritesFlow(): Flow<List<TrackEntity>>
 
     @Query("""
         SELECT t.* FROM tracks t
         INNER JOIN favorite_tracks f ON t.id = f.trackId
-        ORDER BY t.title COLLATE NOCASE ASC
+        ORDER BY f.position ASC, f.trackId DESC
     """)
     suspend fun getFavorites(): List<TrackEntity>
 

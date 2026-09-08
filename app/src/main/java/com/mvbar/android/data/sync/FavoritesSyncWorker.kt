@@ -3,6 +3,7 @@ package com.mvbar.android.data.sync
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.mvbar.android.data.api.getAllFavorites
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.local.entity.FavoriteTrackEntity
@@ -32,8 +33,8 @@ class FavoritesSyncWorker(
 
         return try {
             val db = MvbarDatabase.getInstance(applicationContext)
-            val favs = api.getFavorites()
-            db.favoriteDao().replaceAll(favs.tracks.map { FavoriteTrackEntity(it.id) })
+            val favs = api.getAllFavorites()
+            db.favoriteDao().replaceAll(favs.tracks.mapIndexed { index, track -> FavoriteTrackEntity(track.id, index) })
             DebugLog.i("FavSync", "Background synced ${favs.tracks.size} favorites")
             AudioCacheManager.reCacheFavorites()
             Result.success()

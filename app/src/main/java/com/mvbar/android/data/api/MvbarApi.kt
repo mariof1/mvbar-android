@@ -105,7 +105,10 @@ interface MvbarApi {
 
     // Favorites
     @GET("api/favorites")
-    suspend fun getFavorites(): FavoritesResponse
+    suspend fun getFavorites(@Query("limit") limit: Int = 200, @Query("offset") offset: Int = 0): FavoritesResponse
+
+    @POST("api/favorites/reorder")
+    suspend fun moveFavorite(@Body request: FavoriteMoveRequest): Response<Unit>
 
     @POST("api/favorites/{id}")
     suspend fun addFavorite(@Path("id") trackId: Int): Response<Unit>

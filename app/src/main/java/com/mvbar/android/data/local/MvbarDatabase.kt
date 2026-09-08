@@ -43,6 +43,13 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** Preserve favorite ordering offline. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE favorite_tracks ADD COLUMN position INTEGER NOT NULL DEFAULT -1")
+    }
+}
+
 @Database(
     entities = [
         TrackEntity::class,
@@ -62,7 +69,7 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         AudiobookChapterEntity::class,
         PendingActionEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -88,7 +95,7 @@ abstract class MvbarDatabase : RoomDatabase() {
                     MvbarDatabase::class.java,
                     "mvbar_cache.db"
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }

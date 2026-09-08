@@ -53,6 +53,8 @@ object SocialRealtimeManager {
         .build()
 
     private val _revision = MutableStateFlow(0L)
+    private val _favoritesRevision = MutableStateFlow(0L)
+    val favoritesRevision: StateFlow<Long> = _favoritesRevision.asStateFlow()
     val revision: StateFlow<Long> = _revision.asStateFlow()
 
     private val _connectDevices = MutableStateFlow<List<ConnectDevice>>(emptyList())
@@ -181,6 +183,7 @@ object SocialRealtimeManager {
             sendConnectRegistration(webSocket)
             // Events are not replayed after a disconnect, so catch up from the API.
             requestRefresh()
+            _favoritesRevision.update { it + 1 }
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -189,6 +192,10 @@ object SocialRealtimeManager {
                 val type = root["type"]?.jsonPrimitive?.contentOrNull ?: return
                 if (type == "ping") {
                     webSocket.send("{\"type\":\"pong\"}")
+                    return
+                }
+                if (type == "favorite:added" || type == "favorite:removed" || type == "favorite:reordered") {
+                    _favoritesRevision.update { it + 1 }
                     return
                 }
                 if (type == "auth:session_invalid") {

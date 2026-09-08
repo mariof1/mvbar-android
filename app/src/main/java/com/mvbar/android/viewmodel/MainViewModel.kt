@@ -61,6 +61,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _favorites = MutableStateFlow<List<Track>>(emptyList())
     val favorites: StateFlow<List<Track>> = _favorites.asStateFlow()
+    private val _favoritesReordering = MutableStateFlow(false)
+    val favoritesReordering: StateFlow<Boolean> = _favoritesReordering.asStateFlow()
 
     private val _favoriteIds = MutableStateFlow<Set<Int>>(emptySet())
     val favoriteIds: StateFlow<Set<Int>> = _favoriteIds.asStateFlow()
@@ -201,6 +203,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         // Poll favorites every 5 minutes so changes from other devices appear quickly
+        viewModelScope.launch {
+            SocialRealtimeManager.favoritesRevision.collect { revision ->
+                if (revision > 0) loadFavorites(isRefresh = false)
+            }
+        }
         viewModelScope.launch {
             while (true) {
                 delay(5 * 60 * 1000L)
@@ -465,7 +472,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun moveFavorite(trackId: Int, beforeTrackId: Int?) {
+        if (_favoritesReordering.value || trackId == beforeTrackId) return
+        if (!NetworkMonitor.isOnline.value) {
+            com.mvbar.android.ui.components.ToastManager.show("Connect to the server to reorder favorites", com.mvbar.android.ui.components.ToastIcon.ERROR)
+            loadFavorites()
+            return
+        }
+        favoritesJob?.cancel()
+        _favoritesLoading.value = false
+        _favoritesReordering.value = true
+        val original = _favorites.value
+        val moved = original.firstOrNull { it.id == trackId }
+        if (moved == null || (beforeTrackId != null && original.none { it.id == beforeTrackId })) {
+            _favoritesReordering.value = false
+            return
+        }
+        val next = original.filterNot { it.id == trackId }.toMutableList()
+        next.add(if (beforeTrackId == null) next.size else next.indexOfFirst { it.id == beforeTrackId }, moved)
+        _favorites.value = next
+        viewModelScope.launch {
+            try {
+                repo.moveFavorite(trackId, beforeTrackId)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _favorites.value = original
+                com.mvbar.android.ui.components.ToastManager.show("Could not save favorites order. Please try again.", com.mvbar.android.ui.components.ToastIcon.ERROR)
+            } finally {
+                _favoritesReordering.value = false
+                loadFavorites(isRefresh = false)
+            }
+        }
+    }
+
     fun loadFavorites(isRefresh: Boolean = false) {
+        if (_favoritesReordering.value) return
         // Debounce: skip if successfully loaded within last 30 seconds
         val now = System.currentTimeMillis()
         if (NetworkMonitor.isOnline.value && isRefresh && now - lastFavoritesLoadTime < 30_000) {
@@ -476,7 +518,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (!isRefresh) _favoritesLoading.value = true
             _favoritesError.value = null
             // Load from cache first
-            if (!isRefresh || !NetworkMonitor.isOnline.value) {
+            if (_favorites.value.isEmpty() || !NetworkMonitor.isOnline.value) {
                 val cached = try { repo.getCachedFavorites() } catch (_: Exception) { null }
                 if (!cached.isNullOrEmpty()) {
                     _favorites.value = cached
@@ -501,6 +543,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     AudioCacheManager.cacheTracks(favTracks)
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 DebugLog.e("Favorites", "Load failed", e)
                 if (_favorites.value.isEmpty()) _favoritesError.value = "Failed to load favorites"
             } finally {
@@ -1385,8 +1428,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             knownTrackById(trackId)?.let { track ->
                 if (_favorites.value.none { it.id == trackId }) {
-                    _favorites.value = (_favorites.value + track.copy(isFavorite = true))
-                        .sortedBy { it.displayTitle.lowercase() }
+                    _favorites.value = listOf(track.copy(isFavorite = true)) + _favorites.value
                 }
             }
         }

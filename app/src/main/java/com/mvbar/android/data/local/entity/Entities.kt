@@ -106,7 +106,8 @@ data class PlaylistItemEntity(
 
 @Entity(tableName = "favorite_tracks")
 data class FavoriteTrackEntity(
-    @PrimaryKey val trackId: Int
+    @PrimaryKey val trackId: Int,
+    @ColumnInfo(defaultValue = "-1") val position: Int = -1
 )
 
 @Entity(tableName = "history_entries")
