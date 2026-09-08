@@ -218,6 +218,7 @@ class PlaybackService : MediaLibraryService() {
         private const val RECENT_ROOT_ID = "[recent_root]"
         private const val SMART_PLAYLIST_CACHE_PREFS = "aa_smart_playlists"
         private const val SMART_PLAYLIST_CACHE_KEY = "items"
+        private const val AUTO_SEARCH_LIMIT_PER_TYPE = 20
         private val PODCAST_STREAM_REGEX = """/api/podcasts/episodes/(\d+)/stream(?:\?.*)?$""".toRegex()
         private val AUDIOBOOK_STREAM_REGEX = """/api/audiobooks/(\d+)/chapters/(\d+)/stream(?:\?.*)?$""".toRegex()
         private val AUDIOBOOK_ART_REGEX = """/api/audiobook-art/(\d+)(?:\?.*)?$""".toRegex()
@@ -1613,7 +1614,7 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<Void>> {
             serviceScope.future {
                 try {
-                    val results = getAutoSearchResults(query, limit = 20)
+                    val results = getAutoSearchResults(query, limit = AUTO_SEARCH_LIMIT_PER_TYPE)
                     val items = buildAutoSearchItems(results)
                     DebugLog.i("Auto", "Search '$query': ${items.size} items (${results.podcasts.size} podcasts, ${results.podcastEpisodes.size} episodes, ${results.hits.size} songs)")
                     session.notifySearchResultChanged(browser, query, items.size, params)
@@ -1634,13 +1635,15 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             return serviceScope.future {
                 try {
-                    val results = getAutoSearchResults(query, limit = pageSize.coerceAtMost(100))
+                    // Page the combined result set announced by onSearch. The API
+                    // limit applies per media type, not to the final mixed list.
+                    val results = getAutoSearchResults(query, limit = AUTO_SEARCH_LIMIT_PER_TYPE)
                     val items = buildAutoSearchItems(results)
                     DebugLog.i("Auto", "Search results '$query': ${items.size} items (${results.podcasts.size} podcasts, ${results.podcastEpisodes.size} episodes, ${results.hits.size} songs)")
                     // Clear previous search caches to avoid stale matches
                     browsedTrackCache.keys.removeAll { it.startsWith("search:") }
                     browsedTrackCache["search:$query"] = items
-                    LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
+                    LibraryResult.ofItemList(ImmutableList.copyOf(mediaBrowserPage(items, page, pageSize)), params)
                 } catch (e: Exception) {
                     DebugLog.e("Auto", "Search results error", e)
                     LibraryResult.ofItemList(ImmutableList.of(), params)

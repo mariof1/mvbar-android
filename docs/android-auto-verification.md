@@ -106,6 +106,15 @@ The instrumentation runner is AutoBrowseInstrumentation, included only in the
 test APK. It checks a connected, signed-in MVBar app's browse tree without
 starting media or editing library/account data. It emits JSON and returns
 INSTRUMENTATION_CODE: -1 on success; code 0 includes an error on failure.
+It also checks Media3 search pagination with the query `love`, which requires
+more than five results in the test library. Add `-e scope search` to the
+instrument command to skip the category walk and run only root/search checks.
+
+The 2026-09-08 search regression confirmed repeated, oversized pages before the
+fix (seven results for a five-item request, repeated on page 1). After the fix,
+the complete announced result set contained 22 distinct items across pages of
+5/5/5/5/2, with an empty terminal page and stable ordering at a different page
+size. See android-audit-log.md for implementation and verification details.
 
 ```powershell
 . ./dev-env.ps1

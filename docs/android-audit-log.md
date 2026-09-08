@@ -456,3 +456,34 @@ configured automatic music resume. Paused the test player and closed DHU afterwa
 Detailed setup, evidence and remaining projected-interface tests are recorded in
 android-auto-verification.md. No application code was changed for this setup.
 Also observed a login version-label/package-version discrepancy for later checking.
+
+## 2026-09-08 — Android Auto search pagination
+
+Confirmed on the official API 34 emulator through a Media3 browser: searching
+`love` announced 22 results, but requesting five items returned seven on both
+page 0 and page 1, with all seven repeated. The backend search limit applies to
+each media type, and onGetSearchResult both ignored the page and returned the
+entire mixed result list. Media3 also logged an oversized-result error.
+
+Search notification and retrieval now use the same existing per-type limit of
+20. The service slices the combined list by page/pageSize while keeping the full
+list in its playback cache. The existing bounded search scope is retained; this
+does not add full-catalog search pagination.
+
+Extended the read-only instrumentation probe to call search, await its count
+notification, verify distinct pages, total coverage, end-of-list and consistent
+ordering with different page sizes. After installing the updated APK with data
+preserved, the full live probe passed: 11 browse categories, search pages
+5/5/5/5/2, 22 unique results, zero overlap, empty terminal page, and matching
+seven-item page ordering. This is a MediaBrowser interface regression, not a
+new projected DHU search UI test. No playback commands were sent.
+
+Validation: 65 phone unit tests passed, lintDebug, assembleDebug and
+assembleDebugAndroidTest passed. Local evidence: auto-search-before-official.log,
+auto-search-after-official.log and auto-search-fix-build.log in mvbar/.local/logs.
+
+Follow-up: the login version discrepancy persists in compiled output:
+LoginScreenKt$LoginScreen$4$1.class contains 1.1.29 while version.properties and
+generated BuildConfig report 1.1.30, including after this incremental build.
+Investigate stale compile-time version inlining separately without clearing
+the signed-in user's data.
