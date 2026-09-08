@@ -916,3 +916,12 @@ left and tapped Episodes: it correctly showed the one cached podcast with its
 Remove control still visible. No removal was performed. Restored the original
 unset font_scale setting. Evidence: mvbar/.local/cache-font-before.png,
 cache-font-after.png and .local/logs/cache-font-fix-build.log.
+
+## 2026-09-08 — Cache removal cancellation
+
+CI passed for d11c4d6. Tapped a cached track's trash icon: it changed to the
+second-step Remove button without deleting audio. Pressed system Back to abandon
+removal. Settings still reported 8 complete items / 162 MB. Opened Clear offline
+audio, verified its explanation and Cancel action, then cancelled. Counts and
+paused playback remained unchanged. No new defect confirmed; actual deletion,
+simultaneous writers and eviction remain untested to preserve the existing cache.
