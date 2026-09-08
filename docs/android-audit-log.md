@@ -881,3 +881,24 @@ mvbar/.local/offline-count-settings-after.xml and
 .local/logs/offline-count-fix-build.log. During this check, cached music rows
 showed Track #ID / Unknown; metadata persistence for prefetched mix tracks needs
 investigation in a later pass. Cache removal races remain unconfirmed.
+
+## 2026-09-08 — Metadata missing for prefetched music
+
+CI passed for 86acc7b. Confirmed cached tracks appeared as Track #ID / Unknown
+because prefetch saved audio without inserting queue metadata into the local
+track index. CacheBrowserScreen resolves track labels from that index; mix and
+Connect queues can contain tracks absent from it.
+
+Prefetch now snapshots positive-ID queue metadata and inserts missing records
+before downloading audio. Room conflict-ignore preserves existing library rows;
+podcast/audiobook pseudo-tracks are excluded, and metadata write failures are
+logged without preventing audio prefetch. Existing complete audio still skips
+the download as before. This covers the prefetch path; manual ID-only downloads
+and queues with prefetch disabled remain separate metadata coverage gaps.
+
+Validation: unit tests, lintDebug and assembleDebug passed. Installed updated APK
+with data preserved; the existing restored queue populated metadata. Live Manage
+now shows titles/artists/albums for previously anonymous tracks, including Plan B,
+Care, Heatwave and Ready For Your Love. It still shows 8 items / 162 MB. Playback
+remained paused and no cache was deleted. Evidence: mvbar/.local/cache-metadata-after.xml
+and .local/logs/cache-metadata-fix-build.log.

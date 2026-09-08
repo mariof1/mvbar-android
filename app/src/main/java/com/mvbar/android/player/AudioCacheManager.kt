@@ -17,6 +17,7 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.local.MvbarDatabase
+import com.mvbar.android.data.local.entity.toEntity
 import com.mvbar.android.data.model.Track
 import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.*
@@ -320,7 +321,22 @@ object AudioCacheManager {
         val tracksToCache = queue.drop(currentIndex + 1).take(count)
         if (tracksToCache.isEmpty()) return
 
+        val queueMetadata = queue.filter { it.id > 0 }.map { it.toEntity() }
+
         prefetchJob = prefetchScope.launch {
+            // Mix/Connect queues may contain tracks outside the local index.
+            // Preserve their metadata so prefetched audio is identifiable offline.
+            appContext?.let { context ->
+                try {
+                    MvbarDatabase.getInstance(context).trackDao().insertMissing(
+                        queueMetadata
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    DebugLog.e("Cache", "Could not save queue metadata", e)
+                }
+            }
             // Pre-cache artwork for upcoming tracks
             precacheArtwork(tracksToCache)
             for (track in tracksToCache) {
