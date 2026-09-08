@@ -2,6 +2,7 @@ package com.mvbar.android.ui.navigation
 
 import android.app.Activity
 import android.net.Uri
+import androidx.compose.ui.draw.blur
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -154,6 +155,7 @@ fun MainScreen(
     val socialVm: SocialViewModel = viewModel()
     var showSearch by remember { mutableStateOf(false) }
     var showNowPlaying by remember { mutableStateOf(false) }
+    var playerBackdropBlur by remember { mutableFloatStateOf(40f) }
     var contextTrack by remember { mutableStateOf<Track?>(null) }
     var showAddToPlaylist by remember { mutableStateOf<Track?>(null) }
     var contextCollection by remember { mutableStateOf<CollectionRef?>(null) }
@@ -720,7 +722,8 @@ fun MainScreen(
             }
 
         Scaffold(
-            modifier = if (useNavRail) Modifier.weight(1f) else Modifier,
+            modifier = (if (useNavRail) Modifier.weight(1f) else Modifier)
+                .blur(if (showNowPlaying && displayedPlayerState.currentTrack != null) playerBackdropBlur.dp else 0.dp),
             containerColor = BackgroundDark,
             topBar = {
                 if (!useNavRail) {
@@ -1499,6 +1502,7 @@ fun MainScreen(
         ) {
             NowPlayingScreen(
                 state = displayedPlayerState,
+                onBackdropBlurChanged = { playerBackdropBlur = it },
                 lyrics = lyrics,
                 lyricsLoading = lyricsLoading,
                 onBack = { showNowPlaying = false },
