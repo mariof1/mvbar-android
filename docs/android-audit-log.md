@@ -1178,3 +1178,115 @@ opening search. Reopening the player and Queue showed the same 28 tracks and
 paused current song. No results were selected or history entries removed. Closed
 the player afterward. No defect confirmed; restoring the player automatically
 after closing search would be a navigation preference, not a proven regression.
+
+## 2026-09-08 — Paused position mismatch (verification pending)
+
+Before edits, dumpsys showed the local session paused at 29,885 ms while the phone
+queue player displayed 0:00. PlayerManager updates duration alone on STATE_READY;
+a locally staged fix also samples controller.currentPosition there. Unit tests,
+lintDebug and assembleDebug passed, and the debug APK was installed. Subsequent
+UI dumps returned null roots; a screenshot showed a different active song,
+Calling You Home. Did not interrupt that playback or claim the paused regression
+passed. The one-line source change remains uncommitted pending focused live
+verification when playback is idle. Evidence: mvbar/.local/paused-sync.png and
+.local/logs/paused-position-sync-build.log. Review current playback before resuming.
+
+CI 34249988264 failed only finalizing the verification-report artifact with HTTP
+403, after verification completed. Reran the failed job; the retry passed.
+
+At the 16:40 UTC follow-up, the local session was actively playing Call The Police
+(Radio Edit) in a 30-item queue. Left playback and UI unchanged. Paused/cold-start
+verification remains pending; do not restart or reinstall during active playback.
+
+## 2026-09-08 — Audit continuation during active playback
+
+Confirmed the existing ten-minute heartbeat is ACTIVE and updated its prompt:
+active playback postpones disruptive tests only. Continue independent source
+reviews, safe UI checks and builds instead of repeatedly polling playback.
+
+Reviewed podcast preview request lifetime. Unlike search, previews launched
+untracked jobs; closing or replacing a preview did not cancel its request, and
+late completion could overwrite current preview/error/loading state. Staged a
+tracked job with cancellation and generation guards, including rethrowing
+CancellationException. This finding is from control flow, not a forced live race.
+
+Safe baseline checks on the installed app: searched science, opened Discovery
+details, closed it and opened Science Magazine Podcast details. Correct descriptions
+rendered; closed both dialogs and returned Home without subscribing or changing
+playback. The new preview code is not installed yet and remains uncommitted along
+with the paused-position fix pending an idle verification window. Build evidence:
+mvbar/.local/logs/podcast-preview-cancel-build.log. Android CI for 296ca6b passed;
+a separate Android APK release run on that commit was in progress.
+Unit tests, lintDebug and assembleDebug for the staged preview fix completed
+successfully. Live verification remains pending; no code was pushed this pass.
+
+## 2026-09-08 — Audiobook detail navigation during music playback
+
+Opened Books > 1984 while music continued. All 26 chapters were reachable; the
+final Credits row and duration remained visible above the mini-player. Returned
+to Books and opened 12 Rules for Life: its header and chapter list replaced the
+previous book. No chapter, Continue or Finished action was activated. Returned
+Home. No new defect confirmed; metadata/tagging differences were left untouched.
+
+The Android APK workflow on 296ca6b succeeded and published v1.1.35. Fast-forwarded
+the checkout to 820c6c1, preserving both uncommitted fixes and audit notes. Installed
+debug remains the prior build; rebuild the new version before eventual installation
+and live verification when playback is idle.
+
+## 2026-09-08 — Browse scroll restoration (staged)
+
+Live reproduction during uninterrupted music: scrolled Artists until $hoey was
+visible, opened its detail, then Back returned to the first artists at the top.
+Both artist and album grids unconditionally scroll to zero in a selectedLetter
+LaunchedEffect, which also runs when the navigation destination is restored.
+Replaced that effect with saveable LazyGridState keyed by the letter filter.
+Changing the filter creates fresh scroll state; returning from detail can retain
+the saved position. Album impact was identified from the matching code path.
+
+Returned Home without playing an artist or changing the current music. This is
+the third staged fix; do not push it until live back-navigation and letter-filter
+regressions pass after installation. Build log:
+mvbar/.local/logs/browse-scroll-restore-build.log.
+Unit tests, lintDebug and assembleDebug completed successfully for the staged
+changes on version 1.1.35. APK installation remains deferred during active playback.
+
+## 2026-09-08 — Country/language browse navigation
+
+Music remained active, so continued safe browsing checks. Countries loaded cards
+and counts; horizontal tab scrolling exposed Languages. Opening French rendered
+one track, matching its card count. Back returned to Languages. Restored Artists
+and Home without activating Play All, a track or Favorite. No functional defect
+confirmed. Existing singular-count wording and library tagging were not treated
+as new findings. The three staged fixes still await idle installation/regression.
+
+## 2026-09-08 — Browse restoration verified; favourites CI passed
+
+The prior favourites drag fix passed Android CI run 34273776789. Continued the
+unfinished browse scroll fix on the official emulator. Artists: scrolled to
+$hoey, opened its real three-track detail, then returned to exactly the same
+visible grid positions. Changed All to # and confirmed the grid reset to its top.
+Albums: scrolled to Banger, opened its detail, and Back restored its label bounds
+[33,1358][153,1403] exactly. Evidence in sibling mvbar/.local: audit-browse-before.xml,
+audit-browse-after.xml, audit-artist-detail.xml, audit-letter.xml,
+audit-album-before.xml, audit-album-detail.xml, audit-album-after.xml.
+
+Unit tests, lintDebug and assembleDebug passed (android-audit-resume-build.log).
+Installed the current debug APK and restored the normal test runner afterward.
+Only the verified BrowseScreen fix is published in this pass. Podcast preview
+cancellation and paused STATE_READY synchronization remain staged for focused
+regression checks; the installed APK includes them.
+
+Test incident: a tap immediately after Back landed on Talk before the navigation
+transition completed and briefly started it. Paused immediately. Restored Behind
+Blue Eyes by Limp Bizkit paused at the measured original 10,206 ms, using current
+favourites through a temporary controller recovery probe. The exact previous queue
+was not captured and cannot be claimed restored. The temporary probe was removed;
+normal FavoritesDragProbe source and test APK were restored. Future live probes
+must snapshot queue/state before navigation and wait for a confirmed destination
+before every subsequent tap.
+
+Additional candidate for investigation: passing all eight browsed favourites to
+MediaBrowser.setMediaItems with a selected index initially selected the wrong
+song. Passing the chosen item alone correctly restored Behind Blue Eyes. Review
+onAddMediaItems context expansion for multi-item requests; do not call this a
+confirmed application defect until reproduced in an isolated controller test.

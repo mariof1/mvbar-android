@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -148,7 +150,7 @@ private fun ArtistsGrid(
     onLongPress: ((Artist) -> Unit)? = null,
     bottomPadding: Dp = 0.dp
 ) {
-    val gridState = rememberLazyGridState()
+    val gridState = rememberSaveable(selectedLetter, saver = LazyGridState.Saver) { LazyGridState() }
 
     // Trigger load more when near end
     LaunchedEffect(gridState, hasMore, isLoadingMore, artists.size) {
@@ -156,10 +158,6 @@ private fun ArtistsGrid(
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             hasMore && !isLoadingMore && artists.isNotEmpty() && lastVisible >= artists.size - 6
         }.collect { if (it) onLoadMore() }
-    }
-
-    LaunchedEffect(selectedLetter) {
-        gridState.scrollToItem(0)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -227,17 +225,13 @@ private fun AlbumsGrid(
     onLongPress: ((Album) -> Unit)? = null,
     bottomPadding: Dp = 0.dp
 ) {
-    val gridState = rememberLazyGridState()
+    val gridState = rememberSaveable(selectedLetter, saver = LazyGridState.Saver) { LazyGridState() }
 
     LaunchedEffect(gridState, hasMore, isLoadingMore, albums.size) {
         snapshotFlow {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             hasMore && !isLoadingMore && albums.isNotEmpty() && lastVisible >= albums.size - 6
         }.collect { if (it) onLoadMore() }
-    }
-
-    LaunchedEffect(selectedLetter) {
-        gridState.scrollToItem(0)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
