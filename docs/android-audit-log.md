@@ -1088,3 +1088,19 @@ initial search guidance returned. Restored networking and closed the dialog;
 paused playback and subscriptions remained unchanged. No new defect confirmed.
 Android CI passed for fa992f4; the separate Android APK release workflow was
 still building signed release APKs during this pass.
+
+## 2026-09-08 — Release 1.1.34 and restricted Auto search entry
+
+Android CI for 16359ac and the Android APK release workflow for fa992f4 passed.
+Release v1.1.34 contains phone arm64, TV and Wear APKs plus SHA256SUMS. Fast-forwarded
+the local checkout to its d514078 version bump; emulator still uses the previously
+verified debug build, not the signed release APK.
+
+Started an isolated default touch DHU on 5277. Connection resumed the existing
+music queue via Auto's startup setting; paused at about 29 seconds. With restrict
+all enabled, player metadata/artwork and browse cards rendered. Opened search and
+tapped its field: it remained inactive with no keyboard, and showed the initial
+No items screen. Restored restrict none, kept playback paused, closed DHU and
+removed the test forward. No app defect confirmed. This is a narrow restriction
+smoke check, not full driving-distraction, voice or browse-depth coverage.
+Evidence: mvbar/.local/auto-restrict-{player,browse,search,input}.png.
