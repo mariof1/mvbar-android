@@ -808,3 +808,21 @@ Paused and closed the browser, restored locksettings set-disabled true and reope
 MVBar. Process 3531 remained alive. Screenshot: mvbar/.local/connect-lock.png.
 No new defect confirmed. This covers a swipe lock, not PIN-protected keyguard.
 Extended reconnect/selection stability and projected Auto lifecycle checks remain.
+
+## 2026-09-08 — Projected Auto regression after foreground-service fix
+
+CI passed for b896f93. No existing DHU process was active. Started an isolated
+headless DHU through port 5277 with the phone's existing paused 13-track music
+queue. The dashboard displayed Plan B, artist and artwork and resumed under the
+existing Android Auto auto-start setting. Tapped dashboard Pause: PAUSED at
+52028 ms. Quit DHU and backgrounded the app; the same queue and position remained.
+
+Reconnected DHU. After the initial loading card, artwork and transport controls
+returned; the session showed the same track and queue, playing from the retained
+position (64653 ms observed). Dashboard Pause worked again. Closed DHU, removed
+the test forward and reopened the phone app. No crash or playback-state regression
+confirmed. This verifies projected UI and session state, not audible quality.
+Evidence: mvbar/.local/auto-foreground-second-connection.png and
+.local/logs/auto-foreground-{paused,disconnected,reconnected}.log.
+Corrected the verification summary's stale podcast coverage exclusions to match
+the earlier completed outage and service-restoration tests.

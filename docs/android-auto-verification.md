@@ -141,8 +141,11 @@ network failure without chapter skipping, and touch retry at the retained positi
 after connectivity returned. See the network and touch recovery entries in the
 audit log for the fixes and evidence.
 
-Still unverified: rotary navigation, voice search, audible quality, driving
-restrictions, podcast-specific network interruption and process-death restoration.
+The later podcast audit verified network interruption/retry and service-only
+process-death restoration; see the dated entries in android-audit-log.md.
+
+Still unverified: rotary navigation, voice search, audible quality and driving
+restrictions.
 Media-browser success does not substitute for projected car-interface tests.
 
 ## BlueStacks limitation follow-up
