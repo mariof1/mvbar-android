@@ -980,3 +980,15 @@ available offline / 191 MB. The earlier 8-item display was not a persistent
 return-navigation defect. No code change required. Playback remained paused;
 no downloads were removed. Refresh while staying on an already open Settings
 screen and simultaneous cache writers remain separate unverified cases.
+
+## 2026-09-08 — Offline search clearing and reconnect
+
+CI passed for d9c34df. Disabled emulator Wi-Fi/mobile data and searched Plan:
+results rendered. Clear restored recent searches without retaining the result
+list. An unmatched test query showed No results found / Try a different search
+term. Restored networking, cleared it and searched Nocturnal: albums and songs
+loaded without reopening the app. Cleared and closed search afterward. No result
+was selected, favorites/history were not edited, and playback remained paused.
+No defect confirmed. This covers search UI recovery, not an assertion that every
+returned item is downloaded or playable offline. The upstream 1.1.33 version bump
+was preserved by the previous clean rebase.
