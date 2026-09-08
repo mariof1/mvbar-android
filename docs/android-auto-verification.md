@@ -1,5 +1,64 @@
 # Android Auto verification — 2026-09-07
 
+## Official emulator follow-up — 2026-09-08
+
+The BlueStacks blocker below has been bypassed using an official Android emulator.
+Installed Android Emulator 37.1.11 and the Google Play Android 14 x86_64 image
+(API 34, revision 14). Created `MVBar_Auto_API34` using the Pixel 5 profile,
+3 GB RAM, software graphics and Windows Hypervisor Platform acceleration.
+ADB serial: `emulator-5580`. Runtime audio policy exposes remote-submix input and
+output routes and active AudioRecord clients during Android Auto playback.
+
+Installed the existing MVBar debug APK (package version 1.1.30) and Android Auto
+17.5.663218 using the Google Play-installed base/split APKs from BlueStacks.
+Enabled Android Auto development mode, unknown sources for the debug app,
+the head-unit server and notification access through Android settings.
+Reconnected DHU after granting notification access to complete setup.
+Signed MVBar into the configured development server on this new test device.
+
+Live checks through the actual Windows DHU 2.0 interface passed:
+
+- Android Auto dashboard and launcher render; MVBar has its full logo.
+- MVBar's For You browse view loads and selecting Made For You starts a mix.
+- Now Playing displays artwork, title and artist; playback position advances.
+- DHU media-pause pauses playback (first observation: 15,575 ms).
+- Next while paused changes to When It Was Good, index 1, paused at zero.
+- Previous returns to Baby When the Light, index 0, paused at zero.
+- DHU media-play resumes; its on-screen pause button pauses again (16,187 ms).
+- Queue view displays the expected track order.
+- Disconnect/reconnect restores MVBar on the dashboard. Android Auto's enabled
+  Start music automatically setting resumes playback; it was paused again after
+  verification.
+
+DHU reported buffered audio on stream closure and Android showed active
+remote-submix capture. No NO_AUDIO_CAPTURE or MVBar playback exception was
+observed in the inspected logs. Audible output quality was not independently
+assessed. This is an initial smoke test, not complete Android Auto certification:
+voice, rotary input, driving restrictions, seek, long-form media and network-loss
+edge cases still need projected-interface checks. Google Maps location setup
+remains incomplete on this test emulator and is unrelated to MVBar playback.
+
+Local evidence is in the web repository's ignored `.local` folder:
+`auto-dhu-launcher2.png`, `auto-dhu-mvbar.png`, `auto-dhu-mix.png`,
+`auto-dhu-next.png`, `auto-dhu-queue.png` and `auto-dhu-final.png`.
+The login screen displayed 1.1.29 despite package metadata reporting 1.1.30;
+this build/version-display discrepancy needs a separate check.
+
+To resume on this workstation:
+
+1. Start the local npm server using the desktop **Start MVBar** shortcut.
+2. Start the existing AVD with the SDK emulator executable, for example
+   `emulator -avd MVBar_Auto_API34 -port 5580 -gpu software -memory 3072`.
+   Reuse it if `adb devices` already lists `emulator-5580`.
+3. Open Android Auto settings on the emulator and use the overflow menu's
+   **Start head unit server** if it is not already running.
+4. Run `adb -s emulator-5580 forward tcp:5277 tcp:5277`, then start the SDK's
+   `extras/google/auto/desktop-head-unit.exe --adb=5277`.
+   For scripted verification use `--headless` and DHU console commands.
+
+No BlueStacks system modifications were needed. Existing BlueStacks application
+data was preserved. The emulator's MVBar instance is a separate Connect player.
+
 ## Live results
 
 BlueStacks Android 9, MVBar debug 1.1.29, Android Auto installed through Google Play,

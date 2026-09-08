@@ -444,3 +444,15 @@ A real legacy MediaBrowser probe exposed ignored pagination across categories.
 Fixed page slicing, added three unit tests and a reusable read-only on-device
 instrumentation probe. Tests/lint/build and the live probe passed after the fix.
 Actual DHU UI, audio and car-control behavior remain unverified.
+
+## 2026-09-08 — Working Android Auto emulator and DHU smoke test
+
+Replaced the blocked BlueStacks test path with the official Google Play API 34
+emulator, keeping BlueStacks data intact. The new image has remote-submix capture;
+DHU now renders the dashboard and MVBar launcher/browse/player/queue interfaces.
+Verified mix playback, advancing position, metadata/artwork, pause/play,
+next/previous while paused, on-screen pause, and reconnection with Android Auto's
+configured automatic music resume. Paused the test player and closed DHU afterward.
+Detailed setup, evidence and remaining projected-interface tests are recorded in
+android-auto-verification.md. No application code was changed for this setup.
+Also observed a login version-label/package-version discrepancy for later checking.
