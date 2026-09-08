@@ -630,3 +630,23 @@ auto-restore-fix-build.log; projected screenshot auto-restore-after-fix.png.
 Prior commit ff5209b passed CI. Follow-up: podcast rewind-to-zero restoration
 needs separate coverage because its restore path can prefer a larger DB position;
 remote Connect, phone version consumers and rotary/voice checks remain open.
+
+## 2026-09-08 — Podcast rewind-to-zero restart check
+
+Tested the existing podcast episode through projected DHU: resumed near three
+minutes, paused, sought to zero, waited three seconds, force-stopped the test app,
+reopened MainActivity and reconnected the head unit. After queue initialization,
+the same episode restored paused at exactly zero. Subsequent Android Auto automatic
+playback started from the beginning, not the older listening position. An initial
+empty/NONE session was only startup state and was not counted as the result.
+
+No defect reproduced in this path and no app code changed. This specifically
+tests reopening the phone app before projection; service-only restoration without
+MainActivity remains unverified and must not be inferred from this pass. Paused
+the test player and closed the isolated DHU session/port forward afterward.
+
+Evidence: mvbar/.local/logs/podcast-zero-before-stop.log,
+podcast-zero-before-fix-restarted.log (filename predates the passing result),
+podcast-zero-restored-playing.log and .local/podcast-zero-*.png. Commit d82b6e1
+passed GitHub CI. Next: service-only restoration, remote Connect controls, podcast
+network failure, phone version consumers, rotary and voice.
