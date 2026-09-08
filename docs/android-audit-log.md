@@ -925,3 +925,19 @@ removal. Settings still reported 8 complete items / 162 MB. Opened Clear offline
 audio, verified its explanation and Cancel action, then cancelled. Counts and
 paused playback remained unchanged. No new defect confirmed; actual deletion,
 simultaneous writers and eviction remain untested to preserve the existing cache.
+
+## 2026-09-08 — Rotary input setup and dashboard transport
+
+CI passed for 40755d9. Default touchscreen DHU did not expose rotary focus.
+Restarted the isolated headless session with the SDK's config/rotary.ini
+(touch=false, controller=true) using --config and port 5277. This configuration
+showed focus outlines. dpad rotate right traversed dashboard focus; dpad right
+moved from the map area to MVBar's Play button. dpad click started Plan B,
+confirmed PLAYING at 10059 ms; a second click paused it. No touch input was used
+for this rotary-configured transport test. Closed DHU and removed the test forward.
+
+Evidence: mvbar/.local/auto-rotary-config.png and
+.local/logs/auto-rotary-{play,pause}.log. This is limited dashboard transport
+coverage: full MVBar browse/queue traversal, driving restrictions, voice and
+audible quality remain unverified. The SDK CLI help also exposes restrict
+none/all and focus audio/nav/video for future isolated tests.
