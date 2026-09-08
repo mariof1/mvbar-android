@@ -1078,3 +1078,12 @@ the error. Closed without subscribing; networking restored and playback paused.
 Evidence: mvbar/.local/podcast-search-offline-error.xml and
 .local/logs/podcast-search-error-build.log. The generic server/transport failure
 message was source-reviewed, not independently fault-injected in this pass.
+
+## 2026-09-08 — Discovery error draft editing and dismissal
+
+Submitted science offline and received the connection error. Edited the query to
+sciencenews without submitting: the old error was replaced with Tap Search to find
+podcasts. Closed and reopened discovery: query and error were cleared and the
+initial search guidance returned. Restored networking and closed the dialog;
+paused playback and subscriptions remained unchanged. No new defect confirmed.
+CI for fa992f4 was still running when checked during this pass.
