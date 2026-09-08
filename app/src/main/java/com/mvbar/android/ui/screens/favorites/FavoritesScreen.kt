@@ -135,11 +135,8 @@ fun FavoritesScreen(
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Play all")
+                        Text(if (isReordering) "Saving order…" else "Play all")
                     }
-                    Text(if (isReordering) "Saving order…" else "Hold a track or grip and drag to reorder",
-                        color = OnSurfaceDim, style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 140.dp)) {
                         items(ordered, key = { it.id }) { track ->
                             Row(verticalAlignment = Alignment.CenterVertically,
