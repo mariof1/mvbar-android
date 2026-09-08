@@ -619,18 +619,22 @@ class PlaybackService : MediaLibraryService() {
 
                 consecutiveErrors++
 
-                // If all tracks have been tried, pause instead of looping
-                if (consecutiveErrors > player.mediaItemCount) {
+                val isLongForm = specialPlaybackTarget(player.currentMediaItem) != null
+                val recovery = networkErrorRecovery(consecutiveErrors, player.mediaItemCount, isLongForm)
+                if (recovery == NetworkErrorRecovery.PAUSE) {
                     DebugLog.w("Player", "All tracks failed, pausing playback")
+                    retryJob?.cancel()
                     consecutiveErrors = 0
                     player.pause()
-                    player.prepare()
+                    // Keep the failed long-form item and position until an explicit retry.
+                    // Preparing again here would restart retries even while paused.
+                    if (!isLongForm) player.prepare()
                     return
                 }
 
                 // Retry current track with exponential backoff (up to 2 retries)
                 val retryCount = consecutiveErrors
-                if (retryCount <= 2) {
+                if (recovery == NetworkErrorRecovery.RETRY) {
                     val delayMs = retryCount * 2000L  // 2s, 4s
                     DebugLog.i("Player", "Retry $retryCount in ${delayMs}ms")
                     retryJob?.cancel()

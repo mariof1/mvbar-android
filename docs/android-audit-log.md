@@ -542,3 +542,36 @@ audible quality was not assessed. Local evidence: mvbar/.local/auto-longform-*.p
 and .local/logs/auto-longform-*.log, including the selected chapter screenshot and
 media-session states. Remaining checks include long-form reconnection/resume,
 network interruption, remote Connect seeking, rotary input and voice.
+
+## 2026-09-08 — Prevent long-form skipping after network failure
+
+Projected DHU reconnection retained the audiobook chapter and position: disconnect
+paused chapter 1 at 35032 ms; reconnect resumed the same chapter under Android
+Auto's existing automatic-resume setting.
+
+Confirmed a separate defect by disabling Wi-Fi and mobile data on the test
+emulator and seeking outside buffered audio. After three network failures, the
+service skipped from chapter 1 to cached chapter 2 and started playing it. Its
+music-oriented retry handler treated long-form content as skippable tracks.
+
+Long-form recovery now retries the current item twice, then pauses without
+changing item or position and without immediately preparing another retry loop.
+Single podcast episodes also receive both retries independently of queue size.
+Existing music recovery behavior is retained. Added three policy regression tests
+covering single episodes, multi-chapter audiobooks and music behavior.
+
+Validation: all 68 phone unit tests, lintDebug and assembleDebug passed. Installed
+the debug APK with adb install -r. Repeated the real projected outage, first
+discarding an attempt that hit previously cached audio. An uncached seek failed
+three times and remained on chapter 2/index 1 at 975623 ms with a Source error.
+After restoring connectivity, a DHU media_play command resumed the same item near
+that position (982415 ms observed), with no chapter skip. Android Auto displays
+its error screen while stopped; explicit hardware play recovery is verified,
+but touch-only recovery from that screen remains a follow-up UX check.
+
+Evidence: mvbar/.local/auto-network-before.png, auto-network-failure.png,
+auto-network-after-fix.png, auto-network-recovered.png and matching media-session
+logs under .local/logs; build log auto-network-fix-build.log. Restored both network
+settings, paused the test player, and closed the isolated DHU session. No audible
+quality claim is made. Next checks: touch-only recovery, podcast outage regression,
+remote Connect seeking, rotary/voice and remaining phone version consumers.
