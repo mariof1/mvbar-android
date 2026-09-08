@@ -692,3 +692,31 @@ settings-update-before/after.png, matching XML dumps and
 .local/logs/settings-version-fix-build.log. Prior docs commit d9b435b passed CI.
 Remaining: other version consumers in diagnostics/API/Connect may need separate
 verification; prioritize remote Connect controls next.
+
+## 2026-09-08 — Bidirectional web/Android Connect music controls
+
+Used a temporary localhost web tab and the official phone emulator, both signed
+in to the existing account. Both appeared in the Connect pickers. Started the
+13-song Made For You queue on Android from the web controller. Web pause and
+timeline seek produced PAUSED at 95000 ms in Android's media session; Next changed
+the track while retaining pause.
+
+Transferred the queue to the browser, still paused. Selected the browser from
+Android's Connect picker; its full-player timeline seek moved the web player to
+133.1 seconds (2:13 of 4:26). Android Play started browser playback. Paused the web
+player and transferred back to Android: queue size 13, index 1, position 167753 ms,
+PAUSED. Closed the temporary browser. No unrelated player was active.
+
+Coverage limitation confirmed: the Android Connect registration advertises music,
+remote-control and transfer, while connectStateJson filters out nonpositive track
+IDs. The paused podcast was consequently omitted from its advertised state and
+the web controller had no podcast transport controls. This is existing music-only
+scope, not a verified podcast-transfer implementation; full long-form Connect
+support requires coordinated protocol/client work and remains open.
+
+No new music-control defect confirmed. Local media-session evidence:
+mvbar/.local/logs/connect-web-to-android-seek.log and
+connect-transfer-back-android.log; browser accessibility observations confirmed
+the reverse seek/play. Prior code commit 0af5c51 passed CI. Next: assess the scope
+and requirements for long-form Connect, notification controls while remotely
+playing, disconnected targets, and remaining stale version consumers.
