@@ -747,3 +747,23 @@ version-metadata-fix-build.log and version-metadata-probe-build.log. This valida
 runtime values used by the sender code, not a captured network registration.
 Prior commit a17fdb6 passed CI. Next: remote notification controls and target
 disconnect behavior; full long-form Connect remains unsupported.
+
+## 2026-09-08 — Background remote notification and browser disconnect
+
+Opened an isolated localhost browser player, started Made For You, selected that
+browser on the official Android emulator, then backgrounded MVBar. The Android
+notification shade showed Plan B and its artist, remote output, timeline and
+transport controls. Notification Pause paused the browser at 78.6 seconds; Next
+changed to the Sharon Van Etten / Josh Homme track while paused. Notification Play
+started that track in the browser, confirmed by its advancing position and Pause
+control. These were actual notification taps, not direct transport commands.
+
+Paused and closed the temporary browser. The remote media card disappeared from
+the notification shade, and dumpsys media_session no longer listed MVBar Connect.
+Reopened Android: only the local player remained available and its prior paused
+track was shown. No unrelated playback was active. Screenshot evidence:
+mvbar/.local/remote-notification.png; browser accessibility observations verified
+the command outcomes. No defect confirmed or production code changed. Previous
+commit 9c8d2a8 passed GitHub CI. Still to check: remote notification seeking,
+locked-screen controls and abrupt network loss rather than graceful tab closure;
+full long-form Connect remains unsupported.
