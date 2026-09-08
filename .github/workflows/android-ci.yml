@@ -37,7 +37,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
 
       - name: Run unit tests and lint
-        run: ./gradlew :app:testDebugUnitTest :app:lintDebug --build-cache --parallel --console=plain
+        # Exercise release publication races using isolated local Git repositories.
+        # No GitHub credentials or Android signing secrets are needed.
+        run: |
+          node --test .github/scripts/publish-release-version.test.mjs
+          ./gradlew :app:testDebugUnitTest :app:lintDebug --build-cache --parallel --console=plain
 
       - name: Upload verification reports
         if: always()
