@@ -1012,3 +1012,14 @@ and Science Friday. Closed without subscribing or changing playback. Evidence:
 mvbar/.local/podcast-search-after.xml and .local/logs/podcast-search-cancel-build.log.
 The race was identified from control flow; live checks cover close/reopen and normal
 completion, not deterministic forced response reordering. CI for 7094937 passed.
+
+## 2026-09-08 — Podcast preview offline/reconnect
+
+CI passed for a0abf95. Searched science, disabled emulator Wi-Fi/mobile data and
+opened Discovery's Details. The preview retained show/author metadata and showed
+Podcast details need a network connection. Done returned to discovery results.
+Restored networking and reopened Details: language and description loaded
+(Explorations in the world of science). Closed preview and discovery without
+subscribing or changing playback. No defect confirmed in this flow. Preview
+request response-reordering remains unverified; search cancellation and preview
+cancellation are distinct paths.
