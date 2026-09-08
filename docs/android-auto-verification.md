@@ -130,10 +130,15 @@ adb -s DEVICE install -r app/build/outputs/apk/androidTest/debug/app-debug-andro
 adb -s DEVICE shell am instrument -w com.mvbar.android.test/com.mvbar.android.auto.AutoBrowseInstrumentation
 ```
 
-Still unverified on DHU: MVBar launcher appearance, touch/rotary navigation,
-voice search, actual audio, transport/seek controls, long-form playback, driving
-restrictions and reconnection during playback. Media-browser success does not
-substitute for these car-interface tests.
+The later official-emulator smoke tests verified the projected launcher, touch
+browsing, music transport and reconnect. The 2026-09-08 long-form pass additionally
+verified podcast and audiobook playback, on-screen and hardware 15-second seeking,
+rewind clamping at zero, audiobook queue selection while paused and timeline
+seeking. See android-audit-log.md for observations and evidence.
+
+Still unverified: rotary navigation, voice search, audible quality, driving
+restrictions, long-form reconnect/resume and network interruption. Media-browser
+success does not substitute for projected car-interface tests.
 
 ## BlueStacks limitation follow-up
 

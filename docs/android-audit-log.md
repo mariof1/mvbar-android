@@ -514,3 +514,31 @@ Prior search-pagination commit fa45389 passed GitHub CI.
 Next coverage: check the remaining BuildConfig.VERSION_NAME consumers (settings,
 update checks and diagnostics) for similar stale values, then continue the
 projected DHU long-form playback and seeking checks.
+
+## 2026-09-08 — Projected long-form playback and seeking
+
+Used the existing official API 34 emulator and an isolated headless DHU session
+through port 5277. No user DHU session was running. Android Auto's configured
+automatic music resume started the paused test music; paused it before proceeding.
+This pass used the installed debug build, not the new signed 1.1.31 release.
+
+Verified the actual projected Podcasts > New Episodes screen, episode artwork,
+title, resume position, duration, and playback. Paused at approximately 187 seconds.
+The on-screen Forward 15s action advanced to approximately 202 seconds; Back 15s
+and simulated steering-wheel next/previous returned the expected positions while
+remaining paused and retaining the same episode. The test ended near its initial
+paused position; ordinary playback added several seconds to the saved progress.
+
+Verified Audiobooks > 1984 > chapter browsing and playback, artwork, chapter title,
+duration, and a 26-item queue. Simulated next advanced about 15 seconds within the
+chapter, not to another chapter. Repeated previous clamped at zero while paused.
+Selecting chapter 2 from the projected queue changed the active item to index 1
+and preserved pause. Tapping its timeline moved to 530162 ms; seeking back to the
+start and selecting chapter 1 restored a paused position of zero. Closed DHU and
+removed this session's ADB port forward; left the emulator running.
+
+No application defect confirmed in this pass. Audio transport was active, but
+audible quality was not assessed. Local evidence: mvbar/.local/auto-longform-*.png
+and .local/logs/auto-longform-*.log, including the selected chapter screenshot and
+media-session states. Remaining checks include long-form reconnection/resume,
+network interruption, remote Connect seeking, rotary input and voice.
