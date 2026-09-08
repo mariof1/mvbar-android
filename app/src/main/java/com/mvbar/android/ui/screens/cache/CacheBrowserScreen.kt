@@ -341,6 +341,11 @@ private suspend fun loadCachedItems(context: android.content.Context): List<Cach
         }.associateBy { it.id }
     } else emptyMap()
 
+    // Episode detail responses may omit the denormalized show title.
+    val podcastMap = episodeMap.values.map { it.podcastId }.distinct().mapNotNull { id ->
+        db.podcastDao().getPodcast(id)
+    }.associateBy { it.id }
+
     return parsed.map { p ->
         val sizeBytes = AudioCacheManager.getCachedSizeBytes(p.key)
         val sizeMbStr = if (sizeBytes > 0) {
@@ -376,7 +381,9 @@ private suspend fun loadCachedItems(context: android.content.Context): List<Cach
                     type = CachedItemType.EPISODE,
                     id = p.id,
                     title = ep?.title ?: "Episode #${p.id}",
-                    subtitle = ep?.podcastTitle ?: "Podcast",
+                    subtitle = ep?.podcastTitle?.takeIf { it.isNotBlank() }
+                        ?: ep?.let { podcastMap[it.podcastId]?.title }?.takeIf { it.isNotBlank() }
+                        ?: "Podcast",
                     artUrl = ep?.podcastImagePath?.let { ApiClient.podcastArtPathUrl(it) }
                         ?: ep?.imageUrl
                         ?: ApiClient.episodeArtUrl(p.id),

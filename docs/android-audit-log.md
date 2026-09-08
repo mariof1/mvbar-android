@@ -954,3 +954,19 @@ Closed the isolated DHU and removed the forward; no production changes made.
 Evidence: mvbar/.local/auto-rotary-browse.png and
 .local/logs/auto-rotary-browse-final.log. Next rotary pass should wait for stable
 screens between each input and verify the focused control before activating it.
+
+## 2026-09-08 — Cached episode missing its show name
+
+The cache browser previously showed the downloaded TaZ episode with generic
+subtitle Podcast despite its parent show being stored locally. It only used the
+episode's optional denormalized podcastTitle. It now loads each distinct parent
+podcast from Room and uses its title when that field is absent or blank. This
+does not require networking or modify episode progress.
+
+Validation: unit tests, lintDebug and assembleDebug passed; installed APK with
+data preserved. Disabled Wi-Fi/mobile data, opened Manage and selected Episodes:
+the subtitle now reads Zurnalista - Rozmowy bez kompromisow (with Polish accents
+in the actual UI). Restored networking. Evidence:
+mvbar/.local/cache-podcast-title-offline.xml and
+.local/logs/cache-podcast-title-build.log. CI for bb9da6d passed; a separate
+user-triggered Android APK workflow was in progress at the start of this pass.
