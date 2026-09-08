@@ -41,7 +41,7 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     private suspend fun cachedTrackModels(): List<Track> =
         db?.trackDao()?.getAllForBrowse()?.map { it.toModel() }.orEmpty()
 
-    private fun derivedArtistsFromTracks(tracks: List<Track>): List<Artist> =
+    internal fun derivedArtistsFromTracks(tracks: List<Track>): List<Artist> =
         tracks
             .flatMap { track ->
                 val names = listOf(track.displayArtistName, track.artist, track.albumArtist)
@@ -54,7 +54,7 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
                 Artist(
                     name = name,
                     trackCount = artistTracks.map { it.id }.distinct().size,
-                    albumCount = artistTracks.mapNotNull { it.album?.trim()?.takeIf(String::isNotEmpty) }
+                    albumCount = artistTracks.map { it.browseAlbumName }
                         .distinctBy { it.lowercase() }
                         .size,
                     artPath = artistTracks.firstNotNullOfOrNull { it.artPath }
@@ -82,14 +82,13 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
         return merged.values.sortedBy { it.name.lowercase() }
     }
 
-    private fun derivedAlbumsFromTracks(tracks: List<Track>): List<Album> =
+    internal fun derivedAlbumsFromTracks(tracks: List<Track>): List<Album> =
         tracks
-            .filter { !it.album.isNullOrBlank() }
-            .groupBy { it.album!!.trim().lowercase() }
+            .groupBy { it.browseAlbumName.lowercase() }
             .map { (_, albumTracks) ->
                 val first = albumTracks.first()
                 Album(
-                    album = first.album?.trim(),
+                    album = first.browseAlbumName,
                     artist = first.artist,
                     displayArtist = first.displayAlbumArtist,
                     albumArtist = first.albumArtist,
@@ -282,7 +281,10 @@ class MusicRepository(private val db: MvbarDatabase? = null) {
     suspend fun getCachedTrackCount(): Int = db?.trackDao()?.count() ?: 0
 
     suspend fun getCachedAlbumTracks(album: String): List<Track>? =
-        db?.trackDao()?.getByAlbum(album)?.map { it.toModel() }
+        if (album.startsWith("Unknown Album — ")) {
+            cachedTrackModels().filter { it.browseAlbumName.equals(album.trim(), ignoreCase = true) }
+                .sortedWith(compareBy({ it.discNumber ?: 1 }, { it.trackNumber ?: 0 }, { it.title.orEmpty() }))
+        } else db?.trackDao()?.getByAlbum(album)?.map { it.toModel() }
 
     suspend fun getCachedArtistTracks(artist: String): List<Track>? =
         db?.trackDao()?.getByArtist(artist)?.map { it.toModel() }

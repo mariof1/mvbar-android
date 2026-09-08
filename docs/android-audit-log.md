@@ -1290,3 +1290,20 @@ MediaBrowser.setMediaItems with a selected index initially selected the wrong
 song. Passing the chosen item alone correctly restored Behind Blue Eyes. Review
 onAddMediaItems context expansion for multi-item requests; do not call this a
 confirmed application defect until reproduced in an isolated controller test.
+
+## 2026-09-08 — Offline Unknown Album groups
+
+Added a shared virtual browse album label matching the server's Unknown Album —
+artist convention, preferring albumArtist then artist. Offline album groups,
+derived artist counts, cached album detail lookup, and downloaded/playable album
+keys use this label without changing stored tags. Empty, null, and whitespace
+album tags group together for the same artist; different artists stay separate.
+
+Unit tests, lintDebug, assembleDebug and assembleDebugAndroidTest passed.
+Installed debug app/test APKs on emulator-5580 and ran the isolated Room probe:
+`-e scope offline-unknown-albums`. It verified group/count consistency, U/N letter
+filters, opening each artist's correct tracks, artist counts and unchanged null
+tags. INSTRUMENTATION_CODE was -1. This is a real on-device cache/repository test,
+not a network-disconnection or audible playback test. No user cache rows or
+favourites were changed. Build logs: offline-unknown-album-build.log and
+offline-unknown-album-probe-build.log in sibling mvbar/.local/logs.

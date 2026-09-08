@@ -7,6 +7,7 @@ import android.media.browse.MediaBrowser
 import android.os.Bundle
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.debug.DebugLog
+import com.mvbar.android.ui.verifyOfflineUnknownAlbums
 import com.mvbar.android.ui.verifyFavoritesDrag
 import com.mvbar.android.ui.verifyLoginVersion
 import org.json.JSONArray
@@ -16,6 +17,7 @@ import java.util.concurrent.TimeUnit
 
 /** Browse/search probes; queue-context scopes temporarily append and remove paused test items. */
 class AutoBrowseInstrumentation : Instrumentation() {
+    private var offlineAlbumsOnly = false
     private var favoritesDragOnly = false
     private var searchOnly = false
     private var queueContextOnly = false
@@ -25,6 +27,7 @@ class AutoBrowseInstrumentation : Instrumentation() {
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
+        offlineAlbumsOnly = arguments?.getString("scope") == "offline-unknown-albums"
         favoritesDragOnly = arguments?.getString("scope") == "favorites-drag"
         searchOnly = arguments?.getString("scope") == "search"
         queueContextIdOnly = arguments?.getString("scope") == "queue-context-id-only"
@@ -35,6 +38,11 @@ class AutoBrowseInstrumentation : Instrumentation() {
     }
 
     override fun onStart() {
+        if (offlineAlbumsOnly) {
+            try { finish(Activity.RESULT_OK, verifyOfflineUnknownAlbums()) }
+            catch (error: Throwable) { finish(Activity.RESULT_CANCELED, Bundle().apply { putString("error", error.toString()) }) }
+            return
+        }
         if (favoritesDragOnly) {
             try { finish(Activity.RESULT_OK, verifyFavoritesDrag()) }
             catch (error: Throwable) { finish(Activity.RESULT_CANCELED, Bundle().apply { putString("error", error.toString()) }) }

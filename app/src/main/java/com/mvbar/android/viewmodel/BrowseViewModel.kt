@@ -174,7 +174,7 @@ class BrowseViewModel(app: Application) : AndroidViewModel(app) {
             listOf(track.artist, track.displayArtistName, track.albumArtist)
                 .flatMap(::splitArtistValues)
         }.map(::availabilityKey).filter { it.isNotEmpty() }.toSet()
-        val albums = tracks.map { availabilityKey(it.album) }.filter { it.isNotEmpty() }.toSet()
+        val albums = tracks.map { availabilityKey(it.browseAlbumName) }.filter { it.isNotEmpty() }.toSet()
         val genres = tracks.flatMap { splitMetadataValues(it.genre) }
             .map(::availabilityKey)
             .filter { it.isNotEmpty() }
