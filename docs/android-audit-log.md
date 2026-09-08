@@ -671,3 +671,24 @@ podcast-outage-paused.log, podcast-outage-recovered.log and the corresponding
 .local/podcast-outage-*.png screenshots. Prior docs commit 3e02e14 passed CI.
 Next priority: remote Connect controls and phone UI/version consumers; rotary,
 voice and audible quality remain unverified.
+
+## 2026-09-08 — Installed version in Settings and update checks
+
+Confirmed on the phone UI: Android package metadata was 1.1.31, but Settings
+displayed Version 1.1.27. The update dialog also offered the already-installed
+1.1.31 release for download. Settings and AppUpdateManager used version constants
+retained from earlier incremental compilation, as previously seen on login.
+
+Added an installed-package version helper and used it for Settings, the update
+dialog's version text, update comparison and updater request headers. Missing
+metadata renders a Debug fallback; update checking reports an error rather than
+comparing an unknown version. No APK was downloaded or installed by the updater.
+
+Validation: 68 unit tests, lintDebug and assembleDebug passed. Installed the debug
+APK with adb install -r. Live Settings now shows Version 1.1.31 with Latest, and
+the update dialog says "You are on the latest version." Signed-in state and paused
+playback were preserved. Evidence: mvbar/.local/settings-version-before/after.png,
+settings-update-before/after.png, matching XML dumps and
+.local/logs/settings-version-fix-build.log. Prior docs commit d9b435b passed CI.
+Remaining: other version consumers in diagnostics/API/Connect may need separate
+verification; prioritize remote Connect controls next.

@@ -11,8 +11,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -20,7 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mvbar.android.BuildConfig
+import com.mvbar.android.installedAppVersion
 import com.mvbar.android.ui.theme.*
 
 @Composable
@@ -89,6 +91,8 @@ internal fun UpdateDialog(
 ) {
     val update = state.availableUpdate
     val changelogScroll = rememberScrollState()
+    val context = LocalContext.current
+    val version = remember(context) { installedAppVersion(context) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -111,7 +115,7 @@ internal fun UpdateDialog(
                     state.downloadedFile != null && update != null -> "Version ${update.version} is downloaded and ready to install."
                     update != null -> "Version ${update.version} is available."
                     state.hasChecked -> "You are on the latest version."
-                    else -> "Current version ${BuildConfig.VERSION_NAME}."
+                    else -> version?.let { "Current version $it." } ?: "Debug build."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = OnSurface

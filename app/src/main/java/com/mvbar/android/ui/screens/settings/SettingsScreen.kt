@@ -24,7 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.mvbar.android.BuildConfig
+import com.mvbar.android.installedAppVersion
 import com.mvbar.android.data.api.ApiClient
 import com.mvbar.android.data.AaPreferences
 import com.mvbar.android.data.local.MvbarDatabase
@@ -67,6 +67,7 @@ fun SettingsScreen(
     onResetRecommendationTuning: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val version = remember(context) { installedAppVersion(context) }
     val isOnline = LocalIsOnline.current
     val scope = rememberCoroutineScope()
     val authRepository = remember(context) { AuthRepository(context.applicationContext) }
@@ -182,7 +183,7 @@ fun SettingsScreen(
                 installPermissionNeeded = false
             )
             try {
-                val check = AppUpdateManager.checkForUpdates()
+                val check = AppUpdateManager.checkForUpdates(context)
                 val latest = if (check.updateAvailable) check.latest else null
                 val keepDownloadedFile = latest != null &&
                     existingDownloadedFile != null &&
@@ -337,7 +338,7 @@ fun SettingsScreen(
                     SettingsInfoRow(
                         icon = Icons.Filled.MusicNote,
                         title = "mvbar Android",
-                        subtitle = "Version ${BuildConfig.VERSION_NAME}",
+                        subtitle = version?.let { "Version $it" } ?: "Debug",
                         trailing = {
                             CompactUpdateButton(
                                 state = updateState,

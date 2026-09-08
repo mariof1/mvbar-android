@@ -6,7 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.core.content.FileProvider
-import com.mvbar.android.BuildConfig
+import com.mvbar.android.installedAppVersion
 import com.mvbar.android.debug.DebugLog
 import java.io.File
 import java.io.IOException
@@ -50,11 +50,13 @@ object AppUpdateManager {
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    suspend fun checkForUpdates(): AppUpdateCheck = withContext(Dispatchers.IO) {
+    suspend fun checkForUpdates(context: Context): AppUpdateCheck = withContext(Dispatchers.IO) {
+        val currentVersion = installedAppVersion(context)
+            ?: throw IOException("Cannot determine the installed app version")
         val request = Request.Builder()
             .url(RELEASE_API_URL)
             .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "mvbar-android/${BuildConfig.VERSION_NAME}")
+            .header("User-Agent", "mvbar-android/$currentVersion")
             .build()
 
         client.newCall(request).execute().use { response ->
@@ -81,9 +83,9 @@ object AppUpdateManager {
             )
 
             AppUpdateCheck(
-                currentVersion = BuildConfig.VERSION_NAME,
+                currentVersion = currentVersion,
                 latest = latest,
-                updateAvailable = isNewerVersion(latestVersion, BuildConfig.VERSION_NAME)
+                updateAvailable = isNewerVersion(latestVersion, currentVersion)
             )
         }
     }
@@ -101,7 +103,7 @@ object AppUpdateManager {
         val request = Request.Builder()
             .url(update.downloadUrl)
             .header("Accept", APK_MIME_TYPE)
-            .header("User-Agent", "mvbar-android/${BuildConfig.VERSION_NAME}")
+            .header("User-Agent", "mvbar-android/${installedAppVersion(context) ?: "debug"}")
             .build()
 
         client.newCall(request).execute().use { response ->
