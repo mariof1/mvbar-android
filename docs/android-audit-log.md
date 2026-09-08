@@ -1060,3 +1060,21 @@ Podcast and Science Friday. A fresh submitted mvbarzzzxq987654321 query showed N
 matches. Closed without subscribing or changing paused playback. Evidence:
 mvbar/.local/podcast-search-prompt-after.xml, .local/podcast-keyboard.png and
 .local/logs/podcast-search-prompt-build.log.
+
+## 2026-09-08 — Podcast discovery network errors
+
+CI passed for a14424a. Live offline discovery search for science incorrectly showed
+No matches: the request failure was logged but not exposed to the dialog. Added a
+separate search error state, an offline connection message and a generic request
+failure message with retry instructions. New searches and dialog close clear the
+error; request generation guards also protect asynchronous error publication.
+
+Validation: unit tests, lintDebug and assembleDebug passed; installed updated APK.
+With Wi-Fi/mobile data disabled, submitting science showed Podcast search needs a
+network connection. Reconnect and tap Search. After enabling networking, an
+immediate retry still reported offline while connectivity initialized; a subsequent
+retry returned Discovery, Science Magazine Podcast and Science Friday, clearing
+the error. Closed without subscribing; networking restored and playback paused.
+Evidence: mvbar/.local/podcast-search-offline-error.xml and
+.local/logs/podcast-search-error-build.log. The generic server/transport failure
+message was source-reviewed, not independently fault-injected in this pass.

@@ -236,6 +236,7 @@ fun MainScreen(
     val podcastEpisodes by podcastVm.episodes.collectAsState()
     val podcastSearchResults by podcastVm.searchResults.collectAsState()
     val podcastSearchLoading by podcastVm.searchLoading.collectAsState()
+    val podcastSearchError by podcastVm.searchError.collectAsState()
     val podcastPreview by podcastVm.preview.collectAsState()
     val podcastPreviewLoading by podcastVm.previewLoading.collectAsState()
     val podcastPreviewError by podcastVm.previewError.collectAsState()
@@ -415,6 +416,7 @@ fun MainScreen(
         SubscribePodcastDialog(
             searchResults = podcastSearchResults,
             searchLoading = podcastSearchLoading,
+            searchError = podcastSearchError,
             preview = podcastPreview,
             previewLoading = podcastPreviewLoading,
             previewError = podcastPreviewError,

@@ -45,6 +45,8 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _searchLoading = MutableStateFlow(false)
     val searchLoading: StateFlow<Boolean> = _searchLoading.asStateFlow()
+    private val _searchError = MutableStateFlow<String?>(null)
+    val searchError: StateFlow<String?> = _searchError.asStateFlow()
     private var searchJob: Job? = null
     private var searchGeneration = 0L
 
@@ -171,18 +173,26 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
         searchJob?.cancel()
         _searchResults.value = emptyList()
         _searchLoading.value = false
+        _searchError.value = null
         if (query.trim().length < 2) {
             return
         }
         searchJob = viewModelScope.launch {
             _searchLoading.value = true
             try {
+                if (!NetworkMonitor.isOnline.value) {
+                    _searchError.value = "Podcast search needs a network connection. Reconnect and tap Search."
+                    return@launch
+                }
                 val r = api.searchPodcasts(query.trim())
                 if (generation == searchGeneration) _searchResults.value = r.results
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 DebugLog.e("Podcast", "Search failed", e)
+                if (generation == searchGeneration) {
+                    _searchError.value = "Could not search podcasts. Please tap Search to try again."
+                }
             } finally {
                 if (generation == searchGeneration) _searchLoading.value = false
             }
@@ -195,6 +205,7 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
         searchJob = null
         _searchLoading.value = false
         _searchResults.value = emptyList()
+        _searchError.value = null
     }
 
     fun previewPodcast(feedUrl: String?) {

@@ -42,6 +42,7 @@ private enum class SubscribeTab { SEARCH, RSS }
 fun SubscribePodcastDialog(
     searchResults: List<PodcastSearchResult>,
     searchLoading: Boolean,
+    searchError: String?,
     preview: PodcastPreview?,
     previewLoading: Boolean,
     previewError: String?,
@@ -124,6 +125,7 @@ fun SubscribePodcastDialog(
                         onSearchQueryChange = { searchQuery = it },
                         searchResults = searchResults,
                         searchLoading = searchLoading,
+                        searchError = searchError,
                         subscribedFeedUrls = subscribedFeedUrls,
                         onSearch = {
                             submittedQuery = it.trim()
@@ -211,6 +213,7 @@ private fun SearchPodcastTab(
     onSearchQueryChange: (String) -> Unit,
     searchResults: List<PodcastSearchResult>,
     searchLoading: Boolean,
+    searchError: String?,
     subscribedFeedUrls: Set<String>,
     onSearch: (String) -> Unit,
     onDetails: (PodcastSearchResult) -> Unit,
@@ -273,6 +276,9 @@ private fun SearchPodcastTab(
                 }
                 !querySubmitted && searchResults.isEmpty() && !searchLoading -> item {
                     DialogEmptyState("Tap Search to find podcasts")
+                }
+                querySubmitted && searchError != null && !searchLoading -> item {
+                    DialogEmptyState(searchError)
                 }
                 searchResults.isEmpty() && !searchLoading -> item {
                     DialogEmptyState("No matches")
