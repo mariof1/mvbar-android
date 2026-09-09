@@ -30,6 +30,7 @@ class AutoBrowseInstrumentation : Instrumentation() {
     private var podcastPreviewOnly = false
     private var searchErrorOnly = false
     private var multiItemSelectionOnly = false
+    private var playbackClearOnly = false
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
@@ -44,10 +45,16 @@ class AutoBrowseInstrumentation : Instrumentation() {
         podcastPreviewOnly = arguments?.getString("scope") == "podcast-preview-cancellation"
         searchErrorOnly = arguments?.getString("scope") == "auto-search-error"
         multiItemSelectionOnly = arguments?.getString("scope") == "multi-item-selection"
+        playbackClearOnly = arguments?.getString("scope") == "playback-snapshot-clear"
         start()
     }
 
     override fun onStart() {
+        if (playbackClearOnly) {
+            try { finish(Activity.RESULT_OK, verifyPlaybackSnapshotClear()) }
+            catch (error: Throwable) { finish(Activity.RESULT_CANCELED, Bundle().apply { putString("error", error.stackTraceToString()) }) }
+            return
+        }
         if (multiItemSelectionOnly) {
             try { finish(Activity.RESULT_OK, verifyMultiItemSelection()) }
             catch (error: Throwable) { finish(Activity.RESULT_CANCELED, Bundle().apply { putString("error", error.stackTraceToString()) }) }

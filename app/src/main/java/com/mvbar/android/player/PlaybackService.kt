@@ -2743,7 +2743,13 @@ class PlaybackService : MediaLibraryService() {
                         artUri = meta.artworkUri?.toString()
                     )
                 }
-                if (entries.isEmpty()) return@launch
+                if (entries.isEmpty()) {
+                    // Clearing the active queue must also clear the reconnect
+                    // snapshot. Otherwise the last track unexpectedly returns
+                    // the next time the service or Android Auto starts.
+                    AaPreferences.clearPlaybackState(this@PlaybackService)
+                    return@launch
+                }
                 AaPreferences.savePlaybackState(
                     this@PlaybackService,
                     entries,

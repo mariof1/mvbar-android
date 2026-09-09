@@ -1351,3 +1351,19 @@ probe. It loaded all seven current favourites, requested index 2 through
 The probe snapshots and restores an existing paused queue; this run began and
 ended with an empty queue after an emulator restart. No application defect was
 confirmed. Scope: `multi-item-selection`.
+
+## 2026-09-09 — Cleared queue reconnect snapshot
+
+The multi-item follow-up exposed a separate persistence defect: after clearing
+the temporary queue, restarting the app restored its last selected track. The
+empty-queue path returned without clearing `AaPreferences`, leaving a stale
+Android Auto reconnect snapshot.
+
+`savePlaybackSnapshot` now clears persisted playback state when the active queue
+becomes empty. Added an isolated `playback-snapshot-clear` probe that waits for
+startup restoration, snapshots the paused queue, replaces and clears it, confirms
+the saved snapshot is absent, and restores the original queue and position.
+
+Unit tests, lintDebug, assembleDebug and assembleDebugAndroidTest passed. Both
+debug APKs were installed on `emulator-5580`; the probe passed and the phone
+returned to Behind Blue Eyes paused at 54,197 ms in its seven-item queue.
