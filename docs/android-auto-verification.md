@@ -144,8 +144,28 @@ audit log for the fixes and evidence.
 The later podcast audit verified network interruption/retry and service-only
 process-death restoration; see the dated entries in android-audit-log.md.
 
-Still unverified: rotary navigation, voice search, audible quality and driving
-restrictions.
+## Projected rotary-input pass — 2026-09-09
+
+Ran the Windows DHU headlessly against `emulator-5580` with touch and touchpad
+disabled and controller input enabled. Rotary input moved focus across the Android
+Auto dashboard, opened MVBar, traversed the player controls, opened the seven-item
+queue and selected its second track. The selected track remained paused, matching
+the MediaSession state. Rotary Back returned to MVBar's browse root, focus moved
+between For You cards, and selecting Discover Weekly started its 30-item queue.
+
+The software-rendered emulator skipped frames during the final bucket transition.
+The projected panel retained old artwork, a zero duration and its previous
+transport icon while the Android MediaSession already exposed the new title,
+30-item queue, real playback position and paused state. This was recorded as a DHU
+or emulator observation rather than attributed to MVBar; repeat it on a responsive
+projected device before changing playback metadata code. The phone was restored to
+Behind Blue Eyes, paused at 54,114 ms in its original seven-item queue.
+
+Local evidence is in the web repository's ignored `.local` folder, including
+`rotary-mvbar-root.png`, `rotary-queue.png`, `rotary-selected-second.png`,
+`rotary-browse-root.png`, `rotary-browse-second.png` and `rotary-mix.png`.
+
+Still unverified: voice search, audible quality and driving restrictions.
 Media-browser success does not substitute for projected car-interface tests.
 
 ## BlueStacks limitation follow-up

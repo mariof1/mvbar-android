@@ -1412,3 +1412,26 @@ start left its DataStore state intact. Launching the app then restored Behind Bl
 Eyes paused at 54,114 ms with all seven queue items.
 
 Unit tests, `lintDebug`, `assembleDebug` and `assembleDebugAndroidTest` passed.
+
+## 2026-09-09 — Projected rotary navigation
+
+Completed a controller-only Windows DHU pass against `emulator-5580`, with touch
+and touchpad disabled. Rotary focus crossed the Android Auto dashboard and opened
+MVBar. Inside MVBar it traversed player controls, opened the real seven-item queue,
+moved to the second row and selected 1990s while preserving the paused transport
+state. Rotary Back returned to the browse root; focus moved from Made For You to
+Discover Weekly, whose click started a 30-item recommendation queue.
+
+The final bucket transition exposed an emulator-side follow-up rather than a
+confirmed app defect. The software-rendered Gearhead process skipped frames and its
+projected panel retained the prior artwork, zero duration and prior transport icon,
+although Android's MediaSession reported Niewiara (Radio Edit), a nonzero playback
+position, a 30-item queue and PAUSED. Existing track metadata contained the correct
+duration and artwork URI, and the same bucket path rendered correctly in the prior
+touch pass. Keep this for repetition on a responsive projected device before
+changing MVBar metadata behavior.
+
+Closed DHU and removed its ADB forward. Restored the phone to Behind Blue Eyes by
+Limp Bizkit, paused at exactly 54,114 ms in the original seven-item favourites
+queue. Unit tests, lint, debug APK and instrumentation APK had passed on the same
+commit before the live pass; no crash or ANR appeared in focused logs.
