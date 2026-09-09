@@ -1674,6 +1674,10 @@ class PlaybackService : MediaLibraryService() {
                     session.notifySearchResultChanged(browser, query, items.size, params)
                 } catch (e: Exception) {
                     DebugLog.e("Auto", "Search error", e)
+                    // Complete the asynchronous search contract even when the
+                    // server is unavailable. Without this notification Android
+                    // Auto keeps waiting for results and leaves search loading.
+                    session.notifySearchResultChanged(browser, query, 0, params)
                 }
             }
             return Futures.immediateFuture(LibraryResult.ofVoid())

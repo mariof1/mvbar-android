@@ -1323,3 +1323,22 @@ the second remained visible. Starting another delayed preview and immediately
 clearing it left no stale result, error, or loading state. The probe restores the
 original ApiClient URL/token in `finally` and does not subscribe to a podcast or
 change playback. Scope: `podcast-preview-cancellation`.
+
+## 2026-09-09 — Android Auto search failure completion
+
+Reviewed the Media3 search failure path and found that a server error was only
+logged. The asynchronous search request had already returned success, but its
+controller was never notified, so Android Auto could remain in a loading state.
+The callback now announces zero results on failure, completing the Media3 search
+contract while retaining the existing error log.
+
+Added an on-device `auto-search-error` probe that temporarily points the real
+service search path at a closed loopback port. It received a zero-result
+notification within the deadline. The probe restores the original API URL and
+token in `finally`. The normal search probe then returned all 22 `love` results
+across pages of 5/5/5/5/2 with stable ordering and no duplicates.
+
+Unit tests, lintDebug, assembleDebug and assembleDebugAndroidTest passed. Installed
+both debug APKs on `emulator-5580`; the phone returned to For You and restored
+Behind Blue Eyes paused at 54,197 ms in its seven-item queue. This verifies the
+MediaBrowser callback behavior, not a projected DHU error screen.
