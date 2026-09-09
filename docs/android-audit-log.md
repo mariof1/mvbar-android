@@ -1307,3 +1307,19 @@ tags. INSTRUMENTATION_CODE was -1. This is a real on-device cache/repository tes
 not a network-disconnection or audible playback test. No user cache rows or
 favourites were changed. Build logs: offline-unknown-album-build.log and
 offline-unknown-album-probe-build.log in sibling mvbar/.local/logs.
+
+## 2026-09-09 — Paused-position restore and podcast preview cancellation
+
+Completed the two staged fixes after playback became idle. After a clean emulator
+boot, PlaybackService restored Behind Blue Eyes paused at 54,197 ms in its seven-item
+queue. Opening the real portrait player showed 0:54 of 4:30, matching the media
+session instead of the previously reproduced 0:00. The STATE_READY listener now
+samples both controller position and duration. No transport control was sent.
+
+Added an isolated on-device preview race probe using the real Retrofit and
+PodcastViewModel path against a loopback fixture server. A delayed first preview
+was replaced by a fast second preview; after the first response window elapsed,
+the second remained visible. Starting another delayed preview and immediately
+clearing it left no stale result, error, or loading state. The probe restores the
+original ApiClient URL/token in `finally` and does not subscribe to a podcast or
+change playback. Scope: `podcast-preview-cancellation`.

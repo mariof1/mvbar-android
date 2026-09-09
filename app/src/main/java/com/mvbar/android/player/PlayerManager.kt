@@ -264,6 +264,7 @@ class PlayerManager private constructor(private val context: Context) {
                 if (_state.value.isCasting) return
                 if (playbackState == Player.STATE_READY) {
                     _state.value = _state.value.copy(
+                        position = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L,
                         duration = controller?.duration?.coerceAtLeast(0L) ?: 0L
                     )
                 }

@@ -11,6 +11,7 @@ import com.mvbar.android.ui.verifyOfflineUnknownAlbums
 import com.mvbar.android.ui.verifyPlayerSwipe
 import com.mvbar.android.ui.verifyFavoritesDrag
 import com.mvbar.android.ui.verifyLoginVersion
+import com.mvbar.android.ui.verifyPodcastPreviewCancellation
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
@@ -26,6 +27,7 @@ class AutoBrowseInstrumentation : Instrumentation() {
     private var queueContextIdOnly = false
     private var loginVersionOnly = false
     private var versionMetadataOnly = false
+    private var podcastPreviewOnly = false
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
@@ -37,10 +39,16 @@ class AutoBrowseInstrumentation : Instrumentation() {
         queueContextOnly = queueContextIdOnly || arguments?.getString("scope") == "queue-context"
         loginVersionOnly = arguments?.getString("scope") == "login-version"
         versionMetadataOnly = arguments?.getString("scope") == "version-metadata"
+        podcastPreviewOnly = arguments?.getString("scope") == "podcast-preview-cancellation"
         start()
     }
 
     override fun onStart() {
+        if (podcastPreviewOnly) {
+            try { finish(Activity.RESULT_OK, verifyPodcastPreviewCancellation()) }
+            catch (error: Throwable) { finish(Activity.RESULT_CANCELED, Bundle().apply { putString("error", error.stackTraceToString()) }) }
+            return
+        }
         if (playerSwipeOnly) {
             try { finish(Activity.RESULT_OK, verifyPlayerSwipe()) }
             catch (error: Throwable) { finish(Activity.RESULT_CANCELED, Bundle().apply { putString("error", error.stackTraceToString()) }) }

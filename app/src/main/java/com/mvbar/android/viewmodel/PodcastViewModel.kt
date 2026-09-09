@@ -58,6 +58,8 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _previewError = MutableStateFlow<String?>(null)
     val previewError: StateFlow<String?> = _previewError.asStateFlow()
+    private var previewJob: Job? = null
+    private var previewGeneration = 0L
 
     // Loading states
     private val _isLoading = MutableStateFlow(false)
@@ -209,13 +211,15 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun previewPodcast(feedUrl: String?) {
+        clearPreview()
+        val generation = previewGeneration
         if (feedUrl.isNullOrBlank()) {
             _preview.value = null
             _previewError.value = "No RSS feed available"
             _previewLoading.value = false
             return
         }
-        viewModelScope.launch {
+        previewJob = viewModelScope.launch {
             _preview.value = null
             _previewError.value = null
             _previewLoading.value = true
@@ -225,18 +229,25 @@ class PodcastViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
                 val r = api.previewPodcast(feedUrl)
-                _preview.value = r.preview
-                if (r.preview == null) _previewError.value = "No podcast details available"
+                if (generation == previewGeneration) {
+                    _preview.value = r.preview
+                    if (r.preview == null) _previewError.value = "No podcast details available"
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DebugLog.e("Podcast", "Preview failed", e)
-                _previewError.value = e.message ?: "Preview failed"
+                if (generation == previewGeneration) _previewError.value = e.message ?: "Preview failed"
             } finally {
-                _previewLoading.value = false
+                if (generation == previewGeneration) _previewLoading.value = false
             }
         }
     }
 
     fun clearPreview() {
+        previewGeneration++
+        previewJob?.cancel()
+        previewJob = null
         _preview.value = null
         _previewError.value = null
         _previewLoading.value = false
