@@ -1367,3 +1367,31 @@ the saved snapshot is absent, and restores the original queue and position.
 Unit tests, lintDebug, assembleDebug and assembleDebugAndroidTest passed. Both
 debug APKs were installed on `emulator-5580`; the probe passed and the phone
 returned to Behind Blue Eyes paused at 54,197 ms in its seven-item queue.
+
+## 2026-09-09 — Preserve the queue during service shutdown
+
+Live `adb install -r` regression exposed a shutdown edge case in the preceding
+empty-queue fix. `onDestroy` synchronously saved the real seven-item queue, then
+`player.release()` emitted an empty media transition. The asynchronous snapshot
+saver treated that release as an explicit queue clear and removed the snapshot.
+After the update, the phone reopened with no mini-player or Android Auto queue.
+
+PlaybackService now marks its shutdown before releasing the player. Empty queue
+transitions still clear a stale snapshot during normal runtime, while the release
+transition leaves the snapshot saved by `onDestroy` intact. Recreated the original
+seven-favourite queue with Behind Blue Eyes paused at 54,197 ms, confirmed the
+DataStore snapshot, reinstalled the updated APK, and reopened the app. The same
+queue restored paused at exactly 54,197 ms. The normal test APK was restored after
+the temporary recovery probe; the final phone state is paused at 54,114 ms after
+a UI timeline check.
+
+The same review found a separate Android Auto Love-button race. Favourite status
+is loaded asynchronously after a media transition; an older track's lookup could
+finish after a newer transition, or after the user pressed Love, and overwrite the
+current icon. Lookups now use a generation guard plus the current media ID, and a
+Love command invalidates any pending lookup before updating the icon.
+
+Validation: app unit tests, `lintDebug`, `assembleDebug` and
+`assembleDebugAndroidTest` passed. The fixed debug APK and the restored normal test
+APK are installed on `emulator-5580`; no MVBar crash or ANR appeared in the focused
+post-install smoke check.

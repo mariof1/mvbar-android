@@ -105,6 +105,7 @@ class PlaybackService : MediaLibraryService() {
     /** Job that eventually releases foreground after extended pause */
     private var foregroundTimeoutJob: Job? = null
     private var remoteNotificationJob: Job? = null
+    private var serviceDestroying = false
 
     /**
      * When the audio output route changes (BT/USB disconnect → phone speaker),
@@ -930,18 +931,10 @@ class PlaybackService : MediaLibraryService() {
                     startProgressSaving(p)
                 }
 
-                // Check favorite status for the new track
-                if (newTrackId != null && newTrackId > 0) {
-                    serviceScope.launch {
-                        libraryCallback.currentTrackFavorite = try {
-                            db.favoriteDao().getFavorites().any { it.id == newTrackId }
-                        } catch (_: Exception) { false }
-                        libraryCallback.updateCustomLayout(session)
-                    }
-                } else {
-                    libraryCallback.currentTrackFavorite = false
-                    libraryCallback.updateCustomLayout(session)
-                }
+                // Check favorite status for the new track. The database lookup is
+                // asynchronous, so discard it if another transition or a Love
+                // command happens before the result arrives.
+                libraryCallback.refreshCurrentTrackFavorite(session, newTrackId)
 
                 // Persist queue state for AA reconnect resume
                 savePlaybackSnapshot(session.player)
@@ -1033,6 +1026,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        serviceDestroying = true
         remoteNotificationJob?.cancel()
         // Save playback state and episode progress before shutting down
         try { unregisterReceiver(noisyReceiver) } catch (_: Exception) {}
@@ -1062,6 +1056,8 @@ class PlaybackService : MediaLibraryService() {
                             player.currentMediaItemIndex,
                             player.currentPosition.coerceAtLeast(0L)
                         )
+                    } else {
+                        AaPreferences.clearPlaybackState(this@PlaybackService)
                     }
                 } catch (_: Exception) {}
             }
@@ -1199,6 +1195,26 @@ class PlaybackService : MediaLibraryService() {
         private val TOGGLE_FAVORITE = SessionCommand(CUSTOM_ACTION_TOGGLE_FAVORITE, Bundle.EMPTY)
 
         var currentTrackFavorite = false
+        private var favoriteLookupGeneration = 0L
+
+        fun refreshCurrentTrackFavorite(session: MediaSession, trackId: Int?) {
+            val generation = ++favoriteLookupGeneration
+            if (trackId == null || trackId <= 0) {
+                currentTrackFavorite = false
+                updateCustomLayout(session)
+                return
+            }
+            serviceScope.launch {
+                val favorite = try {
+                    db.favoriteDao().getFavorites().any { it.id == trackId }
+                } catch (_: Exception) { false }
+                val currentTrackId = session.player.currentMediaItem?.mediaId?.toIntOrNull()
+                if (generation == favoriteLookupGeneration && currentTrackId == trackId) {
+                    currentTrackFavorite = favorite
+                    updateCustomLayout(session)
+                }
+            }
+        }
 
         private fun isPodcastOrAudiobook(item: MediaItem?): Boolean =
             specialPlaybackTarget(item) != null
@@ -1412,6 +1428,9 @@ class PlaybackService : MediaLibraryService() {
                 CUSTOM_ACTION_TOGGLE_FAVORITE -> {
                     val trackId = session.player.currentMediaItem?.mediaId?.toIntOrNull()
                     if (trackId != null && trackId > 0) {
+                        // An in-flight lookup reflects the state before this
+                        // command and must not overwrite the optimistic icon.
+                        favoriteLookupGeneration++
                         val action = if (currentTrackFavorite)
                             ActivityQueue.ACTION_REMOVE_FAVORITE
                         else
@@ -2744,6 +2763,11 @@ class PlaybackService : MediaLibraryService() {
                     )
                 }
                 if (entries.isEmpty()) {
+                    // Releasing the player during onDestroy emits an empty queue
+                    // transition after the real queue was saved above. Preserve
+                    // that shutdown snapshot; only an explicit runtime clear
+                    // should remove it.
+                    if (serviceDestroying) return@launch
                     // Clearing the active queue must also clear the reconnect
                     // snapshot. Otherwise the last track unexpectedly returns
                     // the next time the service or Android Auto starts.
