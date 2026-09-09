@@ -1342,3 +1342,12 @@ Unit tests, lintDebug, assembleDebug and assembleDebugAndroidTest passed. Instal
 both debug APKs on `emulator-5580`; the phone returned to For You and restored
 Behind Blue Eyes paused at 54,197 ms in its seven-item queue. This verifies the
 MediaBrowser callback behavior, not a projected DHU error screen.
+
+## 2026-09-09 — Multi-item controller start index
+
+Closed the earlier wrong-selection candidate with a focused Media3 controller
+probe. It loaded all seven current favourites, requested index 2 through
+`setMediaItems`, prepared without playing, and selected the expected track ID 4787.
+The probe snapshots and restores an existing paused queue; this run began and
+ended with an empty queue after an emulator restart. No application defect was
+confirmed. Scope: `multi-item-selection`.

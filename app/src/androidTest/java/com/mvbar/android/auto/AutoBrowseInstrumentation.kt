@@ -29,6 +29,7 @@ class AutoBrowseInstrumentation : Instrumentation() {
     private var versionMetadataOnly = false
     private var podcastPreviewOnly = false
     private var searchErrorOnly = false
+    private var multiItemSelectionOnly = false
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
@@ -42,10 +43,16 @@ class AutoBrowseInstrumentation : Instrumentation() {
         versionMetadataOnly = arguments?.getString("scope") == "version-metadata"
         podcastPreviewOnly = arguments?.getString("scope") == "podcast-preview-cancellation"
         searchErrorOnly = arguments?.getString("scope") == "auto-search-error"
+        multiItemSelectionOnly = arguments?.getString("scope") == "multi-item-selection"
         start()
     }
 
     override fun onStart() {
+        if (multiItemSelectionOnly) {
+            try { finish(Activity.RESULT_OK, verifyMultiItemSelection()) }
+            catch (error: Throwable) { finish(Activity.RESULT_CANCELED, Bundle().apply { putString("error", error.stackTraceToString()) }) }
+            return
+        }
         if (searchErrorOnly) {
             try { finish(Activity.RESULT_OK, verifyAutoSearchError()) }
             catch (error: Throwable) { finish(Activity.RESULT_CANCELED, Bundle().apply { putString("error", error.stackTraceToString()) }) }
