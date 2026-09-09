@@ -1395,3 +1395,20 @@ Validation: app unit tests, `lintDebug`, `assembleDebug` and
 `assembleDebugAndroidTest` passed. The fixed debug APK and the restored normal test
 APK are installed on `emulator-5580`; no MVBar crash or ANR appeared in the focused
 post-install smoke check.
+
+## 2026-09-09 — Guard playback snapshot restoration at startup
+
+A fresh PlaybackService process exposed one remaining snapshot race. An initial
+empty player callback could run before the asynchronous DataStore restore and
+erase the saved queue. Capturing the queue, index, and position synchronously now
+gives each save a generation. Empty callbacks are ignored until that service
+instance has observed a populated queue, while a later explicit runtime clear
+still removes the persisted state.
+
+The `playback-snapshot-clear` probe now fails unless it confirms that its restored
+queue was actually persisted. It passed on `emulator-5580`: the explicit clear
+removed the snapshot, the seven-item queue was restored, and a service-only fresh
+start left its DataStore state intact. Launching the app then restored Behind Blue
+Eyes paused at 54,114 ms with all seven queue items.
+
+Unit tests, `lintDebug`, `assembleDebug` and `assembleDebugAndroidTest` passed.

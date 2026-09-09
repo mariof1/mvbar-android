@@ -75,13 +75,18 @@ internal fun Instrumentation.verifyPlaybackSnapshotClear(): Bundle {
             waitForReady(browser, originalItems[originalIndex.coerceAtMost(originalItems.lastIndex)].mediaId, originalPosition)
             // Allow the asynchronous DataStore snapshot to complete before the
             // instrumentation process exits and the service is reclaimed.
+            var restored = false
             for (attempt in 0 until 40) {
                 val saved = runBlocking { AaPreferences.getSavedPlaybackState(targetContext) }
                 if (saved?.entries?.size == originalItems.size &&
                     saved.entries.getOrNull(saved.index)?.mediaId == originalItems[originalIndex].mediaId &&
-                    abs(saved.positionMs - originalPosition) < 1_000L) break
+                    abs(saved.positionMs - originalPosition) < 1_000L) {
+                    restored = true
+                    break
+                }
                 Thread.sleep(250)
             }
+            check(restored) { "Restored queue was not persisted" }
         }
         runOnMainSync { browser.release() }
     }

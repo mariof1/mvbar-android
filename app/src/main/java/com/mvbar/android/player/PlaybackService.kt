@@ -106,6 +106,8 @@ class PlaybackService : MediaLibraryService() {
     private var foregroundTimeoutJob: Job? = null
     private var remoteNotificationJob: Job? = null
     private var serviceDestroying = false
+    private var hasObservedPlaybackQueue = false
+    private var playbackSnapshotGeneration = 0L
 
     /**
      * When the audio output route changes (BT/USB disconnect → phone speaker),
@@ -1056,8 +1058,6 @@ class PlaybackService : MediaLibraryService() {
                             player.currentMediaItemIndex,
                             player.currentPosition.coerceAtLeast(0L)
                         )
-                    } else {
-                        AaPreferences.clearPlaybackState(this@PlaybackService)
                     }
                 } catch (_: Exception) {}
             }
@@ -2749,25 +2749,37 @@ class PlaybackService : MediaLibraryService() {
 
     /** Save current queue, index, and position for AA reconnect resume */
     private fun savePlaybackSnapshot(player: Player) {
+        val generation = ++playbackSnapshotGeneration
+        val entries = try {
+            (0 until player.mediaItemCount).map { i ->
+                val item = player.getMediaItemAt(i)
+                val meta = item.mediaMetadata
+                AaPreferences.QueueEntry(
+                    mediaId = item.mediaId,
+                    title = meta.title?.toString(),
+                    artist = meta.artist?.toString(),
+                    album = meta.albumTitle?.toString(),
+                    artUri = meta.artworkUri?.toString()
+                )
+            }
+        } catch (_: Exception) {
+            return
+        }
+        val index = player.currentMediaItemIndex
+        val position = player.currentPosition.coerceAtLeast(0L)
+        val shouldClear = entries.isEmpty() && hasObservedPlaybackQueue && !serviceDestroying
+        if (entries.isNotEmpty()) hasObservedPlaybackQueue = true
+
         serviceScope.launch {
             try {
-                val entries = (0 until player.mediaItemCount).map { i ->
-                    val item = player.getMediaItemAt(i)
-                    val meta = item.mediaMetadata
-                    AaPreferences.QueueEntry(
-                        mediaId = item.mediaId,
-                        title = meta.title?.toString(),
-                        artist = meta.artist?.toString(),
-                        album = meta.albumTitle?.toString(),
-                        artUri = meta.artworkUri?.toString()
-                    )
-                }
+                // A newer player event owns the final persisted state. This also
+                // prevents an initial empty callback from racing queue restore.
+                if (generation != playbackSnapshotGeneration) return@launch
                 if (entries.isEmpty()) {
-                    // Releasing the player during onDestroy emits an empty queue
-                    // transition after the real queue was saved above. Preserve
-                    // that shutdown snapshot; only an explicit runtime clear
-                    // should remove it.
-                    if (serviceDestroying) return@launch
+                    // Ignore empty startup/release callbacks. An empty queue only
+                    // clears persistence after this service has actually observed
+                    // a populated queue, which identifies an explicit runtime clear.
+                    if (!shouldClear) return@launch
                     // Clearing the active queue must also clear the reconnect
                     // snapshot. Otherwise the last track unexpectedly returns
                     // the next time the service or Android Auto starts.
@@ -2777,8 +2789,8 @@ class PlaybackService : MediaLibraryService() {
                 AaPreferences.savePlaybackState(
                     this@PlaybackService,
                     entries,
-                    player.currentMediaItemIndex,
-                    player.currentPosition.coerceAtLeast(0L)
+                    index,
+                    position
                 )
             } catch (_: Exception) {}
         }
