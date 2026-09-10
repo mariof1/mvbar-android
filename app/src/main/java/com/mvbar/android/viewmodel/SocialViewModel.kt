@@ -10,6 +10,7 @@ import com.mvbar.android.data.model.TrackShare
 import com.mvbar.android.data.repository.SocialRepository
 import com.mvbar.android.debug.DebugLog
 import com.mvbar.android.social.SocialRealtimeManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,6 +51,8 @@ class SocialViewModel(app: Application) : AndroidViewModel(app) {
     val shareDialog: StateFlow<ShareDialogState> = _shareDialog.asStateFlow()
 
     private var searchJob: Job? = null
+    private var shareTargetsJob: Job? = null
+    private var shareDialogGeneration = 0L
 
     init {
         refresh()
@@ -144,26 +147,35 @@ class SocialViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openShareDialog(trackId: Int) {
+        val generation = ++shareDialogGeneration
+        shareTargetsJob?.cancel()
         _shareDialog.value = ShareDialogState(trackId = trackId, isLoading = true)
-        viewModelScope.launch {
+        shareTargetsJob = viewModelScope.launch {
             try {
                 val response = repository.getShareTargets(trackId)
-                if (_shareDialog.value.trackId == trackId) {
+                if (generation == shareDialogGeneration && _shareDialog.value.trackId == trackId) {
                     _shareDialog.value = _shareDialog.value.copy(
                         targets = response.friends,
                         isLoading = false
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _shareDialog.value = _shareDialog.value.copy(
-                    isLoading = false,
-                    error = errorMessage(e)
-                )
+                if (generation == shareDialogGeneration && _shareDialog.value.trackId == trackId) {
+                    _shareDialog.value = _shareDialog.value.copy(
+                        isLoading = false,
+                        error = errorMessage(e)
+                    )
+                }
             }
         }
     }
 
     fun closeShareDialog() {
+        shareDialogGeneration++
+        shareTargetsJob?.cancel()
+        shareTargetsJob = null
         _shareDialog.value = ShareDialogState()
     }
 
@@ -172,19 +184,32 @@ class SocialViewModel(app: Application) : AndroidViewModel(app) {
         message: String?,
         onShared: (Int) -> Unit
     ) {
-        val trackId = _shareDialog.value.trackId ?: return
+        val dialog = _shareDialog.value
+        val trackId = dialog.trackId ?: return
         if (recipientIds.isEmpty()) return
+        if (dialog.isSending) return
+        val generation = shareDialogGeneration
         viewModelScope.launch {
+            if (generation != shareDialogGeneration || _shareDialog.value.trackId != trackId) {
+                return@launch
+            }
             _shareDialog.value = _shareDialog.value.copy(isSending = true, error = null)
             try {
                 val response = repository.shareTrack(trackId, recipientIds, message)
-                _shareDialog.value = ShareDialogState()
+                if (generation == shareDialogGeneration && _shareDialog.value.trackId == trackId) {
+                    shareDialogGeneration++
+                    _shareDialog.value = ShareDialogState()
+                }
                 onShared(response.shared)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _shareDialog.value = _shareDialog.value.copy(
-                    isSending = false,
-                    error = errorMessage(e)
-                )
+                if (generation == shareDialogGeneration && _shareDialog.value.trackId == trackId) {
+                    _shareDialog.value = _shareDialog.value.copy(
+                        isSending = false,
+                        error = errorMessage(e)
+                    )
+                }
             }
         }
     }

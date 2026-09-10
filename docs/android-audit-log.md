@@ -1435,3 +1435,25 @@ Closed DHU and removed its ADB forward. Restored the phone to Behind Blue Eyes b
 Limp Bizkit, paused at exactly 54,114 ms in the original seven-item favourites
 queue. Unit tests, lint, debug APK and instrumentation APK had passed on the same
 commit before the live pass; no crash or ANR appeared in focused logs.
+
+## 2026-09-10 — Share dialog request ownership
+
+Code-path review confirmed that closing the Share song dialog did not cancel its
+target request. A failed old request then wrote an error into the closed state or
+a newly opened dialog. Reopening the same track also allowed an older successful
+request to replace the new target list, and completion of an earlier share could
+close a newer dialog. The public action accepted duplicate submissions even though
+the UI normally disables its button.
+
+Share target loading now has a cancellable job and request generation. Success and
+failure may update only the dialog instance that started them; closing or opening
+another dialog invalidates pending work. Share completion and failure use the same
+ownership check, so an older operation cannot close or add an error to a newer
+dialog, and an active send rejects a duplicate call. Coroutine cancellation is
+re-thrown instead of rendered as an error.
+
+Unit tests, `lintDebug` and `assembleDebug` passed. Installed the updated debug APK
+on `emulator-5580` with `adb install -r`. The real dialog loaded its target list;
+selecting a recipient, cancelling and reopening returned a fresh unselected dialog.
+No share was sent. The existing seven-item queue and Behind Blue Eyes remained
+paused at the exact pre-install position of 177,787 ms.
