@@ -1457,3 +1457,21 @@ on `emulator-5580` with `adb install -r`. The real dialog loaded its target list
 selecting a recipient, cancelling and reopening returned a fresh unselected dialog.
 No share was sent. The existing seven-item queue and Behind Blue Eyes remained
 paused at the exact pre-install position of 177,787 ms.
+
+## 2026-09-12 — Last.fm favourite propagation
+
+Android now consumes the server's favourite mutation result. A successful mvbar
+change stays successful when Last.fm is disconnected, transient Last.fm failures
+receive one safe retry, and remaining connected-account failures produce a concise
+message without rolling back the mvbar favourite. The same path serves phone,
+notification and Android Auto Love actions. Android's realtime listener also
+refreshes favourites for bulk `favorite:synced` events emitted by a Last.fm import.
+
+Unit tests, `lintDebug`, `assembleDebug` and `assembleDebugAndroidTest` passed. The
+final debug APK and instrumentation APK were installed on `emulator-5580`. A live
+remove and restore changed the server and phone from seven favourites to six and
+back over the realtime connection; the original order was restored and the pending
+activity queue was empty. The Android Auto probe covered every browse category,
+pagination and 24 search results, and its seven-item queue selection probe chose the
+requested track. Three clean first-row drag runs passed, and the final restart had
+no MVBar crash or ANR.

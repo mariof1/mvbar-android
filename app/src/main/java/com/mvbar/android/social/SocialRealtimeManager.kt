@@ -44,6 +44,13 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.HttpUrl
 import java.util.concurrent.TimeUnit
 
+internal fun isFavoriteRealtimeEvent(type: String): Boolean = type in setOf(
+    "favorite:added",
+    "favorite:removed",
+    "favorite:reordered",
+    "favorite:synced"
+)
+
 object SocialRealtimeManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
@@ -194,7 +201,7 @@ object SocialRealtimeManager {
                     webSocket.send("{\"type\":\"pong\"}")
                     return
                 }
-                if (type == "favorite:added" || type == "favorite:removed" || type == "favorite:reordered") {
+                if (isFavoriteRealtimeEvent(type)) {
                     _favoritesRevision.update { it + 1 }
                     return
                 }

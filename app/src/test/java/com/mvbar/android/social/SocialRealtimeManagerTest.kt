@@ -1,7 +1,9 @@
 package com.mvbar.android.social
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SocialRealtimeManagerTest {
@@ -33,5 +35,14 @@ class SocialRealtimeManagerTest {
         SocialRealtimeManager.requestRefresh()
 
         assertEquals(previous + 1, SocialRealtimeManager.revision.value)
+    }
+
+    @Test
+    fun `all server favorite events trigger a realtime refresh`() {
+        assertTrue(isFavoriteRealtimeEvent("favorite:added"))
+        assertTrue(isFavoriteRealtimeEvent("favorite:removed"))
+        assertTrue(isFavoriteRealtimeEvent("favorite:reordered"))
+        assertTrue(isFavoriteRealtimeEvent("favorite:synced"))
+        assertFalse(isFavoriteRealtimeEvent("playlist:updated"))
     }
 }

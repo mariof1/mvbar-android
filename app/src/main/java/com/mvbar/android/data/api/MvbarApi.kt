@@ -111,10 +111,10 @@ interface MvbarApi {
     suspend fun moveFavorite(@Body request: FavoriteMoveRequest): Response<Unit>
 
     @POST("api/favorites/{id}")
-    suspend fun addFavorite(@Path("id") trackId: Int): Response<Unit>
+    suspend fun addFavorite(@Path("id") trackId: Int): Response<FavoriteMutationResponse>
 
     @DELETE("api/favorites/{id}")
-    suspend fun removeFavorite(@Path("id") trackId: Int): Response<Unit>
+    suspend fun removeFavorite(@Path("id") trackId: Int): Response<FavoriteMutationResponse>
 
     // History
     @GET("api/history")

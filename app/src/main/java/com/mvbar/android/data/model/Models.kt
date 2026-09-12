@@ -445,6 +445,19 @@ data class TracksResponse(val ok: Boolean = false, val tracks: List<Track> = emp
 data class PlaylistsResponse(val ok: Boolean = false, val playlists: List<Playlist> = emptyList())
 @Serializable
 data class FavoritesResponse(val ok: Boolean = false, val tracks: List<Track> = emptyList())
+
+@Serializable
+data class LastfmFavoriteResult(
+    val submitted: Boolean = false,
+    val reason: String? = null
+)
+
+@Serializable
+data class FavoriteMutationResponse(
+    val ok: Boolean = false,
+    val lastfm: LastfmFavoriteResult? = null
+)
+
 @Serializable
 data class HistoryResponse(val ok: Boolean = false, val tracks: List<Track> = emptyList())
 @Serializable

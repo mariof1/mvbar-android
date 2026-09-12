@@ -2,11 +2,14 @@ package com.mvbar.android.data
 
 import android.content.Context
 import com.mvbar.android.data.api.ApiClient
+import com.mvbar.android.data.api.favoriteLastfmFailureMessage
+import com.mvbar.android.data.api.shouldRetryFavoriteLastfm
 import com.mvbar.android.data.local.MvbarDatabase
 import com.mvbar.android.data.local.entity.FavoriteTrackEntity
 import com.mvbar.android.data.model.AudiobookProgressRequest
 import com.mvbar.android.data.model.EpisodePlayedRequest
 import com.mvbar.android.data.model.EpisodeProgressRequest
+import com.mvbar.android.data.model.FavoriteMutationResponse
 import com.mvbar.android.data.model.PlaybackSignalRequest
 import com.mvbar.android.data.model.PodcastSubscribeRequest
 import com.mvbar.android.data.local.entity.PendingActionEntity
@@ -14,10 +17,13 @@ import com.mvbar.android.debug.DebugLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
+import retrofit2.HttpException
+import retrofit2.Response
 
 /**
  * Offline-resilient activity queue. Every user action (play, skip, favorite)
@@ -177,6 +183,28 @@ object ActivityQueue {
         )
     }
 
+    private suspend fun submitFavoriteMutation(request: suspend () -> Response<FavoriteMutationResponse>) {
+        var response = request()
+        if (!response.isSuccessful) throw HttpException(response)
+
+        // Retry one transient Last.fm failure. The mvbar favourite endpoint is
+        // idempotent, so repeating it cannot duplicate or reverse local state.
+        if (shouldRetryFavoriteLastfm(response.body())) {
+            delay(750)
+            response = request()
+            if (!response.isSuccessful) throw HttpException(response)
+        }
+
+        val body = response.body()
+        if (body != null && !body.ok) error("Favourite update was not accepted by the server")
+        favoriteLastfmFailureMessage(body)?.let { message ->
+            com.mvbar.android.ui.components.ToastManager.show(
+                message,
+                com.mvbar.android.ui.components.ToastIcon.ERROR
+            )
+        }
+    }
+
     /** Drain the queue, sending each action to the server in order. */
     suspend fun flush() {
         val database = db ?: return
@@ -200,10 +228,10 @@ object ActivityQueue {
                             ApiClient.api.recordSkip(action.trackId, playbackSignal(payloadJson))
                         }
                         ACTION_ADD_FAVORITE -> {
-                            ApiClient.api.addFavorite(action.trackId)
+                            submitFavoriteMutation { ApiClient.api.addFavorite(action.trackId) }
                         }
                         ACTION_REMOVE_FAVORITE -> {
-                            ApiClient.api.removeFavorite(action.trackId)
+                            submitFavoriteMutation { ApiClient.api.removeFavorite(action.trackId) }
                         }
                         ACTION_PLAYLIST_CREATE -> {
                             val name = payloadJson?.optString("name").orEmpty()
