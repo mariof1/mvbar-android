@@ -1,6 +1,7 @@
 package com.mvbar.android.ui.navigation
 
 import android.app.Activity
+import android.content.res.Configuration
 import android.net.Uri
 import androidx.compose.ui.draw.blur
 import androidx.activity.compose.BackHandler
@@ -559,6 +560,7 @@ fun MainScreen(
 
     val configuration = LocalConfiguration.current
     val useNavRail = configuration.screenWidthDp >= 600
+    val useLandscapeHeader = useNavRail && configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // Shared tab selection logic
     fun isTabSelected(tab: BottomTab): Boolean =
@@ -637,38 +639,40 @@ fun MainScreen(
                             .navigationBarsPadding(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (isDetailScreen) {
-                            IconButton(onClick = { navigateBack() }) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Back",
-                                    tint = OnSurface
-                                )
+                        if (!useLandscapeHeader) {
+                            if (isDetailScreen) {
+                                IconButton(onClick = { navigateBack() }) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back",
+                                        tint = OnSurface
+                                    )
+                                }
                             }
+
+                            IconButton(onClick = { showSearch = true }) {
+                                Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
+                            }
+
+                            MvbarConnectButton(
+                                devices = connectDevices,
+                                selectedDeviceId = selectedConnectDeviceId,
+                                localDeviceId = ApiClient.getClientId(),
+                                onSelect = SocialRealtimeManager::selectConnectDevice
+                            )
+
+                            SocialNavigationButton(
+                                badgeCount = socialState.badgeCount,
+                                selected = currentTab == "social",
+                                onClick = { navController.navigate("social") { launchSingleTop = true } }
+                            )
                         }
-
-                        IconButton(onClick = { showSearch = true }) {
-                            Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
-                        }
-
-                        MvbarConnectButton(
-                            devices = connectDevices,
-                            selectedDeviceId = selectedConnectDeviceId,
-                            localDeviceId = ApiClient.getClientId(),
-                            onSelect = SocialRealtimeManager::selectConnectDevice
-                        )
-
-                        SocialNavigationButton(
-                            badgeCount = socialState.badgeCount,
-                            selected = currentTab == "social",
-                            onClick = { navController.navigate("social") { launchSingleTop = true } }
-                        )
 
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth(),
-                            contentAlignment = Alignment.Center
+                            contentAlignment = if (useLandscapeHeader) Alignment.TopCenter else Alignment.Center
                         ) {
                             Column(
                                 modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -677,6 +681,7 @@ fun MainScreen(
                                 BottomTab.entries.forEach { tab ->
                                     val selected = isTabSelected(tab)
                                     NavigationRailItem(
+                                        modifier = if (useLandscapeHeader) Modifier.height(52.dp) else Modifier,
                                         selected = selected,
                                         onClick = { onTabClick(tab) },
                                         icon = {
@@ -706,16 +711,18 @@ fun MainScreen(
                             }
                         }
 
-                        IconButton(onClick = {
-                            navController.navigate("settings") {
-                                launchSingleTop = true
+                        if (!useLandscapeHeader) {
+                            IconButton(onClick = {
+                                navController.navigate("settings") {
+                                    launchSingleTop = true
+                                }
+                            }) {
+                                Icon(
+                                    Icons.Filled.Settings,
+                                    "Settings",
+                                    tint = if (currentTab == "settings") Cyan500 else OnSurfaceDim
+                                )
                             }
-                        }) {
-                            Icon(
-                                Icons.Filled.Settings,
-                                "Settings",
-                                tint = if (currentTab == "settings") Cyan500 else OnSurfaceDim
-                            )
                         }
                     }
                 }
@@ -726,7 +733,63 @@ fun MainScreen(
                 .blur(if (showNowPlaying && displayedPlayerState.currentTrack != null) playerBackdropBlur.dp else 0.dp),
             containerColor = BackgroundDark,
             topBar = {
-                if (!useNavRail) {
+                if (useLandscapeHeader) {
+                    Surface(color = BackgroundDark) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .height(52.dp)
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = { showSearch = true }) {
+                                Icon(Icons.Filled.Search, "Search", tint = OnSurfaceDim)
+                            }
+                            if (isDetailScreen) {
+                                IconButton(onClick = { navigateBack() }) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back",
+                                        tint = OnSurface
+                                    )
+                                }
+                            }
+                            Text(
+                                screenTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = OnSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = if (isDetailScreen) 0.dp else 12.dp)
+                            )
+                            MvbarConnectButton(
+                                devices = connectDevices,
+                                selectedDeviceId = selectedConnectDeviceId,
+                                localDeviceId = ApiClient.getClientId(),
+                                onSelect = SocialRealtimeManager::selectConnectDevice
+                            )
+                            SocialNavigationButton(
+                                badgeCount = socialState.badgeCount,
+                                selected = currentTab == "social",
+                                onClick = { navController.navigate("social") { launchSingleTop = true } }
+                            )
+                            IconButton(onClick = {
+                                navController.navigate("settings") {
+                                    launchSingleTop = true
+                                }
+                            }) {
+                                Icon(
+                                    Icons.Filled.Settings,
+                                    "Settings",
+                                    tint = if (currentTab == "settings") Cyan500 else OnSurfaceDim
+                                )
+                            }
+                        }
+                    }
+                } else if (!useNavRail) {
                     TopAppBar(
                         navigationIcon = {
                             if (isDetailScreen) {
@@ -846,7 +909,7 @@ fun MainScreen(
             // Main content column (with mini player at bottom for nav rail mode)
             Column(modifier = Modifier
                 .padding(top = innerPadding.calculateTopPadding())
-                .then(if (useNavRail) Modifier.statusBarsPadding() else Modifier)
+                .then(if (useNavRail && !useLandscapeHeader) Modifier.statusBarsPadding() else Modifier)
                 .fillMaxSize()
                 .navigationBarsPadding()
             ) {
