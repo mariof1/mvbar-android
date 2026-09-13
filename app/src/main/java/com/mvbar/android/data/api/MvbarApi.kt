@@ -216,7 +216,8 @@ interface MvbarApi {
     suspend fun search(
         @Query("q") query: String,
         @Query("limit") limit: Int = 50,
-        @Query("offset") offset: Int = 0
+        @Query("offset") offset: Int = 0,
+        @Query("quick") quick: Int? = null
     ): SearchResults
 
     @GET("api/search/recent")

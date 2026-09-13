@@ -1236,9 +1236,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchLoading.value = true
         _hasMoreSearch.value = false
         searchJob = viewModelScope.launch {
-            kotlinx.coroutines.delay(200)
+            kotlinx.coroutines.delay(100)
+            var quickResults: SearchResults? = null
             try {
                 val results = if (NetworkMonitor.isOnline.value) {
+                    val firstResults = repo.search(query, PAGE_SIZE, 0, quick = true)
+                    if (generation != searchGeneration) return@launch
+                    quickResults = firstResults
+                    _searchResults.value = firstResults
+                    _hasMoreSearch.value = firstResults.hits.size >= PAGE_SIZE
+                    if (firstResults.hits.isNotEmpty()) _searchLoading.value = false
+
+                    // Let quick song results render before starting the heavier
+                    // artist, album, playlist, podcast, and audiobook enrichment.
+                    kotlinx.coroutines.delay(150)
                     repo.search(query, PAGE_SIZE, 0)
                 } else {
                     repo.searchCached(query, PAGE_SIZE, 0)
@@ -1250,6 +1261,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: Exception) {
                 DebugLog.e("Search", "Search failed, falling back to cache", e)
+                if (generation == searchGeneration && quickResults != null) {
+                    _searchResults.value = quickResults
+                    _hasMoreSearch.value = quickResults.hits.size >= PAGE_SIZE
+                    _searchError.value = "Some search categories could not be loaded."
+                    return@launch
+                }
                 try {
                     val results = repo.searchCached(query, PAGE_SIZE, 0)
                     if (generation != searchGeneration) return@launch
